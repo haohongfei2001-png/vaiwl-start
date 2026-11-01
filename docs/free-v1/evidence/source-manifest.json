@@ -1,0 +1,304 @@
+{
+  "repository": "haohongfei2001-png/Virtual-AI-Workspace-Layer",
+  "ref": "1903b00f774b4fd7f3d15b3669878c32e2c7a9c8",
+  "read_only": true,
+  "files": [
+    {
+      "path": "design/approved/v2.7/VAIWL_v2.7/prototype-v2.7.html",
+      "bytes": 130072,
+      "sha256": "81fa9779e4bc98b6b67c348f72a32ee1fd99519833994af9ed95716126f7da4e",
+      "git_blob_sha": "06c715bf57e466088ad44425ae0c352038eceead",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/design/approved/v2.7/VAIWL_v2.7/prototype-v2.7.html"
+    },
+    {
+      "path": "docs/AUTHORITY.md",
+      "bytes": 21277,
+      "sha256": "3a4b2108a943a35627aaf8b8c9eccbc7da6dcf153ec05405de3a5f119801e1aa",
+      "git_blob_sha": "431d879bf74771c610e25da10de4f2671c23c9c9",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/docs/AUTHORITY.md"
+    },
+    {
+      "path": "docs/CORE_FLOW_V2_7.md",
+      "bytes": 9168,
+      "sha256": "fbf674b8e1625f567ad41758fb78f25506fdc97feba1ed8c46a38b4d5990dbdf",
+      "git_blob_sha": "b2f84742185eb6b864740c7c3835bda36b007de8",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/docs/CORE_FLOW_V2_7.md"
+    },
+    {
+      "path": "docs/CORE_MECHANISMS_V2_8.md",
+      "bytes": 16219,
+      "sha256": "9b05e5372b5365c34fbacc0a22d335fa4e08be0d15d368041f264582798a7765",
+      "git_blob_sha": "ef89d7e6bb81d9016cdfacfc75db6bf8fa7db691",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/docs/CORE_MECHANISMS_V2_8.md"
+    },
+    {
+      "path": "docs/DATA_MODEL.md",
+      "bytes": 24487,
+      "sha256": "3c7b456276dda972faeb39f52a700bb9be7c4aad4e513a1f48e77e561687a460",
+      "git_blob_sha": "5286fa7e5ba4a7fdbd97009ed3ef5b9867203a5e",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/docs/DATA_MODEL.md"
+    },
+    {
+      "path": "docs/FREE_PRO_PRODUCT_SCOPE.md",
+      "bytes": 3479,
+      "sha256": "356028e0a0b333d6272dc9d50a27544be0f87e5567f8d346fbf810d4d58e89bb",
+      "git_blob_sha": "316b54276bb9b7dcf1f8d3f612321ca917e08be3",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/docs/FREE_PRO_PRODUCT_SCOPE.md"
+    },
+    {
+      "path": "docs/INTERACTION_SPEC.md",
+      "bytes": 10490,
+      "sha256": "1f250a95ecd332a11fae889527b2656ea0ed2881c54d743dee55dea75a969815",
+      "git_blob_sha": "e5ffa464db477536b88d535eb0a2d9429f5be70d",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/docs/INTERACTION_SPEC.md"
+    },
+    {
+      "path": "docs/evidence/free-runtime-consistency-20261101/README.md",
+      "bytes": 8406,
+      "sha256": "3abe2e2fc805ec3c8c78233006016a684567c50ff9e56113ee5f368a13c69c92",
+      "git_blob_sha": "a8baa0cd1016f30bccad29c1073d32f8f5457491",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/docs/evidence/free-runtime-consistency-20261101/README.md"
+    },
+    {
+      "path": "extension/config.mjs",
+      "bytes": 240,
+      "sha256": "9f38c623f8ef08e684d9b1b71fd0a49c01b736a41e75efc997117370df175c41",
+      "git_blob_sha": "7ec39f640715fdcec4b98bf8736f9671457fa4a9",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/extension/config.mjs"
+    },
+    {
+      "path": "extension/content-entry.mjs",
+      "bytes": 6878,
+      "sha256": "80f1a460be961fa4edaa8aff055c865830f06d57248d433eecaf7b32e0cdb203",
+      "git_blob_sha": "3f1cd9e4ef9d5881722624541bf314f5ad21429c",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/extension/content-entry.mjs"
+    },
+    {
+      "path": "src/data/free-activity.mjs",
+      "bytes": 13513,
+      "sha256": "29a89003f69d38a6927916db367af505362586168df292055941cf7aa56a0928",
+      "git_blob_sha": "cfc8e0a23583bc74433ef2b8008f6d2999eda606",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/data/free-activity.mjs"
+    },
+    {
+      "path": "src/data/free-projection.mjs",
+      "bytes": 6602,
+      "sha256": "e184a7d3533710840fe8248b11ffde1db06ee10d42f03b850d231faf8ab3bd85",
+      "git_blob_sha": "9811a807815c260a794e63858aab21e9daa3882a",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/data/free-projection.mjs"
+    },
+    {
+      "path": "src/data/free-time-policy.mjs",
+      "bytes": 6741,
+      "sha256": "8a75b5bdde8abf8ee07873ecf2aa45a19faccd030b9f03c738b56db6ba9ea17a",
+      "git_blob_sha": "17edcf287f897f0c2f0194d999de633dcc11bd6f",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/data/free-time-policy.mjs"
+    },
+    {
+      "path": "src/data/native-facts.mjs",
+      "bytes": 17148,
+      "sha256": "419bf63bfe02a1759528be4a9970b2a55849857aa0aaa92dabb3c8bb9fd9005e",
+      "git_blob_sha": "19517f5017fc4f5c417566ebf21ac15f47980ed5",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/data/native-facts.mjs"
+    },
+    {
+      "path": "src/host/browser-local-lifecycle.mjs",
+      "bytes": 8479,
+      "sha256": "df971c6a6d7c9e364a57c81cdd345315cdc8100ca4b421e55c652cda02cc3e32",
+      "git_blob_sha": "190dec832058a8cead474bbfb2422676932c4593",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/host/browser-local-lifecycle.mjs"
+    },
+    {
+      "path": "src/host/chatgpt-observed-profile.mjs",
+      "bytes": 12584,
+      "sha256": "f0d4e61d97dbfa6cec5d7c81018f1b1a91c6d5d63489a7b5ef18198a7f1ba4ae",
+      "git_blob_sha": "d374681967856055c3b3929506fc9a7842f54921",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/host/chatgpt-observed-profile.mjs"
+    },
+    {
+      "path": "src/host/conversation-directory-metadata.mjs",
+      "bytes": 9390,
+      "sha256": "2508a697792936a889708b649c28bb8ed2b1bc1b56e43ef44c176bd0354bf733",
+      "git_blob_sha": "6c8715dc4c942bb5e9c9836084745f7c3e99e6c0",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/host/conversation-directory-metadata.mjs"
+    },
+    {
+      "path": "src/host/conversation-metadata.mjs",
+      "bytes": 8646,
+      "sha256": "915e88458f46265a696e68fc4b2892916e4bc69ffd03f04d580b4dee4c9e658f",
+      "git_blob_sha": "66bdf32593e6ceac9ad56426434378e525ed6f75",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/host/conversation-metadata.mjs"
+    },
+    {
+      "path": "src/host/isolated-session-reader.mjs",
+      "bytes": 5174,
+      "sha256": "49b5726c6b1317f1879a5c5b263a88bdb8e0b886a31a012d156c9b42a84118e1",
+      "git_blob_sha": "c5064b5159679eb8a4529685ed8b1828fa5619ac",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/host/isolated-session-reader.mjs"
+    },
+    {
+      "path": "src/host/native-surface-boundary.mjs",
+      "bytes": 10233,
+      "sha256": "c6aebcfb13aca3965b48304d27e9347f01f9c9c092cf4cc3225087dd366f74b8",
+      "git_blob_sha": "f9a96a92426fac92bd6dfba958cb932d45931d70",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/host/native-surface-boundary.mjs"
+    },
+    {
+      "path": "src/host/project-metadata.mjs",
+      "bytes": 3884,
+      "sha256": "71980d52b0a41103a3920f86152e2387cadc5da7eb07614911cdf2acd4d9d46e",
+      "git_blob_sha": "0fc08db910fc56257458b6fbba8af5a543508bf5",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/host/project-metadata.mjs"
+    },
+    {
+      "path": "src/host/session-identity.mjs",
+      "bytes": 5701,
+      "sha256": "ff71fb796ab2c81ef07a5fae274a3de2c4317e05af48a590c952bb0c51b31281",
+      "git_blob_sha": "54b19dd7f68db947ec26b958d6146d7cc9888c96",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/host/session-identity.mjs"
+    },
+    {
+      "path": "src/host/surface-discovery.mjs",
+      "bytes": 34853,
+      "sha256": "e626e1b867da622dfe7065c0227c226167a66f9c03533cb192e3203ab5288ead",
+      "git_blob_sha": "33e0b8e9a92d0cba31575259f99c3d320c8df2ae",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/host/surface-discovery.mjs"
+    },
+    {
+      "path": "src/host/url-policy.mjs",
+      "bytes": 5384,
+      "sha256": "fddfafcca2276161e6fd3c908ac896d0dab656fce6cf06aee64f1f442f7ac7e9",
+      "git_blob_sha": "62e96cb671ac645267f142d5f98959cc6da610a6",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/host/url-policy.mjs"
+    },
+    {
+      "path": "src/navigation/projection.mjs",
+      "bytes": 4970,
+      "sha256": "36334b5da4bd8e89718bf45b69723f4a657d46797c03c653298aaa3392399f24",
+      "git_blob_sha": "78369aeb8949ce8eda6d4af7677ccb120e8a06d9",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/navigation/projection.mjs"
+    },
+    {
+      "path": "src/runtime/browser-local-authority.mjs",
+      "bytes": 6917,
+      "sha256": "42589727194f9ca832181b86af5553a88c26016cc31aa610e43102d56e22ea9c",
+      "git_blob_sha": "55ce3704fad771d5f4726635a4dc458caa0b0a08",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/runtime/browser-local-authority.mjs"
+    },
+    {
+      "path": "src/runtime/browser-local-memory.mjs",
+      "bytes": 6648,
+      "sha256": "c7070618f486d8daa46884cfcc85c13736199779cc5014ece951b078c10460b1",
+      "git_blob_sha": "d1785dc9111b9809bada79c90647c7908d43b9c2",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/runtime/browser-local-memory.mjs"
+    },
+    {
+      "path": "src/runtime/browser-request-context.mjs",
+      "bytes": 22952,
+      "sha256": "ef4fb72ba9e22d36d517720ae7465e6b806dc1d339f059cd03260495a9f47920",
+      "git_blob_sha": "5a4b158c4ec9b5f121dd7cc11218476b9b1e0944",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/runtime/browser-request-context.mjs"
+    },
+    {
+      "path": "src/runtime/current-metadata-reader.mjs",
+      "bytes": 13339,
+      "sha256": "c237d156abe921e5066cd267a6a7bb056b80a744f46d9045c8a34a44ad0d641c",
+      "git_blob_sha": "223667d69012ff18e967520fa65418dcd3bd2407",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/runtime/current-metadata-reader.mjs"
+    },
+    {
+      "path": "src/runtime/free-project-location.mjs",
+      "bytes": 1225,
+      "sha256": "45892565ac8896feb97872c59e3b504d0563b6e461c3da49d838c1359991e649",
+      "git_blob_sha": "071e0d8d97c74a5adcc79163d1d5591f684c2376",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/runtime/free-project-location.mjs"
+    },
+    {
+      "path": "src/runtime/host-browser-bootstrap.mjs",
+      "bytes": 3869,
+      "sha256": "5a7e89e900643d7c8e9c1d5f1b4573e4d6d6bf11dfe9fc296e12a62ed38e36e3",
+      "git_blob_sha": "4a4bff5730ddf9732fc9a22519942eb2466066cf",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/runtime/host-browser-bootstrap.mjs"
+    },
+    {
+      "path": "src/runtime/host-worker-runtime.mjs",
+      "bytes": 12774,
+      "sha256": "e121e633efbabf034c3b122b2b755711b04c9b6484cca2b6dfc701792eed1222",
+      "git_blob_sha": "a36a8cb6ec7d8ccb7cd4ef2b4f47533cc31db931",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/runtime/host-worker-runtime.mjs"
+    },
+    {
+      "path": "src/runtime/isolated-session-owner.mjs",
+      "bytes": 7998,
+      "sha256": "8c3ef00c36a387c6664e3f24910ba317f7d3a7b9d2216f70f9823d7700c0061c",
+      "git_blob_sha": "9251a8cf3f5f004454942c0d457784c646b57a7a",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/runtime/isolated-session-owner.mjs"
+    },
+    {
+      "path": "src/runtime/scope-authority.mjs",
+      "bytes": 13598,
+      "sha256": "e33521586cf169b4e29bc58f03b42724b8e5a55a0cd2c72213a595100b964e42",
+      "git_blob_sha": "5d3b2f9bd9b3ce9bcea581ec6282bffbb211b30b",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/runtime/scope-authority.mjs"
+    },
+    {
+      "path": "src/runtime/session-provider.mjs",
+      "bytes": 15871,
+      "sha256": "ab18ecf605dcbf9b66c58b4e04b9ce48d0173990b6fac56c75a12317465c430e",
+      "git_blob_sha": "770c6ef789f072dc24036226071099a6dd6c9199",
+      "source_bytes_verified": true,
+      "url": "https://github.com/haohongfei2001-png/Virtual-AI-Workspace-Layer/blob/1903b00f774b4fd7f3d15b3669878c32e2c7a9c8/src/runtime/session-provider.mjs"
+    }
+  ],
+  "uncached_read_excerpts": [
+    {
+      "path": "docs/STATUS.md",
+      "git_blob_sha": "7f316651098ba2f7024d17a07a04e864159e16b6",
+      "scope": "top current sections only"
+    },
+    {
+      "path": "docs/DEVELOPMENT_PLAN.md",
+      "git_blob_sha": "2b32d80ce884f9651fdbe653fb888e8fcd856cc6",
+      "scope": "lines 1-100"
+    }
+  ],
+  "comments": [
+    6559537916,
+    6559778675,
+    6559952204
+  ]
+}
