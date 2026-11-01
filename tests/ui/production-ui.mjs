@@ -44,6 +44,8 @@ try {
   check('UI-no-auto-permission', !['history', 'scripting', 'webNavigation'].some(name => permission.permissions?.includes(name)) && !permission.origins?.some(origin => origin.includes('chatgpt.com')), `Initial granted permissions: ${JSON.stringify(permission)}`);
 
   await page.getByRole('button', { name: '添加网站', exact: true }).click();
+  await page.locator('#site-name').focus(); await page.keyboard.press('/');
+  const slashEditor = await page.evaluate(() => ({ searchOpen: document.getElementById('search-dialog').open, text: document.getElementById('site-name').value }));
   await page.locator('#site-name').fill('First'); await page.locator('#site-url').fill('https://example.com/one');
   await page.locator('#save-site').click(); await page.getByRole('button', { name: '固定 First', exact: true }).waitFor();
   await page.locator('#site-name').fill('Second'); await page.locator('#site-url').fill('https://example.com/two');
@@ -56,25 +58,56 @@ try {
   await page.waitForFunction(() => document.querySelector('.edit-site-name')?.textContent === 'Second');
   check('UI-keyboard-order-controls', (await page.locator('.edit-site-name').allTextContents()).join('|') === 'Second|First', 'Explicit order buttons persist user order.');
   await page.getByRole('button', { name: 'First', exact: true }).click();
-  await page.locator('#site-name').fill('First edited'); await page.locator('#site-url').fill('https://example.com/edited');
+  await page.locator('#site-name').fill('First edited'); await page.locator('#site-url').fill('http://example.com/edited');
   await page.locator('#save-site').click(); await page.getByRole('button', { name: 'First edited', exact: true }).waitFor();
   check('UI-edit-website', (await page.locator('.edit-site-name').allTextContents()).join('|') === 'Second|First edited', 'Editing changes label/URL while preserving order.');
   await page.locator('#site-name').fill('Unsafe'); await page.locator('#site-url').fill('javascript:alert(1)');
   await page.locator('#save-site').click();
   check('UI-reject-script-shortcut', await page.locator('#site-error').isVisible() && await page.locator('.edit-site-row').count() === 2, 'javascript: website is rejected without creating an entry.');
+  await page.locator('#site-url').fill('data:text/html,test'); await page.locator('#save-site').click();
+  check('UI-reject-data-shortcut', await page.locator('#site-error').isVisible() && await page.locator('.edit-site-row').count() === 2, 'data: website is rejected without creating an entry.');
   await page.locator('#site-url').fill('https://user:password@example.com/'); await page.locator('#save-site').click();
   check('UI-reject-credential-shortcut', await page.locator('#site-error').isVisible() && await page.locator('.edit-site-row').count() === 2, 'Embedded-credential URL is rejected.');
   await page.locator('#site-name').fill('Disposable'); await page.locator('#site-url').fill('https://example.com/remove'); await page.locator('#save-site').click();
   await page.getByRole('button', { name: '移除 Disposable', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('.edit-site-row').length === 2);
   check('UI-remove-website', (await page.locator('.edit-site-name').allTextContents()).join('|') === 'Second|First edited', 'Removing a shortcut leaves the other order unchanged.');
+  await page.locator('.edit-site-row').nth(0).dragTo(page.locator('.edit-site-row').nth(1));
+  await page.waitForFunction(() => document.querySelector('.edit-site-name')?.textContent === 'First edited');
+  check('UI-native-drag-order', (await page.locator('.edit-site-name').allTextContents()).join('|') === 'First edited|Second', 'Native pointer drag moves the first website after the second through the production drop handler.');
   await page.locator('#sites-dialog [data-close]').first().click();
+  const slashModifiers = await page.evaluate(() => {
+    const cancelled = [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { shiftKey: true }].map(modifiers => {
+      const event = new KeyboardEvent('keydown', { key: '/', ...modifiers, bubbles: true, cancelable: true }); document.dispatchEvent(event); return event.defaultPrevented;
+    });
+    return { cancelled, open: document.getElementById('search-dialog').open };
+  });
+  check('UI-slash-editing-modifier-guards', slashEditor.text === '/' && !slashEditor.searchOpen && !slashModifiers.open && slashModifiers.cancelled.every(value => !value), 'A real slash types into the website editor; modified slash events on the non-editing page neither open search nor cancel browser handling.');
   await page.locator('#site-toggle').click();
   await page.waitForFunction(() => document.getElementById('site-toggle')?.getAttribute('aria-expanded') === 'false');
   check('UI-collapsed-pins-only', (await page.locator('.site-title').allTextContents()).join('|') === 'Second', 'Collapsed sites show only pinned shortcuts.');
   await page.reload(); await page.waitForSelector('html[data-start-ready="true"]');
   await installTestFont(page);
   check('UI-shortcuts-reload', (await page.locator('.site-title').allTextContents()).join('|') === 'Second', 'Pinned order and collapse survive actual page reload.');
+  await page.locator('#site-toggle').click();
+  await page.getByRole('link', { name: '打开 First edited', exact: true }).waitFor();
+  check('UI-native-drag-order-reload', (await page.locator('.site-title').allTextContents()).join('|') === 'First edited|Second', 'The actual dragged website order survives reload; its pinned website remains visible while collapsed.');
+  for (const [label, url] of [['Second', 'https://example.com/two'], ['First edited', 'http://example.com/edited']]) {
+    await context.route(url, route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Shortcut verification</title><p>Synthetic website target</p>' }));
+    // Use the frozen default: a normal click navigates this already-controlled Start tab.
+    // A native popup's initial TLS navigation can precede test interception in Chrome.
+    const target = await context.newPage();
+    await target.goto(`chrome-extension://${id}/newtab.html`); await target.waitForSelector('html[data-start-ready="true"]');
+    await target.getByRole('link', { name: `打开 ${label}`, exact: true }).click();
+    await target.waitForURL(url, { waitUntil: 'domcontentloaded', timeout: 5000 });
+    assert.equal(await target.title(), 'Shortcut verification'); await target.close();
+  }
+  const shortcutActivity = await worker.evaluate(async () => {
+    const req = indexedDB.open('vaiwl-start', 1); const db = await new Promise(resolve => { req.onsuccess = () => resolve(req.result); });
+    const tx = db.transaction(['openIntents', 'openDays'], 'readonly'), intents = tx.objectStore('openIntents').count(), days = tx.objectStore('openDays').count();
+    return new Promise(resolve => { tx.oncomplete = () => { db.close(); resolve({ intents: intents.result, days: days.result }); }; });
+  });
+  check('UI-website-native-open-no-activity', shortcutActivity.intents === 0 && shortcutActivity.days === 0, 'Both HTTP and HTTPS shortcuts open their exact controlled native-browser targets; neither creates a ChatGPT intent or OpenDay.');
 
   const scope = `scope:${'a'.repeat(64)}`;
   const otherScope = `scope:${'b'.repeat(64)}`;
@@ -103,9 +136,11 @@ try {
     records.push(conversation(`${project.nativeTitle}较早方案`, membership, old));
   }
   records.push(conversation('整理一份阅读清单', { state: 'NONE', projectId: null, evidenceId: 'test-none', confirmedAt: today }));
+  records.push(conversation('更早区间的独立会话', { state: 'NONE', projectId: null, evidenceId: 'test-older-none', confirmedAt: today }, old));
   records.push(conversation('尚无日期的无项目会话', { state: 'NONE', projectId: null, evidenceId: 'test-none-undated', confirmedAt: today }, null));
   records.push(conversation('<img src=x onerror=window.__xss=1>', { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, null));
   records.push(conversation('Other account secret', { state: 'NONE', projectId: null, evidenceId: 'test-other', confirmedAt: today }, today, otherScope));
+  records.push(conversation('Other account pending', { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, null, otherScope));
   await page.evaluate(async data => {
     const req = indexedDB.open('vaiwl-start', 1); const db = await new Promise((resolve, reject) => { req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
     const tx = db.transaction(['scopes', 'projects', 'conversations', 'settings', 'revisions'], 'readwrite');
@@ -123,17 +158,59 @@ try {
   const projectCount = await page.locator('.project').count();
   check('UI-six-project-cards', projectCount === 6, `Six synthetic projects rendered by the actual bundled UI/domain/storage; count ${projectCount}.`);
   check('UI-scope-isolation', !await page.getByText('Other account secret', { exact: true }).count(), 'Other account title does not appear in current scope.');
+  const readBusinessStores = () => worker.evaluate(async () => {
+    const req = indexedDB.open('vaiwl-start', 1);
+    const db = await new Promise((resolve, reject) => { req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
+    const names = [...db.objectStoreNames].filter(name => !['settings', 'revisions'].includes(name));
+    const tx = db.transaction(names, 'readonly');
+    const reads = names.map(name => [name, tx.objectStore(name).getAll()]);
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => { const snapshot = Object.fromEntries(reads.map(([name, read]) => [name, read.result])); db.close(); resolve(snapshot); };
+      tx.onabort = () => { db.close(); reject(tx.error); };
+    });
+  });
+  const businessBeforeFilters = await readBusinessStores();
+  const workspaceKeys = () => page.locator('#workspace-content a[data-record-key]').evaluateAll(links => links.map(link => link.dataset.recordKey));
+  for (const [filter, state] of [['project', 'PROJECT'], ['none', 'NONE'], ['unknown', 'UNKNOWN']]) {
+    await page.locator(`[data-filter="${filter}"]`).click();
+    const keys = await workspaceKeys();
+    check(`UI-filter-${filter}-exact-membership`, keys.length > 0 && keys.every(key => records.some(record => record.key === key && record.owner.scopeKey === scope && record.membership.state === state)), `${filter} renders only current-scope ${state} records; UNKNOWN is never classified as NONE.`);
+  }
+  await page.locator('[data-filter="all"]').click();
+  await page.locator('#scope-selector').selectOption(otherScope);
+  await page.getByText('Other account secret', { exact: true }).waitFor();
+  const projectlessHome = await page.locator('.project').count() === 0 && await page.locator('.new-chat').isVisible() && await page.locator('.date-window').count() === 1 && await page.locator('#scope-selector').inputValue() === otherScope;
+  await page.locator('[data-filter="none"]').click();
+  const projectlessNone = (await workspaceKeys()).length === 1 && await page.getByText('Other account secret', { exact: true }).isVisible() && await page.getByText('Other account pending', { exact: true }).count() === 0;
+  await page.locator('[data-filter="unknown"]').click();
+  const projectlessUnknown = (await workspaceKeys()).length === 1 && await page.getByText('Other account pending', { exact: true }).isVisible() && await page.getByText('Other account secret', { exact: true }).count() === 0 && await page.locator('.date-window').count() === 0;
+  await page.locator('[data-filter="project"]').click();
+  const projectlessEmpty = (await workspaceKeys()).length === 0 && await page.locator('.new-chat').isVisible() && await page.getByText('这一段没有记录', { exact: true }).isVisible();
+  check('UI-projectless-scope-home', projectlessHome && projectlessNone && projectlessUnknown && projectlessEmpty, 'A synthetic verified scope with zero projects retains its homepage, new-chat link and scope selector; NONE and UNKNOWN remain separate and the project filter has a usable empty state.');
+  await page.locator('[data-filter="all"]').click();
+  await page.locator('#scope-selector').selectOption(scope);
+  await page.locator('.project').first().waitFor();
+  assert.deepEqual(await readBusinessStores(), businessBeforeFilters);
+  check('UI-filters-view-only', true, 'All business stores are byte-for-byte equivalent before and after all membership filters and both scope selections; settings/revision bookkeeping is excluded.');
   const firstCard = page.locator('.project').first();
   check('UI-initial-five', await firstCard.locator('.project-body > .conversation-list .conversation-row').count() === 5, 'Current project initially shows exactly 5 rows.');
   await firstCard.getByRole('button', { name: '显示更多', exact: true }).click();
   check('UI-add-twelve', await firstCard.locator('.project-body > .conversation-list .conversation-row').count() === 17, 'One Show More increases 5 to 17.');
+  await firstCard.getByRole('button', { name: '显示更多', exact: true }).click();
+  check('UI-project-more-complete', await firstCard.locator('.project-body > .conversation-list .conversation-row').count() === 18 && await firstCard.getByRole('button', { name: '显示更多', exact: true }).count() === 0, 'The final recent member is reachable and Show More ends at the actual collection boundary.');
   await firstCard.getByRole('button', { name: '较早会话', exact: true }).click();
   check('UI-old-stays-in-parent', await firstCard.getByText('VAIWL较早方案', { exact: true }).isVisible(), 'Older member expands under its single project card.');
   await firstCard.getByRole('button', { name: '较早会话', exact: true }).click();
   check('UI-no-top-arrow', await page.locator('#period-newer').count() === 0, 'k=0 has no newer-period button.');
   await page.locator('#period-older').click();
   check('UI-empty-adjacent-segment', await page.getByText('这一段没有记录', { exact: true }).isVisible(), 'One click goes to the adjacent empty segment rather than skipping it.');
+  await page.locator('#period-older').click();
+  const earlierKnownVisible = await page.getByText('更早区间的独立会话', { exact: true }).isVisible();
+  const olderProjectsAbsent = await page.locator('.project').count() === 0;
   await page.locator('#period-newer').click();
+  const returnedToEmpty = await page.getByText('这一段没有记录', { exact: true }).isVisible();
+  await page.locator('#period-newer').click();
+  check('UI-empty-segment-to-known-and-back', earlierKnownVisible && olderProjectsAbsent && returnedToEmpty && await page.locator('.project').count() === 6 && await page.locator('#period-newer').count() === 0, 'k0 → empty k1 → known NONE at k2 → empty k1 → k0; no empty segment is skipped and old project members do not duplicate their current parent.');
   await page.keyboard.press('/');
   await page.locator('#search-input').fill('VAIWL较早方案');
   check('UI-cross-period-search', await page.locator('.search-result').count() === 1, 'Search finds a 70-day-old member across date segments.');
@@ -175,8 +252,28 @@ try {
   await page.locator('[data-filter="unknown"]').click();
   check('UI-unknown-text-only', await page.getByText('<img src=x onerror=window.__xss=1>', { exact: true }).isVisible() && !await page.evaluate(() => window.__xss), 'An HTML-looking native title is rendered as plain text.');
   await page.locator('[data-filter="all"]').click();
-  const forwarded = await page.evaluate(() => ['k', 'l'].map(key => { const event = new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true, cancelable: true }); document.dispatchEvent(event); return event.defaultPrevented; }));
-  check('UI-browser-shortcuts', forwarded.every(value => value === false), 'Ctrl+K/L remain uncancelled.');
+  const forwarded = await page.evaluate(() => ['ctrlKey', 'metaKey'].flatMap(modifier => ['k', 'l'].map(key => { const event = new KeyboardEvent('keydown', { key, [modifier]: true, bubbles: true, cancelable: true }); document.dispatchEvent(event); return event.defaultPrevented; })));
+  check('UI-browser-shortcuts', forwarded.every(value => value === false), 'Ctrl+K/L and Meta+K/L events remain uncancelled in Linux Chromium; this is not a Mac native-shortcut claim.');
+  await page.evaluate(() => {
+    document.activeElement?.blur(); window.scrollTo(0, 0); window.__nativeScrollEvents = [];
+    document.addEventListener('keydown', event => { if (['PageDown', 'PageUp'].includes(event.key)) queueMicrotask(() => window.__nativeScrollEvents.push({ key: event.key, cancelled: event.defaultPrevented })); });
+    document.addEventListener('wheel', event => queueMicrotask(() => window.__nativeScrollEvents.push({ key: 'wheel', cancelled: event.defaultPrevented })), { passive: true });
+  });
+  await page.keyboard.press('PageDown');
+  await page.waitForFunction(() => scrollY > 100);
+  await page.evaluate(() => new Promise(resolve => { let before = -1, stable = 0; const tick = () => { stable = scrollY === before ? stable + 1 : 0; before = scrollY; if (stable === 5) resolve(); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); }));
+  const pageDownPosition = await page.evaluate(() => scrollY);
+  await page.keyboard.press('PageUp');
+  await page.waitForFunction(() => scrollY === 0);
+  await page.mouse.move(700, 800); await page.mouse.wheel(0, 350);
+  await page.waitForFunction(() => scrollY > 0);
+  const nativeScroll = await page.evaluate(() => ({ events: window.__nativeScrollEvents, scrollY }));
+  check('UI-native-page-scroll', pageDownPosition > 100 && nativeScroll.scrollY > 0 && ['PageDown', 'PageUp', 'wheel'].every(key => nativeScroll.events.some(event => event.key === key && !event.cancelled)) && nativeScroll.events.every(event => !event.cancelled), 'Trusted PageDown/PageUp and wheel input scroll the actual page and remain uncancelled in Linux Chromium.');
+  const beforeSearchPosition = await page.evaluate(() => { window.scrollTo(0, 100); document.getElementById('search-trigger').focus({ preventScroll: true }); return { scrollY, focus: document.activeElement.id }; });
+  await page.keyboard.press('/'); await page.locator('#search-input').fill('a-query-with-no-local-match');
+  await page.keyboard.press('Escape');
+  const afterSearchPosition = await page.evaluate(() => ({ scrollY, focus: document.activeElement.id, open: document.getElementById('search-dialog').open }));
+  check('UI-search-escape-restores-position', !afterSearchPosition.open && afterSearchPosition.focus === beforeSearchPosition.focus && Math.abs(afterSearchPosition.scrollY - beforeSearchPosition.scrollY) <= 1, 'Escape closes search and restores the triggering focus and page scroll position.');
   await page.getByRole('button', { name: '设置', exact: true }).click();
   check('UI-source-limit-visible', (await page.locator('#source-description').textContent()).includes('尚未通过真实验证'), 'Settings disclose source gate as blocked.');
   await page.locator('#settings-dialog [data-close]').first().click();
@@ -234,6 +331,8 @@ try {
   await reviewPage.locator('#search-input').fill('分页会话');
   check('UI-search-query-resets-page', await reviewPage.locator('.search-result').count() === 100, 'Changing the query resets pagination, without retaining a stale expanded count.');
   check('UI-no-script-errors', errors.length === 0, JSON.stringify(errors));
-  await writeFile('artifacts/ui-validation.json', JSON.stringify({ buildSha: buildInfo.sha, dirty: buildInfo.dirty, browser: await context.browser()?.version(), environment: 'isolated-headless-Chromium-MV3-synthetic-only', sourceGate: 'SOURCE_GATE_BLOCKED', testFont: fontData ? 'Temporary Noto Sans CJK SC injected for test rendering; no font ships or downloads in production.' : 'System fonts', checks, limitations: ['Synthetic direct-IDB fixtures only; this is not ChatGPT metadata, true Edge, or Mac acceptance.'] }, null, 2));
-  console.log(JSON.stringify({ uiChecks: checks.length, status: 'PASS', errors }));
+  const status = checks.length > 0 && checks.every(item => item.status === 'PASS') && errors.length === 0 ? 'PASS' : 'FAIL';
+  assert.equal(status, 'PASS', 'UI validation cannot pass with failed checks or page errors.');
+  await writeFile('artifacts/ui-validation.json', JSON.stringify({ status, buildSha: buildInfo.sha, dirty: buildInfo.dirty, browser: await context.browser()?.version(), environment: 'isolated-headless-Chromium-MV3-synthetic-only', sourceGate: 'SOURCE_GATE_BLOCKED', testFont: fontData ? 'Temporary Noto Sans CJK SC injected for test rendering; no font ships or downloads in production.' : 'System fonts', checks, limitations: ['Synthetic direct-IDB fixtures only; this is not ChatGPT metadata, true Edge, or Mac acceptance.'] }, null, 2));
+  console.log(JSON.stringify({ uiChecks: checks.length, status, errors }));
 } finally { await context.close(); }

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
 import { createRepository } from '../../src/storage/repository.js';
+import { request } from '../../src/storage/db.js';
 import { createHistoryJob, stepHistoryImport, type HistoryJob, type HistoryPort } from '../../src/background/import-history.js';
 import { parseEnvelope, trustedExtensionSender, trustedCollectorSender, publicError } from '../../src/shared/protocol.js';
 import { openFromStart } from '../../src/background/open-broker.js';
@@ -52,7 +53,8 @@ test('D02 minimum saturated time slice is PARTIAL rather than fake completeness'
 });
 
 test('D04/D05 importer filters unrelated URLs before getVisits, excludes pure sync by default, retains unknown origin and titles safely', async () => {
-  const repo = await setup(), job = createHistoryJob('all', false, 1000);
+  const factory = new IDBFactory(), name = crypto.randomUUID();
+  const repo = await createRepository({ indexedDB: factory, name }), job = createHistoryJob('all', false, 1000);
   job.pendingIntervals = [{ startMs: 0, endMs: 1000, query: 'chatgpt.com' }]; await repo.saveImportJob(job);
   const calls: string[] = [];
   const history: HistoryPort = { search: async () => [ { url: 'https://chatgpt.com.evil.invalid/c/' + uuid(1), title: 'must not persist' }, { url: 'https://example.invalid/?chatgpt.com', title: 'private unrelated' }, { url: url(1), title: 'sync' }, { url: url(2), title: '<img src=x onerror=alert(1)>' }, { url: url(3) } ], getVisits: async ({ url: target }) => { calls.push(target); return target === url(1) ? [{ isLocal: false }] : target === url(2) ? [{}] : [{ isLocal: true }]; } };
@@ -60,7 +62,18 @@ test('D04/D05 importer filters unrelated URLs before getVisits, excludes pure sy
   assert.deepEqual(calls, [url(1), url(2), url(3)]); assert.equal(catalog.conversations.length, 2);
   assert.equal(result.rejectedUrls, 2); assert.equal(catalog.conversations.find(c => c.conversationId === uuid(3))!.nativeTitle, null);
   assert.equal(JSON.stringify(catalog).includes('private unrelated'), false);
-  assert.ok(catalog.conversations.every(c => c.activity === null)); repo.close();
+  assert.ok(catalog.conversations.every(c => c.activity === null));
+  const db = await request(factory.open(name, 1));
+  let stored = await request<any[]>(db.transaction('conversations').objectStore('conversations').getAll());
+  assert.equal(stored.find(c => c.conversationId === uuid(2))!.browserSource, 'unknown');
+  assert.equal(stored.find(c => c.conversationId === uuid(3))!.browserSource, 'local');
+  const withSync = createHistoryJob('all', true, 1000);
+  withSync.pendingIntervals = [{ startMs: 0, endMs: 1000, query: 'chatgpt.com' }];
+  await repo.saveImportJob(withSync); await stepHistoryImport(repo, history, withSync.id);
+  stored = await request<any[]>(db.transaction('conversations').objectStore('conversations').getAll());
+  assert.equal(stored.find(c => c.conversationId === uuid(1))!.browserSource, 'synced');
+  assert.ok(stored.every(c => c.activity === null));
+  db.close(); repo.close();
 });
 
 test('D02/D08 paused and cancelled imports do no work; transport failure retains checkpoint', async () => {

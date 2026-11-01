@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { createRepository, type ArrivalInput, type Repository, type RuntimeImportJob } from '../../src/storage/repository.js';
 import { conversationKey, scopeKey, stagingKey } from '../../src/domain/ids.js';
-import { openDatabase, request, transactionDone } from '../../src/storage/db.js';
+import { openDatabase, request, STORE_NAMES, transactionDone } from '../../src/storage/db.js';
 import type { AccountScope, EvidenceWitness, OpenIntent } from '../../contracts/free-v1.js';
 const CID = '12345678-abcd-1234-abcd-123456789abc';
 const URL = `https://chatgpt.com/c/${CID}`;
@@ -97,11 +97,61 @@ test('D12 unknown payload fields and fake membership authority are rejected with
   await assert.rejects(repo.confirmObservation({ scope: { ...scope, state: 'signed-out' }, witness, documentId: 'arrival-doc', routeEpoch: 1, scopeEpoch: 0, conversationUrl: URL, nativeTitle: 'test', membership: { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' } }), /scope-not-ready/);
   assert.equal(JSON.stringify(await rows(factory, 'witnesses')).includes('forbidden'), false); repo.close();
 });
-test('D10 injected mid-transaction quota failure rolls back the partial batch and preserves the old directory', async () => {
+test('D10 injected mid-transaction quota failure rolls back, then actual retry and replay preserve one entity per ID', async () => {
   const { repo } = await setup(); await candidate(repo); const before = await repo.getSnapshot();
+  const inputs = [{ url: 'https://chatgpt.com/c/00000001-abcd-1234-abcd-123456789abc' }, { url: 'https://chatgpt.com/c/00000002-abcd-1234-abcd-123456789abc' }];
   const original = IDBObjectStore.prototype.put; let calls = 0;
   IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) { if (this.name === 'conversations' && ++calls === 2) throw new DOMException('synthetic quota boundary', 'QuotaExceededError'); return original.apply(this, args); };
-  try { await assert.rejects(repo.discoverCandidates([{ url: 'https://chatgpt.com/c/00000001-abcd-1234-abcd-123456789abc' }, { url: 'https://chatgpt.com/c/00000002-abcd-1234-abcd-123456789abc' }]), { name: 'QuotaExceededError' }); }
+  try { await assert.rejects(repo.discoverCandidates(inputs), { name: 'QuotaExceededError' }); }
   finally { IDBObjectStore.prototype.put = original; }
-  const after = await repo.getSnapshot(); assert.equal(after.revision, before.revision); assert.deepEqual(after.conversations, before.conversations); repo.close();
+  const after = await repo.getSnapshot(); assert.equal(after.revision, before.revision); assert.deepEqual(after.conversations, before.conversations);
+  const retry = await repo.discoverCandidates(inputs); assert.deepEqual(retry, { accepted: 2, inserted: 2 });
+  const retried = await repo.getSnapshot(); assert.equal(retried.conversations.length, 3); assert.equal(retried.revision, before.revision + 1);
+  assert.equal(retried.conversations.find(record => record.key === before.conversations[0]!.key)?.nativeTitle, before.conversations[0]!.nativeTitle);
+  const replay = await repo.discoverCandidates(inputs); assert.deepEqual(replay, { accepted: 2, inserted: 0 });
+  const replayed = await repo.getSnapshot(); assert.equal(replayed.conversations.length, 3); assert.equal(new Set(replayed.conversations.map(record => record.conversationId)).size, 3);
+  assert.deepEqual(replayed.conversations.map(record => [record.key, record.stableRank]), retried.conversations.map(record => [record.key, record.stableRank])); repo.close();
+});
+test('D10 aborting the initial v1 schema upgrade leaves no partial schema and a subsequent normal open recovers', async () => {
+  const factory = new IDBFactory(), originalOpen = factory.open.bind(factory);
+  let interrupted = false;
+  factory.open = (name: string, version?: number) => {
+    const open = originalOpen(name, version);
+    open.addEventListener('upgradeneeded', () => {
+      // Abort after the production onupgradeneeded handler creates its stores,
+      // but before that versionchange transaction can commit.
+      queueMicrotask(() => { interrupted = true; open.transaction!.abort(); });
+    }, { once: true });
+    return open;
+  };
+  await assert.rejects(createRepository({ indexedDB: factory, timeZone: 'UTC' }), { name: 'AbortError' });
+  assert.equal(interrupted, true);
+  let recoveredOldVersion: number | null = null;
+  factory.open = (name: string, version?: number) => { const open = originalOpen(name, version); open.addEventListener('upgradeneeded', event => { recoveredOldVersion = (event as IDBVersionChangeEvent).oldVersion; }, { once: true }); return open; };
+  const recovered = await createRepository({ indexedDB: factory, timeZone: 'UTC' });
+  assert.equal(recoveredOldVersion, 0, 'The aborted v1 schema did not become an installed version.');
+  const db = await openDatabase(factory); assert.equal(db.version, 1); assert.deepEqual([...db.objectStoreNames].sort(), [...STORE_NAMES].sort()); db.close();
+  const empty = await recovered.getSnapshot(); assert.equal(empty.revision, 0); assert.equal(empty.conversations.length, 0);
+  const record = await candidate(recovered); assert.equal((await recovered.getSnapshot()).conversations.length, 1); recovered.close();
+  const reopened = await createRepository({ indexedDB: factory, timeZone: 'UTC' });
+  assert.equal((await reopened.getSnapshot()).conversations[0]!.key, record.key); reopened.close();
+});
+test('D10 concurrent and repeated requests for existing v1 perform only one schema upgrade and preserve unique entities', async () => {
+  const factory = new IDBFactory(), originalOpen = factory.open.bind(factory); let upgrades = 0;
+  factory.open = (name: string, version?: number) => { const open = originalOpen(name, version); open.addEventListener('upgradeneeded', () => { upgrades++; }); return open; };
+  const [first, second] = await Promise.all([createRepository({ indexedDB: factory, timeZone: 'UTC' }), createRepository({ indexedDB: factory, timeZone: 'UTC' })]);
+  assert.equal(upgrades, 1);
+  const initialProfile = (await first.getSnapshot()).localProfileKey;
+  assert.equal((await second.getSnapshot()).localProfileKey, initialProfile);
+  await first.discoverCandidates([{ url: URL, title: 'Persistent unique entry' }]);
+  await second.discoverCandidates([{ url: `https://chat.openai.com/c/${CID}`, title: 'Persistent unique entry' }]);
+  const original = (await first.getSnapshot()).conversations[0]!;
+  assert.equal((await second.getSnapshot()).conversations.length, 1); first.close(); second.close();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const repo = await createRepository({ indexedDB: factory, timeZone: 'UTC' });
+    await repo.discoverCandidates([{ url: URL, title: 'Persistent unique entry' }]);
+    const snapshot = await repo.getSnapshot(); assert.equal(snapshot.localProfileKey, initialProfile); assert.equal(snapshot.conversations.length, 1);
+    assert.equal(snapshot.conversations[0]!.key, original.key); assert.equal(snapshot.conversations[0]!.stableRank, original.stableRank); repo.close();
+  }
+  assert.equal(upgrades, 1, 'Repeated open(name, 1) calls do not rerun a committed schema upgrade.');
 });

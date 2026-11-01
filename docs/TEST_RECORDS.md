@@ -9,6 +9,9 @@
 | 类型/纯函数/事务 | `npm run typecheck` / `npm test` | URL、时间、来源解码、三态、IDB/CAS、日活动、逐条解析与墓碑、历史分批/恢复/饱和、IPC与打开幂等 |
 | 打包隐私审计 | `npm run build` / `npm run audit` | MV3最小权限、无正文接口/正文文本回退、无生产fixture、无运行时第三方依赖、文件hash |
 | 真实安装的隔离浏览器 | `npm run test:browser` | 生产包安装、IPC边界、历史API、可信中键导航、worker及浏览器重启、目录留存与删除恢复 |
+| 导入中断恢复 | `node tests/browser/import-recovery.mjs` | 257条实际history，首批200+57待处理，关闭页面/终止worker后续跑；history权限变体明确标注 |
+| 来源和IPC边界 | `node tests/browser/privacy-boundaries.mjs` | 精确host权限测试变体；悬置已知session GET时缓存先显示，实际Chrome子frame与伪字段拒绝，HTML仅作文本 |
+| 原生浏览器存储故障 | `node tests/browser/storage-faults.mjs` | 实际IndexedDB执行未修改生产存储模块；v1升级中断、并发重开、注入quota回滚/重试，非物理磁盘耗尽 |
 | 正式UI | `node tests/ui/production-ui.mjs` | 实际MV3中渲染合成IDB数据的布局、5/+12、旧项、搜索、网站、键盘、scope隔离与窄屏 |
 | 真实ChatGPT与正式Chrome/Edge | 冻结06验收表与M0文档 | 当前 BLOCKED / NOT_RUN；必须后续现场证明 |
 
@@ -37,3 +40,9 @@ UI fixture 只由测试进程直接写入隔离 IndexedDB。生产构建没有 U
 - 2000条/20项目性能由独立脚本实际测量，20次首屏与20次搜索；同SHA机器、冷热条件、逐次样本和p95在 performance-validation.json。开发期测得宽搜索失败后已分页修复，不能用小样本截图或更换计时口径代替该门。
 
 现代正式 Chrome/Edge 的命令行侧载行为与 Chromium 测试通道不同，因此自动化 Chromium 通过不能填写为 Edge 通过。依据：[Playwright 官方扩展测试说明](https://playwright.dev/docs/chrome-extensions)；正式使用仍按扩展管理页手动“加载已解压”流程验证。
+
+## 复合验收映射
+
+`acceptance-matrix.json` 对每行列出具体 `predicates` 与 `missingConditions`。一份UI/单元回执整体PASS，不能代替该行全部条件。纯单元回执记录实际测试名称；需要视觉审查的行还要求显式的同SHA `review-validation.json`。CI不会伪造人工/模型视觉审阅。未知或未完成行保留NOT_RUN，真实来源与设备门保留BLOCKED。
+
+存储故障harness由当前生产模块直接打包，报告记录每个实际依赖源文件和测试bundle hash；它不代表生产IPC或权限弹窗已验收。当前v1只有初始建库与同版本重开，没有虚构历史版本迁移。

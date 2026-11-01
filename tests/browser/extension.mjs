@@ -77,6 +77,7 @@ try {
   check('B-history-does-not-forge-account-or-activity', imported.conversations.every(c => c.owner.kind === 'unassigned' && c.membership.state === 'UNKNOWN' && c.activity === null), 'Real history entries remain staging, UNKNOWN and without OpenDay.');
   await page.locator('#import-dialog [data-close]').first().click();
   await page.locator('a[data-record-key]').first().waitFor();
+  check('B-empty-history-title-placeholder', imported.conversations.every(record => record.nativeTitle === null) && (await page.locator('.conversation-title').allTextContents()).every(title => title === '未命名会话'), 'Actual history entries created without titles retain null metadata and render the safe unnamed-conversation placeholder.');
   const initialIntents = (await stores(page, ['openIntents']))[0].length;
   await page.locator('a[data-record-key]').first().evaluate(link => link.click());
   check('B-synthetic-click-no-intent', (await stores(page, ['openIntents']))[0].length === initialIntents, 'Untrusted element.click does not dispatch the broker.');
@@ -87,6 +88,11 @@ try {
   const [intents, days] = await stores(page, ['openIntents', 'openDays']);
   check('B-middle-click-two-phase', intents.length === initialIntents + 1 && intents.at(-1).state === 'navigation-dispatched' && destination.url().startsWith('https://chatgpt.com/c/'), 'A trusted middle click persisted one intent and opened an exact normal browser tab.');
   check('B-route-alone-no-activity', days.length === 0, 'The controlled target URL is deliberately insufficient for live arrival and creates zero OpenDay.');
+  await command(page, 'SHORTCUT_UPSERT', { shortcut: { label: 'Persistent first', url: 'https://example.com/one', pinned: false } });
+  await command(page, 'SHORTCUT_UPSERT', { shortcut: { label: 'Persistent second', url: 'https://example.com/two', pinned: true } });
+  const beforeRestartSites = (await command(page, 'SNAPSHOT')).shortcuts;
+  await command(page, 'SHORTCUT_MOVE', { id: beforeRestartSites.find(site => site.label === 'Persistent second').id, toIndex: 0 });
+  await command(page, 'SETTINGS_UPDATE', { patch: { shortcutSectionCollapsed: true } });
   const sessionBefore = await worker.evaluate(async () => (await chrome.storage.session.get('browserSession')).browserSession.id);
   const debuggerSession = await context.newCDPSession(page);
   const targets = await debuggerSession.send('Target.getTargets');
@@ -103,6 +109,7 @@ try {
   const sessionRestarted = await worker.evaluate(async () => (await chrome.storage.session.get('browserSession')).browserSession.id);
   const reopened = await command(page, 'SNAPSHOT');
   check('B-browser-restart-durable-directory', reopened.conversations.length === 3 && sessionRestarted !== sessionBefore, 'A complete browser restart keeps the directory but replaces browserSessionId.');
+  check('B-browser-restart-shortcut-order-collapse', reopened.shortcuts.map(site => site.label).join('|') === 'Persistent second|Persistent first' && reopened.shortcuts[0].pinned === true && reopened.settings.shortcutSectionCollapsed === true && (await page.locator('.site-title').allTextContents()).join('|') === 'Persistent second', 'Full browser restart retains the explicit website order and collapsed section; only the pinned website is shown.');
   const [oldIntents, finalDays] = await stores(page, ['openIntents', 'openDays']);
   check('B-restart-no-old-intent-consumption', oldIntents.every(i => ['expired', 'rejected', 'committed'].includes(i.state)) && finalDays.length === 0, 'Old pending intents expire and restart creates no activity.');
   const recordKey = reopened.conversations[0].key;
@@ -112,6 +119,12 @@ try {
   check('B-tombstone-real-history-reimport', (await command(page, 'SNAPSHOT')).conversations.length === 2, 'Reimporting actual browser history does not revive a removed local entry.');
   await command(page, 'RECORD_RESTORE', { recordKey });
   check('B-explicit-restore', (await command(page, 'SNAPSHOT')).conversations.length === 3, 'Explicit restore recovers the removed local entry.');
+  await worker.evaluate(() => chrome.history.deleteAll());
+  const afterClearHistory = await command(page, 'SNAPSHOT');
+  check('B-history-clearing-keeps-catalog', afterClearHistory.conversations.length === 3 && afterClearHistory.shortcuts.length === 2, 'Deleting actual browser history leaves the saved directory and websites intact; this does not assert real ChatGPT logout behavior.');
+  await context.setOffline(true);
+  await page.reload(); await page.waitForSelector('html[data-start-ready="true"]');
+  check('B-offline-catalog', (await command(page, 'SNAPSHOT')).conversations.length === 3 && await page.locator('a[data-record-key]').count() === 3, 'With the actual browser offline, a fresh extension document renders all saved candidates. Live slow-identity behavior remains a separate source gate.');
   const result = { status: 'PASS', buildSha: fingerprint.sha, dirty: fingerprint.dirty, browserVersion, environment: 'isolated Linux browser; synthetic records; production install plus explicit history-permission harness', checks,
     limitations: ['No real account, ChatGPT source gate, Mac Chrome, Edge or native permission-prompt acceptance.', 'History harness adds history to required permissions only for API testing; production manifest remains storage-only.'] };
   await writeFile(join(output, 'browser-validation.json'), JSON.stringify(result, null, 2));

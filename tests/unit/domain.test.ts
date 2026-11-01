@@ -74,3 +74,33 @@ test('T02/T03/T04/T06 projects occupy one segment; old children stay with parent
   assert.equal(projectCatalog(snapshot, { ...view, k: 3 }).projects.length, 0);
   assert.deepEqual(searchCatalog(snapshot, 'old-child', 'a').map(r => r.record.key), ['old-child']); assert.equal(searchCatalog(snapshot, 'foreign', 'a').length, 0);
 });
+test('T06 ten equal-millisecond records and ten undated records keep declared rank/ID order across repeated input permutations', () => {
+  const at = '2026-11-02T00:00:00.123Z';
+  const none = { state: 'NONE' as const, projectId: null, evidenceId: 'ordering-proof', confirmedAt: at };
+  // The acceptance oracle is written explicitly from the contract: rank first,
+  // then stable ID for ties. These fixtures deliberately arrive in another order.
+  const entries = [
+    ['g', 3], ['b', 0], ['e', 2], ['j', 5], ['a', 0],
+    ['h', 4], ['d', 1], ['i', 5], ['c', 1], ['f', 2],
+  ] as const;
+  const records = entries.flatMap(([id, rank]) => [record(`d-${id}`, at, none, rank), record(`u-${id}`, null, none, rank)]);
+  const expectedDated = ['d-a', 'd-b', 'd-c', 'd-d', 'd-e', 'd-f', 'd-g', 'd-h', 'd-i', 'd-j'];
+  const expectedUndated = ['u-a', 'u-b', 'u-c', 'u-d', 'u-e', 'u-f', 'u-g', 'u-h', 'u-i', 'u-j'];
+  const permutations = [
+    records,
+    [...records].reverse(),
+    [...records.slice(7), ...records.slice(0, 7)],
+    [...records.filter((_, i) => i % 2 === 0), ...records.filter((_, i) => i % 2 === 1)],
+    [19, 2, 11, 0, 17, 6, 15, 4, 13, 8, 1, 18, 3, 16, 5, 14, 7, 12, 9, 10].map(i => records[i]!),
+  ];
+  const view = { ...createFreeViewSession({ now: '2026-11-02T01:00:00Z', timeZone: 'UTC' }), k: 0, selectedScope: 'a' };
+  for (let round = 0; round < 3; round++) for (const [index, input] of permutations.entries()) {
+    const snapshot = { conversations: input, projects: [], tombstones: [] } as unknown as CatalogSnapshot;
+    const projection = projectCatalog(snapshot, view), label = `round ${round}, permutation ${index}`;
+    assert.equal(projection.dates.length, 1, label);
+    assert.equal(projection.dates[0]!.date, '2026-11-02', label);
+    assert.deepEqual(projection.dates[0]!.records.map(r => r.key), expectedDated, label);
+    assert.deepEqual(projection.undatedNone.map(r => r.key), expectedUndated, label);
+    assert.deepEqual(searchCatalog(snapshot, '', 'a').map(r => r.record.key), [...expectedDated, ...expectedUndated], label);
+  }
+});

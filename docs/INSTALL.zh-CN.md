@@ -51,7 +51,12 @@ npm ci
 npm run verify
 npx playwright install --with-deps chromium
 npm run test:browser
+node tests/browser/import-recovery.mjs
+node tests/browser/privacy-boundaries.mjs
+node tests/browser/storage-faults.mjs
 node tests/ui/production-ui.mjs
+node tests/browser/performance.mjs
+node scripts/acceptance.mjs
 npm run package
 ```
 

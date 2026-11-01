@@ -45,6 +45,9 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run test:browser
+      - run: node tests/browser/import-recovery.mjs
+      - run: node tests/browser/privacy-boundaries.mjs
+      - run: node tests/browser/storage-faults.mjs
       - run: node tests/ui/production-ui.mjs
       - run: node tests/browser/performance.mjs
       - run: npm run audit
@@ -56,6 +59,9 @@ jobs:
           name: vaiwl-start-browser-evidence-${{ github.sha }}
           path: |
             artifacts/browser-validation.json
+            artifacts/import-recovery-validation.json
+            artifacts/privacy-boundaries-validation.json
+            artifacts/storage-faults-validation.json
             artifacts/ui-validation.json
             artifacts/ui-review.png
             artifacts/performance-validation.json
