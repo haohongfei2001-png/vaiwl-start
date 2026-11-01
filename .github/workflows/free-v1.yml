@@ -1,0 +1,67 @@
+name: Free V1 verification
+on:
+  push:
+    branches: [codex/free-v1-implementation]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: free-v1-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  domain-and-package:
+    name: Types, domain, privacy and package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vaiwl-start-dev-${{ github.sha }}
+          path: |
+            artifacts/vaiwl-start-free-v1-*.zip
+            artifacts/package.json
+            artifacts/privacy-audit.json
+            artifacts/unit-validation.json
+          if-no-files-found: error
+  chromium-extension:
+    name: Installed Chromium extension and UI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:browser
+      - run: node tests/ui/production-ui.mjs
+      - run: node tests/browser/performance.mjs
+      - run: npm run audit
+      - run: node scripts/acceptance.mjs
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vaiwl-start-browser-evidence-${{ github.sha }}
+          path: |
+            artifacts/browser-validation.json
+            artifacts/ui-validation.json
+            artifacts/ui-review.png
+            artifacts/performance-validation.json
+            artifacts/acceptance-matrix.json
+            artifacts/unit-validation.json
+            artifacts/privacy-audit.json
+            artifacts/vaiwl-start-free-v1-*.zip
+            artifacts/package.json
+          if-no-files-found: error

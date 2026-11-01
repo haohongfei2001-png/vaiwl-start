@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light">
+<title>VAIWL Start</title><link rel="stylesheet" href="newtab.css"><script type="module" src="newtab.js"></script>
+</head>
+<body>
+<svg aria-hidden="true" width="0" height="0" class="icon-definitions"><defs>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.7" cy="10.7" r="6.7"/><path d="m16 16 4.5 4.5"/></symbol>
+<symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+<symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13m-5-5 5 5-5 5"/></symbol>
+<symbol id="i-external" viewBox="0 0 24 24"><path d="M8 5h11v11M19 5 5 19"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 3v-3H3V6a2 2 0 0 1 2-2Z"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></symbol>
+<symbol id="i-rift" viewBox="0 0 24 24"><path d="M6 4v16M18 4v16M10 8h10M4 16h10"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><path d="M6 7v13h12V7M4 4h16v4H4zM9 12h6"/></symbol>
+<symbol id="i-science" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)"/></symbol>
+<symbol id="i-briefcase" viewBox="0 0 24 24"><path d="M8 6V4h8v2M3 7h18v13H3zM3 11c5 4 13 4 18 0M10 12h4v4h-4z"/></symbol>
+<symbol id="i-flower" viewBox="0 0 24 24"><path d="M12 2v20M3.4 7l17.2 10M3.4 17 20.6 7M8 4l4 3 4-3M8 20l4-3 4 3M3.5 11l4.5-2V4.5M20.5 13 16 15v4.5M3.5 13 8 15v4.5M20.5 11 16 9V4.5"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v12H3z"/></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="15" rx="2"/><path d="M8 3v6M16 3v6M4 11h16"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v.1"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="19" cy="12" r=".8" fill="currentColor"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="m9 3-1 3-3 1-1 3-2 2 2 2 1 3 3 1 1 3h6l1-3 3-1 1-3 2-2-2-2-1-3-3-1-1-3Z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M8 3h8l-1 6 4 4v2H5v-2l4-4-1-6ZM12 15v7"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></symbol>
+<symbol id="i-drag" viewBox="0 0 24 24"><path d="M9 6h.1M15 6h.1M9 12h.1M15 12h.1M9 18h.1M15 18h.1" stroke-width="3"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h7v16H4zM13 4h7v16h-7z"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 20"/></symbol>
+<symbol id="i-drive" viewBox="0 0 24 24"><path d="m10 3 7 12H3l7-12Zm0 0h6l7 12h-6M3 15l3 6h14l3-6M10 15l-4 6"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol>
+</defs></svg>
+<header class="topbar">
+ <button class="brand" id="home" aria-label="回到工作区首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>VAIWL <em>Start</em></span></button>
+ <div class="top-spacer"></div>
+ <button class="search-trigger" id="search-trigger" aria-label="搜索所有本地会话，页面非编辑状态按斜杠键"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="search-label">搜索会话与项目</span><kbd>/</kbd></button>
+ <button class="icon-button" id="settings-trigger" aria-label="设置" title="设置"><svg aria-hidden="true"><use href="#i-settings"/></svg></button>
+</header>
+<main class="workspace" id="main">
+ <section class="site-section" aria-label="常用网站">
+  <div class="section-line"><button class="site-toggle" id="site-toggle" aria-expanded="true" aria-controls="site-strip"><svg aria-hidden="true"><use href="#i-down"/></svg>常用网站</button><button class="text-button" id="site-edit">整理</button></div>
+  <div class="site-strip" id="site-strip"><p class="sites-empty">把常用的网站放在这里。</p><button class="add-site" id="add-site" aria-label="添加网站"><svg aria-hidden="true"><use href="#i-plus"/></svg></button></div>
+ </section>
+ <div id="workspace-content" aria-busy="true"><section class="first-use"><div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div><h1>让对话留在手边。</h1><p>正在打开本地记录…</p></section></div>
+ <nav class="history-rail" id="history-rail" aria-label="30 天区间导航" hidden></nav>
+</main>
+<div id="toast" class="toast" role="status" hidden></div><div id="live" class="sr" aria-live="polite" aria-atomic="true"></div>
+<dialog id="search-dialog" class="search-dialog" aria-label="搜索本地会话与项目">
+ <div class="search-input-wrap"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="search-input" placeholder="搜索标题、项目名称或保存网址…" autocomplete="off" aria-label="搜索标题、项目名称或保存网址"><button class="icon-button" data-close="search-dialog" aria-label="关闭搜索"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+ <div class="search-options" id="search-options"><button aria-pressed="true" data-search-filter="all">全部</button><button aria-pressed="false" data-search-filter="project">项目</button><button aria-pressed="false" data-search-filter="none">无项目</button><button aria-pressed="false" data-search-filter="unknown">待确认</button><span>全部日期</span></div>
+ <div class="search-results" id="search-results"></div><div class="search-footer"><span>仅搜索所选资料库</span><span>↑ ↓ 选择 · Enter 打开</span></div>
+</dialog>
+<dialog id="sites-dialog" aria-labelledby="sites-title">
+ <div class="dialog-head"><h2 id="sites-title">整理常用网站</h2><button class="icon-button" data-close="sites-dialog" aria-label="关闭网站整理"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+ <div class="dialog-body"><p>固定的网站在收起后仍然显示。拖动调整顺序，也可以使用上下按钮。</p><div id="site-editor" class="site-editor"></div>
+  <form id="add-site-form"><label class="field-label" for="site-name">名称</label><input class="field-input" id="site-name" maxlength="64" placeholder="例如：MDN" required><label class="field-label" for="site-url">网址</label><input class="field-input" id="site-url" type="url" maxlength="8192" placeholder="https://…" required><p class="field-error" id="site-error" role="alert" hidden></p><div class="dialog-foot"><button class="text-button" id="cancel-site-edit" type="button" hidden>取消编辑</button><button class="secondary" id="save-site" type="submit">添加网站</button><button class="primary" data-close="sites-dialog" type="button">完成</button></div></form>
+ </div>
+</dialog>
+<dialog id="settings-dialog" aria-labelledby="settings-title">
+ <div class="dialog-head"><h2 id="settings-title">设置</h2><button class="icon-button" data-close="settings-dialog" aria-label="关闭设置"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+ <div class="dialog-body">
+  <div class="setting-row"><div><strong>ChatGPT 连接</strong><small id="connection-label">仅在连接后申请观察 ChatGPT 会话导航的权限。</small></div><button class="secondary" id="connect-chatgpt">连接</button></div>
+  <div class="setting-row"><div><label for="capture-enabled"><strong>继续收录会话链接</strong></label><small>只收录允许的链接与标题；不读取聊天正文。关闭后保留已有目录。</small></div><input id="capture-enabled" type="checkbox" aria-label="继续收录会话链接"></div>
+  <div class="setting-row"><div><strong>浏览器历史</strong><small>导入浏览器当前可读取的 ChatGPT 记录。历史时间不计作主动打开。</small></div><button class="secondary" id="settings-import">导入</button><button class="text-button" id="revoke-history" hidden>撤销权限</button></div>
+  <div class="setting-row"><div><strong>历史区间</strong><small>每次包含 30 个当地日历日；空区间也可以继续翻页。</small></div><span class="status-text">30 天</span></div>
+  <form id="timezone-form"><label class="field-label" for="time-zone">资料库时区</label><input class="field-input" id="time-zone" required placeholder="Asia/Shanghai"><p class="field-help">旅行不会自动改变时区。修改只重算显示位置，已有每日活动记录保留原时区。</p><div class="dialog-foot"><button class="secondary" type="submit">保存时区</button></div></form>
+  <div class="setting-row"><div><strong>本地副本</strong><small>关闭标签、退出 ChatGPT 或清除浏览历史都不会删除这里的目录。卸载扩展可能丢失本机数据。</small></div></div>
+  <div class="setting-row"><div><strong>当前能力</strong><small id="source-description">正在读取状态…</small><details class="technical-details"><summary>查看来源状态与构建</summary><pre id="source-details"></pre></details></div></div>
+  <div class="setting-row"><div><strong>新标签页入口</strong><small>如浏览器策略或其他扩展占用新标签页，可点击扩展图标打开 Start。在浏览器扩展管理中选择新标签页提供者。</small></div></div>
+  <div class="dialog-foot"><button class="text-button" id="show-removed">恢复收录</button><button class="text-button danger" id="clear-local">清除本地数据</button><button class="primary" data-close="settings-dialog">完成</button></div>
+ </div>
+</dialog>
+<dialog id="project-dialog" aria-labelledby="project-title"><div class="dialog-head"><h2 id="project-title">项目</h2><button class="icon-button" data-close="project-dialog" aria-label="关闭项目操作"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p>打开原生项目后，继续使用 ChatGPT 自己的项目功能。</p><div class="context-links"><a id="project-native"><svg aria-hidden="true"><use href="#i-external"/></svg>在 ChatGPT 中打开项目</a><a id="project-new"><svg aria-hidden="true"><use href="#i-plus"/></svg>打开项目以新建对话</a><button id="project-find"><svg aria-hidden="true"><use href="#i-search"/></svg>搜索这个项目的会话</button></div></div></dialog>
+<dialog id="record-dialog" aria-labelledby="record-title"><div class="dialog-head"><h2 id="record-title">会话详情</h2><button class="icon-button" data-close="record-dialog" aria-label="关闭会话详情"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><dl id="record-details" class="record-details"></dl><div class="dialog-foot"><button class="secondary" id="remove-record">从首页移除</button><button class="primary" data-close="record-dialog">完成</button></div></div></dialog>
+<dialog id="import-dialog" aria-labelledby="import-title">
+ <div class="dialog-head"><h2 id="import-title">找回浏览过的 ChatGPT 会话</h2><button class="icon-button" data-close="import-dialog" aria-label="关闭历史导入"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+ <div class="dialog-body"><p>仅保存 ChatGPT 会话链接和标题。浏览器的历史权限覆盖全部网站，扩展会先筛选，只保存匹配的 ChatGPT 会话记录。</p><label class="field-label" for="import-range">导入范围</label><select class="field-input" id="import-range"><option value="recent90">最近 90 天</option><option value="all">浏览器当前可读取的全部范围</option></select><label class="checkbox-field"><input type="checkbox" id="include-synced">包含从其他设备同步的浏览记录</label><p class="field-help">这不是完整账号历史。仅有历史链接的记录保留在“账号待确认”，不会增加主动打开日期。</p><div class="import-progress" id="import-progress" aria-live="polite"></div><div class="dialog-foot"><button class="secondary" data-close="import-dialog">暂时跳过</button><button class="primary" id="confirm-import">授权并导入</button></div></div>
+</dialog>
+<dialog id="removed-dialog" aria-labelledby="removed-title"><div class="dialog-head"><h2 id="removed-title">恢复收录</h2><button class="icon-button" data-close="removed-dialog" aria-label="关闭恢复收录"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p>恢复后，再次导入或观察该会话时可重新收录；不会操作 ChatGPT 中的会话。</p><div id="removed-list"></div></div></dialog>
+<dialog id="clear-dialog" aria-labelledby="clear-title"><div class="dialog-head"><h2 id="clear-title">清除本地数据？</h2><button class="icon-button" data-close="clear-dialog" aria-label="取消清除"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p>清除本浏览器中的全部 Start 会话目录、活动、网站快捷项和设置。ChatGPT 会话与浏览器历史不受影响。此操作不能撤销。</p><div class="dialog-foot"><button class="secondary" data-close="clear-dialog">取消</button><button class="primary" id="confirm-clear">清除全部 Start 本地数据</button></div></div></dialog>
+<noscript>VAIWL Start 需要启用扩展脚本。请在浏览器扩展管理页重新加载。</noscript>
+</body></html>

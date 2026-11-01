@@ -1,0 +1,13 @@
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+const build = JSON.parse(await readFile('dist/build.json', 'utf8'));
+if (build.dirty && !process.argv.includes('--allow-dirty')) throw new Error('Refusing a delivery package from a dirty worktree; commit and rebuild first.');
+await mkdir('artifacts', { recursive: true });
+const name = `vaiwl-start-free-v1-${build.sha.slice(0, 12)}.zip`;
+const script = `import pathlib,zipfile,sys\nroot=pathlib.Path('.')\nwith zipfile.ZipFile(root/'artifacts'/sys.argv[1],'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:\n for p in sorted((root/'dist').rglob('*')):\n  if p.is_file(): z.write(p,'vaiwl-start/'+str(p.relative_to(root/'dist')))\n for name in ['INSTALL.zh-CN.md','TEST_RECORDS.md','M0_SOURCE_GATE.md']:\n  z.write(root/'docs'/name,name)\n for name in ['unit-validation.json','privacy-audit.json','browser-validation.json','ui-validation.json','performance-validation.json','acceptance-matrix.json']:\n  p=root/'artifacts'/name\n  if p.exists():\n   import json\n   r=json.loads(p.read_text())\n   if r.get('buildSha')==sys.argv[2] and not r.get('dirty',False): z.write(p,'verification/'+name)\n`;
+execFileSync(process.env.CODEX_PRIMARY_RUNTIME_PYTHON || 'python3', ['-c', script, name, build.sha]);
+const bytes = await readFile('artifacts/' + name);
+const receipt = { name, buildSha: build.sha, dirty: build.dirty, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), sourceGate: build.sourceGate };
+await writeFile('artifacts/package.json', JSON.stringify(receipt, null, 2));
+console.log(JSON.stringify(receipt));
