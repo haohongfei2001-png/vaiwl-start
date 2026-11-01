@@ -64,6 +64,7 @@ jobs:
             artifacts/storage-faults-validation.json
             artifacts/ui-validation.json
             artifacts/ui-review.png
+            artifacts/ui-*-held.png
             artifacts/performance-validation.json
             artifacts/acceptance-matrix.json
             artifacts/unit-validation.json

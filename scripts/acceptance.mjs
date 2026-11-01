@@ -1,5 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 const build = JSON.parse(await readFile('dist/build.json', 'utf8'));
+const currentSha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+const currentDirty=execFileSync('git',['status','--porcelain','--untracked-files=normal'],{encoding:'utf8'}).trim().length>0;
+if(build.sha!==currentSha||build.dirty!==currentDirty)throw Error('Stale build fingerprint; rebuild before aggregating acceptance.');
 const specification = await readFile('docs/free-v1/06-ACCEPTANCE.md', 'utf8');
 const U='unit-validation', B='browser-validation', I='import-recovery-validation', P='privacy-boundaries-validation', F='storage-faults-validation', V='ui-validation', R='review-validation';
 const evidence={};
@@ -12,8 +16,11 @@ const full={
  S10:{[R]:['REVIEW-source-status-separation']},
  T01:{[U]:['T01 inherited calendar vectors']},
  T02:{[U]:['T02/T03/T04/T06 projects occupy one segment'],[V]:['UI-old-stays-in-parent','UI-empty-segment-to-known-and-back']},
+ T04:{[U]:['T02/T03/T04/T06 projects occupy one segment'],[V]:['UI-undated-independent-entry','UI-undated-search-open-remains-undated']},
  T05:{[V]:['UI-no-top-arrow','UI-empty-adjacent-segment','UI-empty-segment-to-known-and-back']},
  T06:{[U]:['T06 ten equal-millisecond records']},
+ T07:{[U]:['T07 a gesture starting after refresh scheduling'],[V]:['UI-pointer-revision-safe-point','UI-ime-revision-safe-point'],[R]:['REVIEW-gesture-stability']},
+ T08:{[V]:['UI-history-segment-tab-update-midnight']},
  O16:{[U]:['O15/O16 crossing midnight','O12/O14 invalid session']},
  D01:{[U]:['D01/D02 real import algorithm','D02 minimum saturated time slice'],[B]:['B-real-history-API-harness']},
  D02:{[U]:['D01/D02 real import algorithm','D02 minimum saturated time slice','D02 import candidate batch'],[I]:['IMPORT-B-first-batch-persisted','IMPORT-B-ui-close-worker-terminated','IMPORT-B-worker-session-retained','IMPORT-B-checkpoint-resumed-completely','IMPORT-B-deduplicated-source-safe']},
@@ -27,7 +34,7 @@ const full={
  U01:{[V]:['UI-six-project-cards'],[R]:['REVIEW-frozen-home-layout']},
  U02:{[V]:['UI-initial-five','UI-add-twelve','UI-project-more-complete','UI-old-stays-in-parent'],[R]:['REVIEW-project-list-hierarchy']},
  U03:{[V]:['UI-filter-project-exact-membership','UI-filter-none-exact-membership','UI-filter-unknown-exact-membership','UI-projectless-scope-home','UI-filters-view-only']},
- U04:{[V]:['UI-cross-period-search','UI-search-arrows','UI-search-scope-isolation','UI-search-escape-restores-position','UI-search-final-record-reachable'],[R]:['REVIEW-search-keyboard-flow']},
+ U04:{[V]:['UI-cross-period-search','UI-search-arrows','UI-search-keyboard-open','UI-search-scope-isolation','UI-search-escape-restores-position','UI-search-final-record-reachable'],[R]:['REVIEW-search-keyboard-flow']},
  U05:{[V]:['UI-slash-editing-modifier-guards','UI-browser-shortcuts','UI-native-page-scroll']},
  U07:{[V]:['UI-pinning-preserves-order','UI-keyboard-order-controls','UI-native-drag-order','UI-native-drag-order-reload','UI-collapsed-pins-only'],[B]:['B-browser-restart-shortcut-order-collapse'],[R]:['REVIEW-website-order-controls']},
  U08:{[U]:['D04 URL policy rejects'],[V]:['UI-reject-script-shortcut','UI-reject-data-shortcut','UI-reject-credential-shortcut','UI-website-native-open-no-activity']},
@@ -73,7 +80,7 @@ for(const line of specification.split('\n')){
  const predicates=Object.entries(full[id]||related[id]||{}).flatMap(([name,ids])=>ids.map(check=>predicate(name,check)));
  const blocked=layer.includes('L')||sourceDependent.has(id)||deviceDependent.has(id);
  const complete=Boolean(full[id])&&predicates.length>0&&predicates.every(c=>c.status==='PASS');
- const status=blocked?'BLOCKED':predicates.some(c=>c.status==='FAIL')?'FAIL':complete?'PASS':'NOT_RUN';
+ const status=predicates.some(c=>c.status==='FAIL')?'FAIL':blocked?'BLOCKED':complete?'PASS':'NOT_RUN';
  const missing=status==='PASS'?[]:[gaps[id]||(blocked?'Requires proven live source authority or actual Mac Chrome/Edge acceptance.':'Complete same-build evidence, including any required explicit visual review, is not available.')];
  records.push({id,status,buildSha:build.sha,browserVersion:evidence[B]?.browserVersion||evidence[V]?.browser||null,
   environment:'Isolated Linux Chromium and synthetic catalog. Declared history/host/storage harnesses are test-only; original production installation is checked separately.',
@@ -82,5 +89,8 @@ for(const line of specification.split('\n')){
   limitations:['Row PASS never implies Free V1 acceptance or real Mac/Edge compatibility.',...(id==='D10'?['Current v1 initial-schema recovery and same-version reopen; quota is injected into a real browser transaction, not physical disk exhaustion or a nonexistent legacy migration.']:[])]});
 }
 for(let n=1;n<=4;n++)records.push({id:'JOURNEY-'+n,status:'BLOCKED',buildSha:build.sha,browserVersion:null,environment:'Real Mac Chrome and Edge',steps:'Frozen continuous journey '+n,observed:'Live context/PROJECT/NONE/arrival sources are unproven.',artifactRefs:['M0_SOURCE_GATE.md'],limitations:['Synthetic browser tests do not replace this journey.']});
-await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status:'SOURCE_GATE_BLOCKED',buildSha:build.sha,dirty:build.dirty,records},null,2));
-console.log(JSON.stringify({buildSha:build.sha,records:records.length,statuses:records.reduce((n,r)=>({...n,[r.status]:(n[r.status]||0)+1}),{})}));
+const engineeringGates=[U,'privacy-audit',B,I,P,F,V,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
+const evidenceFailures=Object.entries(evidence).filter(([,r])=>r.status==='FAIL'||r.checks?.some(c=>typeof c==='object'&&c.status==='FAIL')).map(([name])=>name+'.json');
+const status=records.some(r=>r.status==='FAIL')||evidenceFailures.length?'FAIL':'SOURCE_GATE_BLOCKED';
+await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status,sourceGate:build.sourceGate,buildSha:build.sha,dirty:build.dirty,engineeringGates,evidenceFailures,records},null,2));
+console.log(JSON.stringify({status,buildSha:build.sha,records:records.length,statuses:records.reduce((n,r)=>({...n,[r.status]:(n[r.status]||0)+1}),{}),engineeringGates}));

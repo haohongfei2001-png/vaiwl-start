@@ -1,0 +1,1167 @@
+{
+  "kind": "diagnostic A/B experiment; not final release acceptance",
+  "failureRun": "https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41360320317",
+  "productionEquivalentCommits": [
+    "c590b1b0728e0f9a8e57c9d9445921972c4247e7",
+    "8878287042c981ca114185326f2910b583b34d8e"
+  ],
+  "pairedExperiments": {
+    "visual_baseline": {
+      "buildSha": "c590b1b0728e0f9a8e57c9d9445921972c4247e7",
+      "dirty": false,
+      "environment": "isolated-headless-Chrome-MV3-synthetic-IDB",
+      "machine": {
+        "platform": "linux",
+        "release": "6.18.57",
+        "cpuModel": "AMD EPYC 9V74 80-Core Processor",
+        "logicalCpuCount": 9,
+        "memoryBytes": 10451427328
+      },
+      "dataset": {
+        "conversations": 2000,
+        "projects": 20,
+        "recordsPerProject": 100,
+        "scopes": 1,
+        "titleLengthCharacters": 17,
+        "activity": "same test day; metadata only"
+      },
+      "conditions": {
+        "navigation": "Twenty fresh extension page documents in one browser profile. IndexedDB already populated; browser and service worker are running. Each document initializes its own JS/DOM and reads the full real IndexedDB through the production owner. Browser/process cold start is excluded.",
+        "search": "Twenty loaded-catalog input events, five each: one result, 100 project results, 2000 broad results, and no results. Production input handler runs unchanged. DOM-ready time and presentation through two requestAnimationFrame callbacks are measured separately.",
+        "observer": "Test-only document_start MutationObserver timestamps html[data-start-ready=true]; navigation timing entry startTime is the origin. No font/CSS injection, CPU throttling, product code modification or production fixture hook."
+      },
+      "overrideCSS": "",
+      "searchPresented": {
+        "count": 20,
+        "minMs": 34.5,
+        "p50Ms": 51.5,
+        "p95Ms": 65.10000000149012,
+        "maxMs": 75.70000000298023
+      },
+      "searchDOM": {
+        "count": 20,
+        "minMs": 1.5,
+        "p50Ms": 2.7000000029802322,
+        "p95Ms": 3.7000000029802322,
+        "maxMs": 3.7999999970197678
+      },
+      "idleFrameSummary": {
+        "count": 20,
+        "minMs": 16.30000000447035,
+        "p50Ms": 31.69999999552965,
+        "p95Ms": 32,
+        "maxMs": 56.79999999701977
+      },
+      "traceSummary": {
+        "Layout": {
+          "count": 20,
+          "durationMs": 25.906999999999996
+        },
+        "UpdateLayoutTree": {
+          "count": 20,
+          "durationMs": 27.595999999999997
+        },
+        "PrePaint": {
+          "count": 60,
+          "durationMs": 13.144999999999992
+        },
+        "Paint": {
+          "count": 40,
+          "durationMs": 37.445
+        },
+        "Layerize": {
+          "count": 40,
+          "durationMs": 21.235999999999997
+        },
+        "RasterTask": {
+          "count": 210,
+          "durationMs": 71.29500000000006
+        },
+        "CompositeLayers": {
+          "count": 0,
+          "durationMs": 0
+        },
+        "Commit": {
+          "count": 46,
+          "durationMs": 0
+        },
+        "DrawFrame": {
+          "count": 0,
+          "durationMs": 0
+        }
+      },
+      "searchSamples": [
+        {
+          "index": 1,
+          "kind": "single-title",
+          "query": "Conversation 0001",
+          "expectedCount": 1,
+          "domReadyMs": 2.7000000029802322,
+          "presentedMs": 61.899999998509884,
+          "resultCount": 1,
+          "totalMatches": 1,
+          "visibleMatches": 1,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0003809999999999994,
+            "RecalcStyleDuration": 0.00032400000000000137,
+            "ScriptDuration": 0.0027609999999999996,
+            "TaskDuration": 0.0070260000000000045,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 2,
+          "kind": "project-100",
+          "query": "Perf Project 01",
+          "expectedCount": 100,
+          "domReadyMs": 2.7999999970197678,
+          "presentedMs": 45.899999998509884,
+          "resultCount": 100,
+          "totalMatches": 100,
+          "visibleMatches": 100,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0016979999999999999,
+            "RecalcStyleDuration": 0.004244999999999999,
+            "ScriptDuration": 0.0028410000000000006,
+            "TaskDuration": 0.017444999999999995,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 3,
+          "kind": "broad-2000",
+          "query": "Conversation",
+          "expectedCount": 2000,
+          "domReadyMs": 3.399999998509884,
+          "presentedMs": 34.5,
+          "resultCount": 100,
+          "totalMatches": 2000,
+          "visibleMatches": 100,
+          "hasMore": true,
+          "metricsDelta": {
+            "LayoutDuration": 0.0015520000000000013,
+            "RecalcStyleDuration": 0.002465000000000002,
+            "ScriptDuration": 0.00328,
+            "TaskDuration": 0.019848000000000005,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 4,
+          "kind": "no-results",
+          "query": "absent-query-0",
+          "expectedCount": 0,
+          "domReadyMs": 2.5,
+          "presentedMs": 75.70000000298023,
+          "resultCount": 0,
+          "totalMatches": 0,
+          "visibleMatches": 0,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0017579999999999991,
+            "RecalcStyleDuration": 0.00032099999999999837,
+            "ScriptDuration": 0.0024020000000000014,
+            "TaskDuration": 0.007717000000000002,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 5,
+          "kind": "single-title",
+          "query": "Conversation 0318",
+          "expectedCount": 1,
+          "domReadyMs": 1.5,
+          "presentedMs": 57,
+          "resultCount": 1,
+          "totalMatches": 1,
+          "visibleMatches": 1,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.00038299999999999966,
+            "RecalcStyleDuration": 0.0002270000000000015,
+            "ScriptDuration": 0.0014309999999999982,
+            "TaskDuration": 0.005776000000000003,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 6,
+          "kind": "project-100",
+          "query": "Perf Project 04",
+          "expectedCount": 100,
+          "domReadyMs": 3.600000001490116,
+          "presentedMs": 54.900000005960464,
+          "resultCount": 100,
+          "totalMatches": 100,
+          "visibleMatches": 100,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.002007,
+            "RecalcStyleDuration": 0.002512999999999998,
+            "ScriptDuration": 0.0035150000000000008,
+            "TaskDuration": 0.013990000000000002,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 7,
+          "kind": "broad-2000",
+          "query": "Conversation",
+          "expectedCount": 2000,
+          "domReadyMs": 3.7000000029802322,
+          "presentedMs": 65.10000000149012,
+          "resultCount": 100,
+          "totalMatches": 2000,
+          "visibleMatches": 100,
+          "hasMore": true,
+          "metricsDelta": {
+            "LayoutDuration": 0.004758999999999999,
+            "RecalcStyleDuration": 0.0025979999999999996,
+            "ScriptDuration": 0.003630999999999999,
+            "TaskDuration": 0.018313000000000024,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 8,
+          "kind": "no-results",
+          "query": "absent-query-1",
+          "expectedCount": 0,
+          "domReadyMs": 2.5999999940395355,
+          "presentedMs": 57.79999999701977,
+          "resultCount": 0,
+          "totalMatches": 0,
+          "visibleMatches": 0,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0003849999999999999,
+            "RecalcStyleDuration": 0.00016000000000000042,
+            "ScriptDuration": 0.002477,
+            "TaskDuration": 0.005942000000000003,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 9,
+          "kind": "single-title",
+          "query": "Conversation 0635",
+          "expectedCount": 1,
+          "domReadyMs": 1.7999999970197678,
+          "presentedMs": 45.399999998509884,
+          "resultCount": 1,
+          "totalMatches": 1,
+          "visibleMatches": 1,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0006050000000000014,
+            "RecalcStyleDuration": 0.00023899999999999963,
+            "ScriptDuration": 0.0016040000000000013,
+            "TaskDuration": 0.006051000000000001,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 10,
+          "kind": "project-100",
+          "query": "Perf Project 07",
+          "expectedCount": 100,
+          "domReadyMs": 2.600000001490116,
+          "presentedMs": 50.399999998509884,
+          "resultCount": 100,
+          "totalMatches": 100,
+          "visibleMatches": 100,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.001965999999999999,
+            "RecalcStyleDuration": 0.0020390000000000026,
+            "ScriptDuration": 0.0024209999999999995,
+            "TaskDuration": 0.012109000000000009,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 11,
+          "kind": "broad-2000",
+          "query": "Conversation",
+          "expectedCount": 2000,
+          "domReadyMs": 3.7999999970197678,
+          "presentedMs": 56,
+          "resultCount": 100,
+          "totalMatches": 2000,
+          "visibleMatches": 100,
+          "hasMore": true,
+          "metricsDelta": {
+            "LayoutDuration": 0.0016989999999999991,
+            "RecalcStyleDuration": 0.0021979999999999986,
+            "ScriptDuration": 0.003780999999999996,
+            "TaskDuration": 0.013063999999999992,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 12,
+          "kind": "no-results",
+          "query": "absent-query-2",
+          "expectedCount": 0,
+          "domReadyMs": 2.7999999970197678,
+          "presentedMs": 44,
+          "resultCount": 0,
+          "totalMatches": 0,
+          "visibleMatches": 0,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.00046600000000000114,
+            "RecalcStyleDuration": 0.000282000000000001,
+            "ScriptDuration": 0.002601000000000006,
+            "TaskDuration": 0.0062409999999999966,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 13,
+          "kind": "single-title",
+          "query": "Conversation 0952",
+          "expectedCount": 1,
+          "domReadyMs": 1.5,
+          "presentedMs": 48.5,
+          "resultCount": 1,
+          "totalMatches": 1,
+          "visibleMatches": 1,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0003620000000000012,
+            "RecalcStyleDuration": 0.00018299999999999914,
+            "ScriptDuration": 0.001355999999999996,
+            "TaskDuration": 0.004744999999999999,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 14,
+          "kind": "project-100",
+          "query": "Perf Project 10",
+          "expectedCount": 100,
+          "domReadyMs": 2.600000001490116,
+          "presentedMs": 51.5,
+          "resultCount": 100,
+          "totalMatches": 100,
+          "visibleMatches": 100,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0016979999999999981,
+            "RecalcStyleDuration": 0.0023339999999999993,
+            "ScriptDuration": 0.002491,
+            "TaskDuration": 0.01175799999999999,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 15,
+          "kind": "broad-2000",
+          "query": "Conversation",
+          "expectedCount": 2000,
+          "domReadyMs": 3,
+          "presentedMs": 58,
+          "resultCount": 100,
+          "totalMatches": 2000,
+          "visibleMatches": 100,
+          "hasMore": true,
+          "metricsDelta": {
+            "LayoutDuration": 0.0015030000000000009,
+            "RecalcStyleDuration": 0.0020510000000000007,
+            "ScriptDuration": 0.002925999999999998,
+            "TaskDuration": 0.011886999999999981,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 16,
+          "kind": "no-results",
+          "query": "absent-query-3",
+          "expectedCount": 0,
+          "domReadyMs": 2.899999998509884,
+          "presentedMs": 41.099999994039536,
+          "resultCount": 0,
+          "totalMatches": 0,
+          "visibleMatches": 0,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.00036800000000000027,
+            "RecalcStyleDuration": 0.0001799999999999996,
+            "ScriptDuration": 0.0028720000000000065,
+            "TaskDuration": 0.006100999999999995,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 17,
+          "kind": "single-title",
+          "query": "Conversation 1269",
+          "expectedCount": 1,
+          "domReadyMs": 1.5,
+          "presentedMs": 48.30000000447035,
+          "resultCount": 1,
+          "totalMatches": 1,
+          "visibleMatches": 1,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0003559999999999987,
+            "RecalcStyleDuration": 0.00020599999999999785,
+            "ScriptDuration": 0.0014059999999999975,
+            "TaskDuration": 0.005006999999999984,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 18,
+          "kind": "project-100",
+          "query": "Perf Project 13",
+          "expectedCount": 100,
+          "domReadyMs": 2.399999998509884,
+          "presentedMs": 54.69999999552965,
+          "resultCount": 100,
+          "totalMatches": 100,
+          "visibleMatches": 100,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.002088000000000003,
+            "RecalcStyleDuration": 0.002468000000000005,
+            "ScriptDuration": 0.002349999999999998,
+            "TaskDuration": 0.014959,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 19,
+          "kind": "broad-2000",
+          "query": "Conversation",
+          "expectedCount": 2000,
+          "domReadyMs": 3.3000000044703484,
+          "presentedMs": 58.899999998509884,
+          "resultCount": 100,
+          "totalMatches": 2000,
+          "visibleMatches": 100,
+          "hasMore": true,
+          "metricsDelta": {
+            "LayoutDuration": 0.0017560000000000006,
+            "RecalcStyleDuration": 0.002366,
+            "ScriptDuration": 0.003355999999999998,
+            "TaskDuration": 0.012812000000000018,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 20,
+          "kind": "no-results",
+          "query": "absent-query-4",
+          "expectedCount": 0,
+          "domReadyMs": 2.8000000044703484,
+          "presentedMs": 42.80000000447035,
+          "resultCount": 0,
+          "totalMatches": 0,
+          "visibleMatches": 0,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0003909999999999955,
+            "RecalcStyleDuration": 0.00019099999999999673,
+            "ScriptDuration": 0.002693000000000001,
+            "TaskDuration": 0.006359999999999977,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        }
+      ],
+      "checks": [
+        {
+          "id": "PERF-full-search-set-reachable",
+          "status": "PASS",
+          "observed": "Initial 100, explicit +100, all 2000 unique rows reachable, record 1999 independently searchable, query change resets to 100."
+        },
+        {
+          "id": "PERF-newtab-2000-20",
+          "status": "PASS",
+          "thresholdMs": 500,
+          "observedP95Ms": 145.09999999403954,
+          "metric": "navigationStart to html[data-start-ready=true]"
+        },
+        {
+          "id": "PERF-search-feedback",
+          "status": "PASS",
+          "thresholdMs": 100,
+          "observedP95Ms": 65.10000000149012,
+          "metric": "input dispatch through DOM update and two animation-frame callbacks"
+        },
+        {
+          "id": "PERF-search-dom",
+          "status": "PASS",
+          "thresholdMs": 100,
+          "observedP95Ms": 3.7000000029802322,
+          "metric": "synchronous production input handler DOM feedback"
+        },
+        {
+          "id": "PERF-no-page-errors",
+          "status": "PASS",
+          "observed": 0
+        }
+      ],
+      "browser": "156.0.8078.4"
+    },
+    "visual_cached_underlay": {
+      "buildSha": "c590b1b0728e0f9a8e57c9d9445921972c4247e7",
+      "dirty": false,
+      "environment": "isolated-headless-Chrome-MV3-synthetic-IDB",
+      "machine": {
+        "platform": "linux",
+        "release": "6.18.57",
+        "cpuModel": "AMD EPYC 9V74 80-Core Processor",
+        "logicalCpuCount": 9,
+        "memoryBytes": 10451427328
+      },
+      "dataset": {
+        "conversations": 2000,
+        "projects": 20,
+        "recordsPerProject": 100,
+        "scopes": 1,
+        "titleLengthCharacters": 17,
+        "activity": "same test day; metadata only"
+      },
+      "conditions": {
+        "navigation": "Twenty fresh extension page documents in one browser profile. IndexedDB already populated; browser and service worker are running. Each document initializes its own JS/DOM and reads the full real IndexedDB through the production owner. Browser/process cold start is excluded.",
+        "search": "Twenty loaded-catalog input events, five each: one result, 100 project results, 2000 broad results, and no results. Production input handler runs unchanged. DOM-ready time and presentation through two requestAnimationFrame callbacks are measured separately.",
+        "observer": "Test-only document_start MutationObserver timestamps html[data-start-ready=true]; navigation timing entry startTime is the origin. No font/CSS injection, CPU throttling, product code modification or production fixture hook."
+      },
+      "overrideCSS": "body:has(#search-dialog[open]) :is(.topbar,.site-section,#workspace-content,#history-rail,#toast){filter:blur(3px)} #search-dialog::backdrop{backdrop-filter:none}",
+      "searchPresented": {
+        "count": 20,
+        "minMs": 23.700000002980232,
+        "p50Ms": 30.200000002980232,
+        "p95Ms": 30.599999994039536,
+        "maxMs": 33.5
+      },
+      "searchDOM": {
+        "count": 20,
+        "minMs": 1.7999999970197678,
+        "p50Ms": 3.100000001490116,
+        "p95Ms": 4.100000001490116,
+        "maxMs": 4.299999997019768
+      },
+      "idleFrameSummary": {
+        "count": 20,
+        "minMs": 12.700000002980232,
+        "p50Ms": 31.599999994039536,
+        "p95Ms": 32,
+        "maxMs": 32.20000000298023
+      },
+      "traceSummary": {
+        "Layout": {
+          "count": 20,
+          "durationMs": 22.218999999999994
+        },
+        "UpdateLayoutTree": {
+          "count": 20,
+          "durationMs": 31.409000000000002
+        },
+        "PrePaint": {
+          "count": 60,
+          "durationMs": 11.486999999999998
+        },
+        "Paint": {
+          "count": 40,
+          "durationMs": 27.031
+        },
+        "Layerize": {
+          "count": 41,
+          "durationMs": 29.632000000000012
+        },
+        "RasterTask": {
+          "count": 213,
+          "durationMs": 69.203
+        },
+        "CompositeLayers": {
+          "count": 0,
+          "durationMs": 0
+        },
+        "Commit": {
+          "count": 48,
+          "durationMs": 0
+        },
+        "DrawFrame": {
+          "count": 0,
+          "durationMs": 0
+        }
+      },
+      "searchSamples": [
+        {
+          "index": 1,
+          "kind": "single-title",
+          "query": "Conversation 0001",
+          "expectedCount": 1,
+          "domReadyMs": 3.100000001490116,
+          "presentedMs": 27,
+          "resultCount": 1,
+          "totalMatches": 1,
+          "visibleMatches": 1,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0003519999999999999,
+            "RecalcStyleDuration": 0.00046400000000000087,
+            "ScriptDuration": 0.00294,
+            "TaskDuration": 0.007010000000000002,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 2,
+          "kind": "project-100",
+          "query": "Perf Project 01",
+          "expectedCount": 100,
+          "domReadyMs": 2.8000000044703484,
+          "presentedMs": 29.700000002980232,
+          "resultCount": 100,
+          "totalMatches": 100,
+          "visibleMatches": 100,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0014940000000000005,
+            "RecalcStyleDuration": 0.002796,
+            "ScriptDuration": 0.0027289999999999997,
+            "TaskDuration": 0.012138999999999997,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 3,
+          "kind": "broad-2000",
+          "query": "Conversation",
+          "expectedCount": 2000,
+          "domReadyMs": 3.2000000029802322,
+          "presentedMs": 30.399999998509884,
+          "resultCount": 100,
+          "totalMatches": 2000,
+          "visibleMatches": 100,
+          "hasMore": true,
+          "metricsDelta": {
+            "LayoutDuration": 0.0015199999999999988,
+            "RecalcStyleDuration": 0.002562,
+            "ScriptDuration": 0.0030830000000000007,
+            "TaskDuration": 0.012081999999999996,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 4,
+          "kind": "no-results",
+          "query": "absent-query-0",
+          "expectedCount": 0,
+          "domReadyMs": 2.7000000029802322,
+          "presentedMs": 30.399999998509884,
+          "resultCount": 0,
+          "totalMatches": 0,
+          "visibleMatches": 0,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.001365,
+            "RecalcStyleDuration": 0.0005719999999999996,
+            "ScriptDuration": 0.0026230000000000003,
+            "TaskDuration": 0.007405999999999996,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 5,
+          "kind": "single-title",
+          "query": "Conversation 0318",
+          "expectedCount": 1,
+          "domReadyMs": 1.7999999970197678,
+          "presentedMs": 29.399999998509884,
+          "resultCount": 1,
+          "totalMatches": 1,
+          "visibleMatches": 1,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.00038400000000000066,
+            "RecalcStyleDuration": 0.0004390000000000019,
+            "ScriptDuration": 0.0018169999999999992,
+            "TaskDuration": 0.0056719999999999965,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 6,
+          "kind": "project-100",
+          "query": "Perf Project 04",
+          "expectedCount": 100,
+          "domReadyMs": 2.7999999970197678,
+          "presentedMs": 30.19999999552965,
+          "resultCount": 100,
+          "totalMatches": 100,
+          "visibleMatches": 100,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0016000000000000007,
+            "RecalcStyleDuration": 0.0024409999999999987,
+            "ScriptDuration": 0.0026650000000000007,
+            "TaskDuration": 0.011799000000000004,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 7,
+          "kind": "broad-2000",
+          "query": "Conversation",
+          "expectedCount": 2000,
+          "domReadyMs": 3.2000000029802322,
+          "presentedMs": 30.200000002980232,
+          "resultCount": 100,
+          "totalMatches": 2000,
+          "visibleMatches": 100,
+          "hasMore": true,
+          "metricsDelta": {
+            "LayoutDuration": 0.00145,
+            "RecalcStyleDuration": 0.002603000000000001,
+            "ScriptDuration": 0.003096999999999999,
+            "TaskDuration": 0.011825000000000002,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 8,
+          "kind": "no-results",
+          "query": "absent-query-1",
+          "expectedCount": 0,
+          "domReadyMs": 2.6999999955296516,
+          "presentedMs": 29.899999998509884,
+          "resultCount": 0,
+          "totalMatches": 0,
+          "visibleMatches": 0,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0003299999999999987,
+            "RecalcStyleDuration": 0.00041899999999999923,
+            "ScriptDuration": 0.0027149999999999987,
+            "TaskDuration": 0.006217,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 9,
+          "kind": "single-title",
+          "query": "Conversation 0635",
+          "expectedCount": 1,
+          "domReadyMs": 1.7999999970197678,
+          "presentedMs": 30.399999998509884,
+          "resultCount": 1,
+          "totalMatches": 1,
+          "visibleMatches": 1,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.00041000000000000064,
+            "RecalcStyleDuration": 0.00044399999999999995,
+            "ScriptDuration": 0.0017380000000000034,
+            "TaskDuration": 0.005408999999999997,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 10,
+          "kind": "project-100",
+          "query": "Perf Project 07",
+          "expectedCount": 100,
+          "domReadyMs": 2.899999998509884,
+          "presentedMs": 30.30000000447035,
+          "resultCount": 100,
+          "totalMatches": 100,
+          "visibleMatches": 100,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.001625999999999999,
+            "RecalcStyleDuration": 0.0025689999999999984,
+            "ScriptDuration": 0.002905999999999999,
+            "TaskDuration": 0.011968000000000006,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 11,
+          "kind": "broad-2000",
+          "query": "Conversation",
+          "expectedCount": 2000,
+          "domReadyMs": 4.100000001490116,
+          "presentedMs": 30.30000000447035,
+          "resultCount": 100,
+          "totalMatches": 2000,
+          "visibleMatches": 100,
+          "hasMore": true,
+          "metricsDelta": {
+            "LayoutDuration": 0.002227,
+            "RecalcStyleDuration": 0.0027340000000000003,
+            "ScriptDuration": 0.003969999999999998,
+            "TaskDuration": 0.01422699999999999,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 12,
+          "kind": "no-results",
+          "query": "absent-query-2",
+          "expectedCount": 0,
+          "domReadyMs": 3.100000001490116,
+          "presentedMs": 29.600000001490116,
+          "resultCount": 0,
+          "totalMatches": 0,
+          "visibleMatches": 0,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.00045600000000000154,
+            "RecalcStyleDuration": 0.0004320000000000018,
+            "ScriptDuration": 0.003012000000000001,
+            "TaskDuration": 0.007026999999999978,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 13,
+          "kind": "single-title",
+          "query": "Conversation 0952",
+          "expectedCount": 1,
+          "domReadyMs": 2.0999999940395355,
+          "presentedMs": 30.5,
+          "resultCount": 1,
+          "totalMatches": 1,
+          "visibleMatches": 1,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0003620000000000012,
+            "RecalcStyleDuration": 0.00047799999999999926,
+            "ScriptDuration": 0.0019889999999999977,
+            "TaskDuration": 0.005536000000000013,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 14,
+          "kind": "project-100",
+          "query": "Perf Project 10",
+          "expectedCount": 100,
+          "domReadyMs": 3.2000000029802322,
+          "presentedMs": 29.899999998509884,
+          "resultCount": 100,
+          "totalMatches": 100,
+          "visibleMatches": 100,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0018289999999999973,
+            "RecalcStyleDuration": 0.002536,
+            "ScriptDuration": 0.0032350000000000018,
+            "TaskDuration": 0.01299599999999998,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 15,
+          "kind": "broad-2000",
+          "query": "Conversation",
+          "expectedCount": 2000,
+          "domReadyMs": 3.600000001490116,
+          "presentedMs": 30.299999997019768,
+          "resultCount": 100,
+          "totalMatches": 2000,
+          "visibleMatches": 100,
+          "hasMore": true,
+          "metricsDelta": {
+            "LayoutDuration": 0.0018310000000000028,
+            "RecalcStyleDuration": 0.002792000000000003,
+            "ScriptDuration": 0.003589000000000002,
+            "TaskDuration": 0.013176999999999994,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 16,
+          "kind": "no-results",
+          "query": "absent-query-3",
+          "expectedCount": 0,
+          "domReadyMs": 3.5,
+          "presentedMs": 30.599999994039536,
+          "resultCount": 0,
+          "totalMatches": 0,
+          "visibleMatches": 0,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.00036199999999999774,
+            "RecalcStyleDuration": 0.0004279999999999978,
+            "ScriptDuration": 0.0034249999999999975,
+            "TaskDuration": 0.007091999999999987,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 17,
+          "kind": "single-title",
+          "query": "Conversation 1269",
+          "expectedCount": 1,
+          "domReadyMs": 1.8999999985098839,
+          "presentedMs": 29.899999998509884,
+          "resultCount": 1,
+          "totalMatches": 1,
+          "visibleMatches": 1,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0003569999999999997,
+            "RecalcStyleDuration": 0.0005309999999999968,
+            "ScriptDuration": 0.0018180000000000002,
+            "TaskDuration": 0.006023000000000001,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 18,
+          "kind": "project-100",
+          "query": "Perf Project 13",
+          "expectedCount": 100,
+          "domReadyMs": 3.2000000029802322,
+          "presentedMs": 33.5,
+          "resultCount": 100,
+          "totalMatches": 100,
+          "visibleMatches": 100,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0018360000000000008,
+            "RecalcStyleDuration": 0.0031230000000000008,
+            "ScriptDuration": 0.0031200000000000047,
+            "TaskDuration": 0.027972999999999998,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 19,
+          "kind": "broad-2000",
+          "query": "Conversation",
+          "expectedCount": 2000,
+          "domReadyMs": 4.299999997019768,
+          "presentedMs": 23.700000002980232,
+          "resultCount": 100,
+          "totalMatches": 2000,
+          "visibleMatches": 100,
+          "hasMore": true,
+          "metricsDelta": {
+            "LayoutDuration": 0.0020240000000000015,
+            "RecalcStyleDuration": 0.002569000000000002,
+            "ScriptDuration": 0.004248999999999996,
+            "TaskDuration": 0.015079000000000009,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        },
+        {
+          "index": 20,
+          "kind": "no-results",
+          "query": "absent-query-4",
+          "expectedCount": 0,
+          "domReadyMs": 3.600000001490116,
+          "presentedMs": 30.200000002980232,
+          "resultCount": 0,
+          "totalMatches": 0,
+          "visibleMatches": 0,
+          "hasMore": false,
+          "metricsDelta": {
+            "LayoutDuration": 0.0006959999999999987,
+            "RecalcStyleDuration": 0.0004679999999999962,
+            "ScriptDuration": 0.003354000000000003,
+            "TaskDuration": 0.007547999999999999,
+            "LayoutCount": 1,
+            "RecalcStyleCount": 1
+          }
+        }
+      ],
+      "checks": [
+        {
+          "id": "PERF-full-search-set-reachable",
+          "status": "PASS",
+          "observed": "Initial 100, explicit +100, all 2000 unique rows reachable, record 1999 independently searchable, query change resets to 100."
+        },
+        {
+          "id": "PERF-newtab-2000-20",
+          "status": "PASS",
+          "thresholdMs": 500,
+          "observedP95Ms": 123.39999999850988,
+          "metric": "navigationStart to html[data-start-ready=true]"
+        },
+        {
+          "id": "PERF-search-feedback",
+          "status": "PASS",
+          "thresholdMs": 100,
+          "observedP95Ms": 30.599999994039536,
+          "metric": "input dispatch through DOM update and two animation-frame callbacks"
+        },
+        {
+          "id": "PERF-search-dom",
+          "status": "PASS",
+          "thresholdMs": 100,
+          "observedP95Ms": 4.100000001490116,
+          "metric": "synchronous production input handler DOM feedback"
+        },
+        {
+          "id": "PERF-no-page-errors",
+          "status": "PASS",
+          "observed": 0
+        }
+      ],
+      "browser": "156.0.8078.4"
+    }
+  },
+  "notAdopted": {
+    "baseline": {
+      "overrideCSS": "",
+      "searchPresented": {
+        "count": 20,
+        "minMs": 30.900000005960464,
+        "p50Ms": 45,
+        "p95Ms": 67.39999999850988,
+        "maxMs": 78
+      },
+      "searchDOM": {
+        "count": 20,
+        "minMs": 1.6000000014901161,
+        "p50Ms": 2.899999998509884,
+        "p95Ms": 3.399999998509884,
+        "maxMs": 3.399999998509884
+      }
+    },
+    "results_contain": {
+      "overrideCSS": "#search-results{contain:layout paint style;isolation:isolate}",
+      "searchPresented": {
+        "count": 20,
+        "minMs": 39.69999999552965,
+        "p50Ms": 50.79999999701977,
+        "p95Ms": 67.30000000447035,
+        "maxMs": 75
+      },
+      "searchDOM": {
+        "count": 20,
+        "minMs": 1.7999999970197678,
+        "p50Ms": 3,
+        "p95Ms": 3.7000000029802322,
+        "maxMs": 3.7999999970197678
+      }
+    },
+    "content_visibility": {
+      "overrideCSS": "#search-results .search-result{content-visibility:auto;contain-intrinsic-block-size:auto 39px}",
+      "searchPresented": {
+        "count": 20,
+        "minMs": 38.399999998509884,
+        "p50Ms": 47.80000000447035,
+        "p95Ms": 71.69999999552965,
+        "maxMs": 74.20000000298023
+      },
+      "searchDOM": {
+        "count": 20,
+        "minMs": 1.8999999985098839,
+        "p50Ms": 2.8000000044703484,
+        "p95Ms": 3.7999999970197678,
+        "maxMs": 3.7999999970197678
+      }
+    },
+    "backdrop_layer": {
+      "overrideCSS": "#search-dialog::backdrop{will-change:backdrop-filter;transform:translateZ(0)} #search-dialog[open]{will-change:transform;transform:translateZ(0)}",
+      "searchPresented": {
+        "count": 20,
+        "minMs": 41.5,
+        "p50Ms": 47.29999999701977,
+        "p95Ms": 76.70000000298023,
+        "maxMs": 78.80000000447035
+      },
+      "searchDOM": {
+        "count": 20,
+        "minMs": 1.7999999970197678,
+        "p50Ms": 3.100000001490116,
+        "p95Ms": 4,
+        "maxMs": 4.200000002980232
+      }
+    },
+    "trace_dialog_contain": {
+      "overrideCSS": "#search-dialog{contain:layout paint style;isolation:isolate} #search-results{contain:layout paint style}",
+      "searchPresented": {
+        "count": 20,
+        "minMs": 39.29999999701977,
+        "p50Ms": 47.69999999552965,
+        "p95Ms": 68.60000000149012,
+        "maxMs": 72.70000000298023
+      },
+      "searchDOM": {
+        "count": 20,
+        "minMs": 1.7999999970197678,
+        "p50Ms": 3,
+        "p95Ms": 4.399999998509884,
+        "maxMs": 4.899999998509884
+      }
+    }
+  },
+  "visualDifference": {
+    "size": [
+      1080,
+      1440,
+      3
+    ],
+    "changedPixels": 112281,
+    "totalPixels": 1555200,
+    "changedPercent": 7.219714506172839,
+    "meanAbsoluteChannelDifference": 0.10211098251028806,
+    "maxChannelDifference": 8,
+    "pixelsDifferenceAbove3": 9483,
+    "pixelsDifferenceAbove10": 0,
+    "bbox": [
+      34,
+      10,
+      1397,
+      1079
+    ],
+    "dialogInnerChangedPixels": 0,
+    "dialogInnerMaxChannelDifference": 0
+  },
+  "decision": "Keep the frozen 3px blur and original tint; cache the blur on stable background blocks while the search dialog is open. Do not change data, 100-row pagination, 20 samples, two-frame presentation timing or 100ms threshold.",
+  "limitations": [
+    "Local A/B results diagnose the old CI failure; only later same-SHA clean production results can close it.",
+    "Dialog interior pixels match in the compared frames. Background blur composition has small nonzero differences; not whole-viewport pixel identity.",
+    "Temporary CSS variants exist only in diagnostic tests, never as production feature flags."
+  ]
+}

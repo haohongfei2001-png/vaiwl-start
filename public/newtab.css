@@ -30,3 +30,8 @@ dialog{border:1px solid var(--line);border-radius:17px;background:white;color:va
 @media(max-width:760px){.scope-selector{max-width:150px}.record-menu{opacity:1}.board-heading .scope-selector{order:2}.board-heading .new-chat{order:2}.search-footer{gap:8px}.search-footer span:last-child{white-space:nowrap}.site-strip{max-height:96px}.edit-site-row{gap:4px}.edit-site-row .site-favicon{display:none}.setting-row{flex-wrap:wrap}.setting-row>div{min-width:130px}.dialog-foot{flex-wrap:wrap}.import-note{flex-wrap:wrap}.import-note .text-button{margin-left:26px}.site-link{max-width:160px}}
 @media(pointer:coarse){.record-menu{opacity:1;min-width:30px;min-height:36px}.site-strip{max-height:106px}.edit-site-row .icon-button{min-width:30px}}
 
+
+/* Keep the frozen 3px search backdrop appearance while caching blur on stable
+   background blocks; typing must not resample the full viewport each frame. */
+body:has(#search-dialog[open]) :is(.topbar,.site-section,#workspace-content,#history-rail,#toast){filter:blur(3px)}
+#search-dialog::backdrop{backdrop-filter:none}

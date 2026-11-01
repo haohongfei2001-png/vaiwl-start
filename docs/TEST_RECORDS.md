@@ -46,3 +46,9 @@ UI fixture 只由测试进程直接写入隔离 IndexedDB。生产构建没有 U
 `acceptance-matrix.json` 对每行列出具体 `predicates` 与 `missingConditions`。一份UI/单元回执整体PASS，不能代替该行全部条件。纯单元回执记录实际测试名称；需要视觉审查的行还要求显式的同SHA `review-validation.json`。CI不会伪造人工/模型视觉审阅。未知或未完成行保留NOT_RUN，真实来源与设备门保留BLOCKED。
 
 存储故障harness由当前生产模块直接打包，报告记录每个实际依赖源文件和测试bundle hash；它不代表生产IPC或权限弹窗已验收。当前v1只有初始建库与同版本重开，没有虚构历史版本迁移。
+
+## 已保留的性能失败与实质修复
+
+[第三阶段CI](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41360320317) 的搜索呈现p95=123.7ms，确为FAIL；所有功能套件通过不能替代该门。原始机器与逐次样本保存在 `docs/evidence/performance-8878287.json`。A/B/trace与未采用方案保存在 `performance-rendering-diagnosis.json`。最终仅改变搜索背景模糊的绘制方式，保留3px效果、原遮罩、100条分页、2000条数据、20次样本和双rAF的100ms门。
+
+包与验收生成器会核对当前HEAD/dirty状态，拒绝用旧dist搭配新文档；所有同SHA失败（含性能和视觉回执）均使交付打包失败。

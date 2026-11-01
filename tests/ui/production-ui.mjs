@@ -134,10 +134,12 @@ try {
     const names = ['工作区导航方案', '历史记录的整理方式', '页面布局的比较'];
     for (let i = 0; i < (index === 0 ? 18 : 3); i++) records.push(conversation(index === 0 ? `设计讨论 ${i + 1}` : names[i], membership));
     records.push(conversation(`${project.nativeTitle}较早方案`, membership, old));
+    if (index === 0) records.push(conversation('VAIWL另一旧会话', membership, old));
   }
   records.push(conversation('整理一份阅读清单', { state: 'NONE', projectId: null, evidenceId: 'test-none', confirmedAt: today }));
   records.push(conversation('更早区间的独立会话', { state: 'NONE', projectId: null, evidenceId: 'test-older-none', confirmedAt: today }, old));
-  records.push(conversation('尚无日期的无项目会话', { state: 'NONE', projectId: null, evidenceId: 'test-none-undated', confirmedAt: today }, null));
+  const undated = conversation('尚无日期的无项目会话', { state: 'NONE', projectId: null, evidenceId: 'test-none-undated', confirmedAt: today }, null);
+  undated.browserLastVisitAt = today; records.push(undated);
   records.push(conversation('<img src=x onerror=window.__xss=1>', { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, null));
   records.push(conversation('Other account secret', { state: 'NONE', projectId: null, evidenceId: 'test-other', confirmedAt: today }, today, otherScope));
   records.push(conversation('Other account pending', { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, null, otherScope));
@@ -199,7 +201,9 @@ try {
   await firstCard.getByRole('button', { name: '显示更多', exact: true }).click();
   check('UI-project-more-complete', await firstCard.locator('.project-body > .conversation-list .conversation-row').count() === 18 && await firstCard.getByRole('button', { name: '显示更多', exact: true }).count() === 0, 'The final recent member is reachable and Show More ends at the actual collection boundary.');
   await firstCard.getByRole('button', { name: '较早会话', exact: true }).click();
-  check('UI-old-stays-in-parent', await firstCard.getByText('VAIWL较早方案', { exact: true }).isVisible(), 'Older member expands under its single project card.');
+  const expectedOldKeys = records.filter(record => record.membership.state === 'PROJECT' && record.membership.projectId === projects[0].projectId && record.activity?.lastConfirmedOpenAt === old).map(record => record.key);
+  const renderedOldKeys = await firstCard.locator('.old-list [data-record-key]').evaluateAll(rows => rows.map(row => row.getAttribute('data-record-key')));
+  check('UI-old-stays-in-parent', expectedOldKeys.length === 2 && JSON.stringify(renderedOldKeys) === JSON.stringify(expectedOldKeys) && await firstCard.getByText('VAIWL较早方案', { exact: true }).isVisible() && await firstCard.getByText('VAIWL另一旧会话', { exact: true }).isVisible(), 'Exactly both old members expand under their one parent; no current member is mixed into the old-member list.');
   await firstCard.getByRole('button', { name: '较早会话', exact: true }).click();
   check('UI-no-top-arrow', await page.locator('#period-newer').count() === 0, 'k=0 has no newer-period button.');
   await page.locator('#period-older').click();
@@ -211,6 +215,20 @@ try {
   const returnedToEmpty = await page.getByText('这一段没有记录', { exact: true }).isVisible();
   await page.locator('#period-newer').click();
   check('UI-empty-segment-to-known-and-back', earlierKnownVisible && olderProjectsAbsent && returnedToEmpty && await page.locator('.project').count() === 6 && await page.locator('#period-newer').count() === 0, 'k0 → empty k1 → known NONE at k2 → empty k1 → k0; no empty segment is skipped and old project members do not duplicate their current parent.');
+  check('UI-undated-independent-entry', await page.locator(`.undated-section [data-record-key="${undated.key}"]`).count() === 1 && await page.locator(`.date-window [data-record-key="${undated.key}"]`).count() === 0, 'A history.lastVisitTime-only record stays in the independent undated section, outside dated windows.');
+  await page.keyboard.press('/'); await page.locator('#search-input').fill(undated.nativeTitle);
+  assert.equal(await page.locator('.search-result').getAttribute('data-record-key'), undated.key);
+  const undatedTabPromise = context.waitForEvent('page'); await page.keyboard.press('Control+Enter');
+  const undatedTab = await undatedTabPromise;
+  const undatedAfterOpen = await worker.evaluate(async key => {
+    const request = indexedDB.open('vaiwl-start'); const db = await new Promise(resolve => { request.onsuccess = () => resolve(request.result); });
+    const tx = db.transaction(['conversations', 'openIntents', 'openDays'], 'readonly');
+    const record = tx.objectStore('conversations').get(key), intents = tx.objectStore('openIntents').getAll(), days = tx.objectStore('openDays').getAll();
+    return new Promise(resolve => { tx.oncomplete = () => { db.close(); resolve({ record: record.result, intents: intents.result, days: days.result }); }; });
+  }, undated.key);
+  check('UI-undated-search-open-remains-undated', undatedAfterOpen.record.activity === null && undatedAfterOpen.record.browserLastVisitAt === today && undatedAfterOpen.intents.some(intent => intent.targetRecordKey === undated.key && intent.evidence.gesture === 'keyboard') && !undatedAfterOpen.days.some(day => day.recordKey === undated.key), 'The undated entry is searchable and dispatches a persistent open intent; unverified arrival cannot turn history.lastVisitTime into an activity date.');
+  await undatedTab.close(); await page.bringToFront(); await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.getElementById('search-dialog').open);
   await page.keyboard.press('/');
   await page.locator('#search-input').fill('VAIWL较早方案');
   check('UI-cross-period-search', await page.locator('.search-result').count() === 1, 'Search finds a 70-day-old member across date segments.');
@@ -274,6 +292,86 @@ try {
   await page.keyboard.press('Escape');
   const afterSearchPosition = await page.evaluate(() => ({ scrollY, focus: document.activeElement.id, open: document.getElementById('search-dialog').open }));
   check('UI-search-escape-restores-position', !afterSearchPosition.open && afterSearchPosition.focus === beforeSearchPosition.focus && Math.abs(afterSearchPosition.scrollY - beforeSearchPosition.scrollY) <= 1, 'Escape closes search and restores the triggering focus and page scroll position.');
+
+  // Real extension-page commands produce the worker's actual revision broadcast.
+  // Only the test process writes synthetic sorting evidence into its isolated IDB.
+  const publisher = await context.newPage();
+  publisher.on('pageerror', error => errors.push(error.message));
+  await publisher.goto(`chrome-extension://${id}/newtab.html`); await publisher.waitForSelector('html[data-start-ready="true"]');
+  const publishCommand = (command, payload) => publisher.evaluate(async ({ command, payload }) => {
+    const envelope = (command, payload, expectedRevision) => ({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), command, payload, expectedRevision });
+    const snapshot = await chrome.runtime.sendMessage(envelope('SNAPSHOT', {}, 0));
+    if (!snapshot.ok) throw Error(snapshot.code);
+    const response = await chrome.runtime.sendMessage(envelope(command, payload, snapshot.data.revision));
+    if (!response.ok) throw Error(response.code); return response.data;
+  }, { command, payload });
+  const publishSortChange = async (key, activeAt, nativeTitle) => {
+    await publisher.evaluate(async ({ key, activeAt, nativeTitle }) => {
+      const request = indexedDB.open('vaiwl-start'); const db = await new Promise(resolve => { request.onsuccess = () => resolve(request.result); });
+      const tx = db.transaction(['conversations', 'revisions'], 'readwrite');
+      const record = tx.objectStore('conversations').get(key), revision = tx.objectStore('revisions').get('main');
+      record.onsuccess = () => tx.objectStore('conversations').put({ ...record.result, nativeTitle, activity: { ...record.result.activity, lastConfirmedOpenAt: activeAt, lastActiveDate: activeAt.slice(0, 10) }, lastActiveAt: activeAt });
+      revision.onsuccess = () => tx.objectStore('revisions').put({ ...revision.result, value: revision.result.value + 1 });
+      await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); }); db.close();
+    }, { key, activeAt, nativeTitle });
+    return publishCommand('SETTINGS_UPDATE', { patch: { shortcutSectionCollapsed: false } });
+  };
+  await page.bringToFront();
+  await page.evaluate(() => {
+    window.__testRevisionEvents = [];
+    chrome.runtime.onMessage.addListener((message, sender) => { if (message.event === 'revision' && sender.id === chrome.runtime.id) window.__testRevisionEvents.push(message.revision); });
+    window.__gestureEvidence = {};
+    document.addEventListener('pointerup', event => { window.__gestureEvidence.pointerEnd = { at: performance.now(), trusted: event.isTrusted }; }, true);
+    document.addEventListener('compositionstart', event => { window.__gestureEvidence.imeStart = { at: performance.now(), trusted: event.isTrusted }; }, true);
+    document.addEventListener('compositionend', event => { window.__gestureEvidence.imeEnd = { at: performance.now(), trusted: event.isTrusted }; }, true);
+  });
+  const pointerKey = records[6].key, pointerChangedKey = records[17].key;
+  await page.evaluate(() => window.scrollTo(0, 500));
+  const pointerTarget = page.locator(`#workspace-content [data-record-key="${pointerKey}"]`);
+  const pointerBox = await pointerTarget.boundingBox(); assert.ok(pointerBox && pointerBox.y >= 0);
+  await page.mouse.move(pointerBox.x + 35, pointerBox.y + pointerBox.height / 2);
+  await page.keyboard.down('Control'); await page.mouse.down();
+  const pointerBefore = await page.evaluate(changedKey => {
+    const anchor = [...document.querySelectorAll('#workspace-content [data-record-key]')].find(row => row.getBoundingClientRect().bottom > 80);
+    window.__pointerAnchorKey = anchor.dataset.recordKey;
+    new MutationObserver(() => { if (!window.__gestureEvidence.pointerApplied && document.querySelector('.project [data-record-key]')?.dataset.recordKey === changedKey) window.__gestureEvidence.pointerApplied = performance.now(); }).observe(document.getElementById('workspace-content'), { childList: true, subtree: true });
+    return { focus: document.activeElement.dataset.recordKey, anchor: anchor.dataset.recordKey, offset: anchor.getBoundingClientRect().top, first: document.querySelector('.project [data-record-key]').dataset.recordKey };
+  }, pointerChangedKey);
+  const pointerPublished = await publishSortChange(pointerChangedKey, new Date(now.getTime() + 60000).toISOString(), '设计讨论 18 · 指针更新');
+  await page.waitForFunction(revision => window.__testRevisionEvents.includes(revision), pointerPublished.revision);
+  await page.waitForTimeout(150);
+  const pointerHeld = await page.evaluate(() => ({ first: document.querySelector('.project [data-record-key]').dataset.recordKey, focus: document.activeElement.dataset.recordKey, offset: document.querySelector(`[data-record-key="${window.__pointerAnchorKey}"]`).getBoundingClientRect().top }));
+  await mkdir('artifacts', { recursive: true }); await page.screenshot({ path: 'artifacts/ui-pointer-held.png', fullPage: false });
+  assert.equal(pointerHeld.first, pointerBefore.first); assert.equal(pointerHeld.focus, pointerKey); assert.ok(Math.abs(pointerHeld.offset - pointerBefore.offset) <= 1);
+  const pointerOpenPromise = context.waitForEvent('page'); await page.mouse.up(); await page.keyboard.up('Control');
+  const pointerOpen = await pointerOpenPromise;
+  await page.waitForFunction(() => !!window.__gestureEvidence.pointerApplied, null, { timeout: 1000 });
+  const pointerAfter = await page.evaluate(() => ({ evidence: window.__gestureEvidence, focus: document.activeElement.dataset.recordKey, offset: document.querySelector(`[data-record-key="${window.__pointerAnchorKey}"]`).getBoundingClientRect().top }));
+  const pointerCatalog = await readBusinessStores();
+  check('UI-pointer-revision-safe-point', pointerAfter.evidence.pointerEnd.trusted && pointerAfter.evidence.pointerApplied >= pointerAfter.evidence.pointerEnd.at && pointerAfter.evidence.pointerApplied - pointerAfter.evidence.pointerEnd.at <= 1000 && pointerAfter.focus === pointerKey && Math.abs(pointerAfter.offset - pointerBefore.offset) <= 1 && pointerCatalog.openIntents.some(intent => intent.targetRecordKey === pointerKey && intent.evidence.gesture === 'click'), `Trusted held pointer retains its record target and anchor while a real other-tab revision waits; release applies in ${Math.round(pointerAfter.evidence.pointerApplied - pointerAfter.evidence.pointerEnd.at)} ms with the same record focus/anchor and exact open intent.`);
+  await pointerOpen.close(); await page.bringToFront();
+
+  await page.locator('#search-trigger').click();
+  const ime = await context.newCDPSession(page);
+  await ime.send('Input.imeSetComposition', { text: '设计讨论', selectionStart: 4, selectionEnd: 4 });
+  const imeBefore = await page.evaluate(changedKey => {
+    const anchor = [...document.querySelectorAll('#workspace-content [data-record-key]')].find(row => row.getBoundingClientRect().bottom > 80);
+    window.__imeAnchorKey = anchor.dataset.recordKey; window.__imeFirst = document.querySelector('.search-result');
+    new MutationObserver(() => { if (!window.__gestureEvidence.imeApplied && document.querySelector('.search-result')?.dataset.recordKey === changedKey) window.__gestureEvidence.imeApplied = performance.now(); }).observe(document.getElementById('search-results'), { childList: true });
+    return { started: window.__gestureEvidence.imeStart, query: document.getElementById('search-input').value, offset: anchor.getBoundingClientRect().top };
+  }, records[16].key);
+  assert.ok(imeBefore.started?.trusted); assert.equal(imeBefore.query, '设计讨论');
+  const imePublished = await publishSortChange(records[16].key, new Date(now.getTime() + 120000).toISOString(), '设计讨论 17 · 输入更新');
+  await page.waitForFunction(revision => window.__testRevisionEvents.includes(revision), imePublished.revision);
+  await page.waitForTimeout(150);
+  const imeHeld = await page.evaluate(() => ({ unchanged: document.querySelector('.search-result') === window.__imeFirst, focus: document.activeElement.id, query: document.getElementById('search-input').value }));
+  await page.screenshot({ path: 'artifacts/ui-ime-held.png', fullPage: false });
+  assert.ok(imeHeld.unchanged); assert.equal(imeHeld.focus, 'search-input'); assert.equal(imeHeld.query, '设计讨论');
+  await ime.send('Input.insertText', { text: '设计讨论' });
+  await page.waitForFunction(() => !!window.__gestureEvidence.imeApplied, null, { timeout: 1000 });
+  const imeAfter = await page.evaluate(() => ({ evidence: window.__gestureEvidence, focus: document.activeElement.id, query: document.getElementById('search-input').value, offset: document.querySelector(`[data-record-key="${window.__imeAnchorKey}"]`).getBoundingClientRect().top }));
+  check('UI-ime-revision-safe-point', !!imeAfter.evidence.imeEnd && imeAfter.evidence.imeApplied >= imeAfter.evidence.imeEnd.at && imeAfter.evidence.imeApplied - imeAfter.evidence.imeEnd.at <= 1000 && imeAfter.focus === 'search-input' && imeAfter.query === '设计讨论' && Math.abs(imeAfter.offset - imeBefore.offset) <= 1, `Real Chromium CDP composition start is trusted; the browser-generated end has isTrusted=${imeAfter.evidence.imeEnd?.trusted}. Other-tab revision waits through composition and applies in ${Math.round(imeAfter.evidence.imeApplied - imeAfter.evidence.imeEnd.at)} ms, preserving the input buffer, focus and same record anchor. No DOM event is synthesized by the test.`);
+  await ime.detach(); await page.keyboard.press('Escape');
   await page.getByRole('button', { name: '设置', exact: true }).click();
   check('UI-source-limit-visible', (await page.locator('#source-description').textContent()).includes('尚未通过真实验证'), 'Settings disclose source gate as blocked.');
   await page.locator('#settings-dialog [data-close]').first().click();
@@ -330,9 +428,26 @@ try {
   check('UI-search-final-record-reachable', await reviewPage.locator('.search-result').count() === 1 && await reviewPage.locator('.search-result strong').textContent() === '分页会话 1999', 'A match beyond the initial page remains directly searchable.');
   await reviewPage.locator('#search-input').fill('分页会话');
   check('UI-search-query-resets-page', await reviewPage.locator('.search-result').count() === 100, 'Changing the query resets pagination, without retaining a stale expanded count.');
+  await page.close(); await reviewPage.close();
+  const historyPage = await context.newPage(); historyPage.on('pageerror', error => errors.push(error.message));
+  await historyPage.clock.install({ time: new Date(`${today.slice(0, 10)}T23:59:50.000Z`) });
+  await historyPage.goto(`chrome-extension://${id}/newtab.html`); await historyPage.waitForSelector('html[data-start-ready="true"]');
+  await historyPage.locator('#period-older').click(); await historyPage.locator('#period-older').click();
+  const oldNone = records.find(record => record.nativeTitle === '更早区间的独立会话');
+  await historyPage.locator(`[data-record-key="${oldNone.key}"]`).waitFor();
+  const historicalRange = await historyPage.locator('#history-rail').textContent();
+  await historyPage.clock.pauseAt(new Date(`${today.slice(0, 10)}T23:59:59.000Z`));
+  await publishCommand('RECORD_REMOVE', { recordKey: oldNone.key }); await historyPage.clock.runFor(100);
+  assert.equal(await historyPage.locator(`[data-record-key="${oldNone.key}"]`).count(), 0);
+  assert.equal(await historyPage.locator('#history-rail').textContent(), historicalRange);
+  await historyPage.clock.runFor(2000);
+  const midnightDate = await historyPage.evaluate(() => new Date().toISOString().slice(0, 10));
+  assert.notEqual(midnightDate, today.slice(0, 10));
+  await publishCommand('RECORD_RESTORE', { recordKey: oldNone.key }); await historyPage.clock.runFor(100);
+  check('UI-history-segment-tab-update-midnight', await historyPage.locator(`[data-record-key="${oldNone.key}"]`).count() === 1 && await historyPage.locator('#history-rail').textContent() === historicalRange && await historyPage.locator('#period-newer').count() === 1 && await historyPage.evaluate(() => JSON.parse(sessionStorage.getItem('vaiwl-start-view/1')).k) === 2, 'Actual commands from another Start page remove/restore a historical entry; each revision applies within 100 ms of controlled clock advancement. Crossing UTC midnight leaves the current k=2 segment and its frozen range unchanged.');
   check('UI-no-script-errors', errors.length === 0, JSON.stringify(errors));
   const status = checks.length > 0 && checks.every(item => item.status === 'PASS') && errors.length === 0 ? 'PASS' : 'FAIL';
   assert.equal(status, 'PASS', 'UI validation cannot pass with failed checks or page errors.');
-  await writeFile('artifacts/ui-validation.json', JSON.stringify({ status, buildSha: buildInfo.sha, dirty: buildInfo.dirty, browser: await context.browser()?.version(), environment: 'isolated-headless-Chromium-MV3-synthetic-only', sourceGate: 'SOURCE_GATE_BLOCKED', testFont: fontData ? 'Temporary Noto Sans CJK SC injected for test rendering; no font ships or downloads in production.' : 'System fonts', checks, limitations: ['Synthetic direct-IDB fixtures only; this is not ChatGPT metadata, true Edge, or Mac acceptance.'] }, null, 2));
+  await writeFile('artifacts/ui-validation.json', JSON.stringify({ status, buildSha: buildInfo.sha, dirty: buildInfo.dirty, browser: await context.browser()?.version(), environment: 'isolated-headless-Chromium-MV3-synthetic-only', sourceGate: 'SOURCE_GATE_BLOCKED', testFont: fontData ? 'Temporary Noto Sans CJK SC injected for test rendering; no font ships or downloads in production.' : 'System fonts', checks, limitations: ['Synthetic direct-IDB fixtures only; this is not ChatGPT metadata, true Edge, or Mac acceptance.', 'Chromium CDP native compositionstart/update/input are trusted; its browser-generated compositionend isTrusted is false. This exercises actual browser composition, not a Mac operating-system IME.'] }, null, 2));
   console.log(JSON.stringify({ uiChecks: checks.length, status, errors }));
 } finally { await context.close(); }

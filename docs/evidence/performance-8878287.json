@@ -1,0 +1,524 @@
+{
+  "buildSha": "8878287042c981ca114185326f2910b583b34d8e",
+  "dirty": false,
+  "contract": "VAIWL-START-FREE/1.0",
+  "buildManifestSha256": "1f14e4cc3b6b41c3196ed6eea9aa5f1bf6f25d3e280ea63768bc56a3884d4161",
+  "environment": "isolated-headless-Chrome-MV3-synthetic-IDB",
+  "sourceGate": "SOURCE_GATE_BLOCKED",
+  "machine": {
+    "platform": "linux",
+    "release": "7.0.0-1017-azure",
+    "cpuModel": "AMD EPYC 7763 64-Core Processor",
+    "logicalCpuCount": 4,
+    "memoryBytes": 16760344576
+  },
+  "dataset": {
+    "conversations": 2000,
+    "projects": 20,
+    "recordsPerProject": 100,
+    "scopes": 1,
+    "titleLengthCharacters": 17,
+    "activity": "same test day; metadata only"
+  },
+  "conditions": {
+    "navigation": "Twenty fresh extension page documents in one browser profile. IndexedDB already populated; browser and service worker are running. Each document initializes its own JS/DOM and reads the full real IndexedDB through the production owner. Browser/process cold start is excluded.",
+    "search": "Twenty loaded-catalog input events, five each: one result, 100 project results, 2000 broad results, and no results. Production input handler runs unchanged. DOM-ready time and presentation through two requestAnimationFrame callbacks are measured separately.",
+    "observer": "Test-only document_start MutationObserver timestamps html[data-start-ready=true]; navigation timing entry startTime is the origin. No font/CSS injection, CPU throttling, product code modification or production fixture hook."
+  },
+  "checks": [
+    {
+      "id": "PERF-full-search-set-reachable",
+      "status": "PASS",
+      "observed": "Initial 100, explicit +100, all 2000 unique rows reachable, record 1999 independently searchable, query change resets to 100."
+    },
+    {
+      "id": "PERF-newtab-2000-20",
+      "status": "PASS",
+      "thresholdMs": 500,
+      "observedP95Ms": 215.6999999999971,
+      "metric": "navigationStart to html[data-start-ready=true]"
+    },
+    {
+      "id": "PERF-search-feedback",
+      "status": "FAIL",
+      "thresholdMs": 100,
+      "observedP95Ms": 123.70000000001164,
+      "metric": "input dispatch through DOM update and two animation-frame callbacks"
+    },
+    {
+      "id": "PERF-search-dom",
+      "status": "PASS",
+      "thresholdMs": 100,
+      "observedP95Ms": 5.400000000008731,
+      "metric": "synchronous production input handler DOM feedback"
+    },
+    {
+      "id": "PERF-no-page-errors",
+      "status": "PASS",
+      "observed": 0
+    }
+  ],
+  "navigationSamples": [
+    {
+      "index": 1,
+      "readyMs": 217.5,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 2,
+      "readyMs": 177.6999999999971,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 3,
+      "readyMs": 186.5,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 4,
+      "readyMs": 215.6999999999971,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 5,
+      "readyMs": 181.6999999999971,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 6,
+      "readyMs": 190.6999999999971,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 7,
+      "readyMs": 190.3000000000029,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 8,
+      "readyMs": 179.8000000000029,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 9,
+      "readyMs": 183.60000000000582,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 10,
+      "readyMs": 183.40000000000873,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 11,
+      "readyMs": 198.6999999999971,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 12,
+      "readyMs": 201.60000000000582,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 13,
+      "readyMs": 177.5,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 14,
+      "readyMs": 197.8000000000029,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 15,
+      "readyMs": 168,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 16,
+      "readyMs": 177.60000000000582,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 17,
+      "readyMs": 178.89999999999418,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 18,
+      "readyMs": 168.8000000000029,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 19,
+      "readyMs": 168.09999999999127,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    },
+    {
+      "index": 20,
+      "readyMs": 181.6999999999971,
+      "renderedProjects": 20,
+      "coreControlsReady": true
+    }
+  ],
+  "searchSamples": [
+    {
+      "index": 1,
+      "kind": "single-title",
+      "query": "Conversation 0001",
+      "expectedCount": 1,
+      "domReadyMs": 5.400000000008731,
+      "presentedMs": 68.5,
+      "resultCount": 1,
+      "totalMatches": 1,
+      "visibleMatches": 1,
+      "hasMore": false
+    },
+    {
+      "index": 2,
+      "kind": "project-100",
+      "query": "Perf Project 01",
+      "expectedCount": 100,
+      "domReadyMs": 6.400000000008731,
+      "presentedMs": 123.70000000001164,
+      "resultCount": 100,
+      "totalMatches": 100,
+      "visibleMatches": 100,
+      "hasMore": false
+    },
+    {
+      "index": 3,
+      "kind": "broad-2000",
+      "query": "Conversation",
+      "expectedCount": 2000,
+      "domReadyMs": 3.1999999999970896,
+      "presentedMs": 138.10000000000582,
+      "resultCount": 100,
+      "totalMatches": 2000,
+      "visibleMatches": 100,
+      "hasMore": true
+    },
+    {
+      "index": 4,
+      "kind": "no-results",
+      "query": "absent-query-0",
+      "expectedCount": 0,
+      "domReadyMs": 3,
+      "presentedMs": 70.80000000000291,
+      "resultCount": 0,
+      "totalMatches": 0,
+      "visibleMatches": 0,
+      "hasMore": false
+    },
+    {
+      "index": 5,
+      "kind": "single-title",
+      "query": "Conversation 0318",
+      "expectedCount": 1,
+      "domReadyMs": 2.3000000000029104,
+      "presentedMs": 80.30000000000291,
+      "resultCount": 1,
+      "totalMatches": 1,
+      "visibleMatches": 1,
+      "hasMore": false
+    },
+    {
+      "index": 6,
+      "kind": "project-100",
+      "query": "Perf Project 04",
+      "expectedCount": 100,
+      "domReadyMs": 2.8999999999941792,
+      "presentedMs": 16.69999999999709,
+      "resultCount": 100,
+      "totalMatches": 100,
+      "visibleMatches": 100,
+      "hasMore": false
+    },
+    {
+      "index": 7,
+      "kind": "broad-2000",
+      "query": "Conversation",
+      "expectedCount": 2000,
+      "domReadyMs": 4.19999999999709,
+      "presentedMs": 73.19999999999709,
+      "resultCount": 100,
+      "totalMatches": 2000,
+      "visibleMatches": 100,
+      "hasMore": true
+    },
+    {
+      "index": 8,
+      "kind": "no-results",
+      "query": "absent-query-1",
+      "expectedCount": 0,
+      "domReadyMs": 2.8999999999941792,
+      "presentedMs": 121.59999999999127,
+      "resultCount": 0,
+      "totalMatches": 0,
+      "visibleMatches": 0,
+      "hasMore": false
+    },
+    {
+      "index": 9,
+      "kind": "single-title",
+      "query": "Conversation 0635",
+      "expectedCount": 1,
+      "domReadyMs": 2,
+      "presentedMs": 70.19999999999709,
+      "resultCount": 1,
+      "totalMatches": 1,
+      "visibleMatches": 1,
+      "hasMore": false
+    },
+    {
+      "index": 10,
+      "kind": "project-100",
+      "query": "Perf Project 07",
+      "expectedCount": 100,
+      "domReadyMs": 3.2000000000116415,
+      "presentedMs": 79.5,
+      "resultCount": 100,
+      "totalMatches": 100,
+      "visibleMatches": 100,
+      "hasMore": false
+    },
+    {
+      "index": 11,
+      "kind": "broad-2000",
+      "query": "Conversation",
+      "expectedCount": 2000,
+      "domReadyMs": 2.8999999999941792,
+      "presentedMs": 85.5,
+      "resultCount": 100,
+      "totalMatches": 2000,
+      "visibleMatches": 100,
+      "hasMore": true
+    },
+    {
+      "index": 12,
+      "kind": "no-results",
+      "query": "absent-query-2",
+      "expectedCount": 0,
+      "domReadyMs": 2.8000000000029104,
+      "presentedMs": 73,
+      "resultCount": 0,
+      "totalMatches": 0,
+      "visibleMatches": 0,
+      "hasMore": false
+    },
+    {
+      "index": 13,
+      "kind": "single-title",
+      "query": "Conversation 0952",
+      "expectedCount": 1,
+      "domReadyMs": 3.3000000000029104,
+      "presentedMs": 67.89999999999418,
+      "resultCount": 1,
+      "totalMatches": 1,
+      "visibleMatches": 1,
+      "hasMore": false
+    },
+    {
+      "index": 14,
+      "kind": "project-100",
+      "query": "Perf Project 10",
+      "expectedCount": 100,
+      "domReadyMs": 5.100000000005821,
+      "presentedMs": 18.10000000000582,
+      "resultCount": 100,
+      "totalMatches": 100,
+      "visibleMatches": 100,
+      "hasMore": false
+    },
+    {
+      "index": 15,
+      "kind": "broad-2000",
+      "query": "Conversation",
+      "expectedCount": 2000,
+      "domReadyMs": 3.1999999999970896,
+      "presentedMs": 71.69999999999709,
+      "resultCount": 100,
+      "totalMatches": 2000,
+      "visibleMatches": 100,
+      "hasMore": true
+    },
+    {
+      "index": 16,
+      "kind": "no-results",
+      "query": "absent-query-3",
+      "expectedCount": 0,
+      "domReadyMs": 4.399999999994179,
+      "presentedMs": 120.69999999999709,
+      "resultCount": 0,
+      "totalMatches": 0,
+      "visibleMatches": 0,
+      "hasMore": false
+    },
+    {
+      "index": 17,
+      "kind": "single-title",
+      "query": "Conversation 1269",
+      "expectedCount": 1,
+      "domReadyMs": 1.8000000000029104,
+      "presentedMs": 69.89999999999418,
+      "resultCount": 1,
+      "totalMatches": 1,
+      "visibleMatches": 1,
+      "hasMore": false
+    },
+    {
+      "index": 18,
+      "kind": "project-100",
+      "query": "Perf Project 13",
+      "expectedCount": 100,
+      "domReadyMs": 3.099999999991269,
+      "presentedMs": 80.89999999999418,
+      "resultCount": 100,
+      "totalMatches": 100,
+      "visibleMatches": 100,
+      "hasMore": false
+    },
+    {
+      "index": 19,
+      "kind": "broad-2000",
+      "query": "Conversation",
+      "expectedCount": 2000,
+      "domReadyMs": 3.099999999991269,
+      "presentedMs": 94.5,
+      "resultCount": 100,
+      "totalMatches": 2000,
+      "visibleMatches": 100,
+      "hasMore": true
+    },
+    {
+      "index": 20,
+      "kind": "no-results",
+      "query": "absent-query-4",
+      "expectedCount": 0,
+      "domReadyMs": 3.7999999999883585,
+      "presentedMs": 70.29999999998836,
+      "resultCount": 0,
+      "totalMatches": 0,
+      "visibleMatches": 0,
+      "hasMore": false
+    }
+  ],
+  "limitations": [
+    "This uses synthetic directly seeded metadata, not live ChatGPT, real account/source admission or actual user data.",
+    "Linux Chrome for Testing in headless mode does not establish Mac or Edge performance.",
+    "One process and warmed profile only; results are not browser launch or cold operating-system cache measurements.",
+    "Twenty samples provide a bounded engineering check, not a production population latency estimate."
+  ],
+  "navigation": {
+    "count": 20,
+    "minMs": 168,
+    "p50Ms": 181.6999999999971,
+    "p95Ms": 215.6999999999971,
+    "maxMs": 217.5
+  },
+  "searchDOM": {
+    "count": 20,
+    "minMs": 1.8000000000029104,
+    "p50Ms": 3.099999999991269,
+    "p95Ms": 5.400000000008731,
+    "maxMs": 6.400000000008731
+  },
+  "searchPresented": {
+    "count": 20,
+    "minMs": 16.69999999999709,
+    "p50Ms": 73,
+    "p95Ms": 123.70000000001164,
+    "maxMs": 138.10000000000582
+  },
+  "searchByKind": {
+    "single-title": {
+      "dom": {
+        "count": 5,
+        "minMs": 1.8000000000029104,
+        "p50Ms": 2.3000000000029104,
+        "p95Ms": 5.400000000008731,
+        "maxMs": 5.400000000008731
+      },
+      "presented": {
+        "count": 5,
+        "minMs": 67.89999999999418,
+        "p50Ms": 69.89999999999418,
+        "p95Ms": 80.30000000000291,
+        "maxMs": 80.30000000000291
+      }
+    },
+    "project-100": {
+      "dom": {
+        "count": 5,
+        "minMs": 2.8999999999941792,
+        "p50Ms": 3.2000000000116415,
+        "p95Ms": 6.400000000008731,
+        "maxMs": 6.400000000008731
+      },
+      "presented": {
+        "count": 5,
+        "minMs": 16.69999999999709,
+        "p50Ms": 79.5,
+        "p95Ms": 123.70000000001164,
+        "maxMs": 123.70000000001164
+      }
+    },
+    "broad-2000": {
+      "dom": {
+        "count": 5,
+        "minMs": 2.8999999999941792,
+        "p50Ms": 3.1999999999970896,
+        "p95Ms": 4.19999999999709,
+        "maxMs": 4.19999999999709
+      },
+      "presented": {
+        "count": 5,
+        "minMs": 71.69999999999709,
+        "p50Ms": 85.5,
+        "p95Ms": 138.10000000000582,
+        "maxMs": 138.10000000000582
+      }
+    },
+    "no-results": {
+      "dom": {
+        "count": 5,
+        "minMs": 2.8000000000029104,
+        "p50Ms": 3,
+        "p95Ms": 4.399999999994179,
+        "maxMs": 4.399999999994179
+      },
+      "presented": {
+        "count": 5,
+        "minMs": 70.29999999998836,
+        "p50Ms": 73,
+        "p95Ms": 121.59999999999127,
+        "maxMs": 121.59999999999127
+      }
+    }
+  },
+  "status": "FAIL",
+  "browser": "156.0.8078.4",
+  "errors": [],
+  "finishedAt": "2026-11-01T23:06:21.457Z",
+  "runUrl": "https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41360320317",
+  "evidenceNote": "Original failed CI performance artifact, preserved without changing thresholds or dataset. Superseded only by a measured fix on a later SHA."
+}
