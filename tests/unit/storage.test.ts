@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { createRepository, type ArrivalInput, type Repository, type RuntimeImportJob } from '../../src/storage/repository.js';
 import { conversationKey, scopeKey, stagingKey } from '../../src/domain/ids.js';
+import { searchCatalog } from '../../src/domain/projection.js';
+import { createHistoryJob, stepHistoryImport, type HistoryPort } from '../../src/background/import-history.js';
 import { openDatabase, request, STORE_NAMES, transactionDone } from '../../src/storage/db.js';
 import type { AccountScope, EvidenceWitness, OpenIntent } from '../../contracts/free-v1.js';
 const CID = '12345678-abcd-1234-abcd-123456789abc';
@@ -154,4 +156,113 @@ test('D10 concurrent and repeated requests for existing v1 perform only one sche
     assert.equal(snapshot.conversations[0]!.key, original.key); assert.equal(snapshot.conversations[0]!.stableRank, original.stableRank); repo.close();
   }
   assert.equal(upgrades, 1, 'Repeated open(name, 1) calls do not rerun a committed schema upgrade.');
+});
+
+
+test('D1 generic browser-history titles never replace useful titles; same-ID specific updates and search remain stable', async () => {
+  const env = await setup();
+  const original = await env.repo.discoverCandidates([{ url: URL, title: 'Original research title', source: 'local', titleBasis: 'browser-history' }]);
+  assert.deepEqual(original, { accepted: 1, inserted: 1 });
+  const initial = (await env.repo.getSnapshot('unassigned')).conversations[0]!;
+  const opened = await issue(env.repo, initial.key); await binding(env.repo, opened);
+  await env.repo.commitArrival(arrive(opened));
+  const before = (await env.repo.getSnapshot('unassigned')).conversations[0]!;
+  assert.equal(searchCatalog(await env.repo.getSnapshot('unassigned'), 'Original research title', 'unassigned').length, 1);
+  for (const generic of ['ChatGPT', '   ', '', 'ChatGPT - OpenAI', 'New Chat']) {
+    await env.repo.discoverCandidates([{ url: URL, title: generic, source: 'local', titleBasis: 'browser-history' }]);
+    const after = (await env.repo.getSnapshot('unassigned')).conversations[0]!;
+    assert.equal(after.nativeTitle, 'Original research title', JSON.stringify(generic));
+    assert.equal(after.key, before.key);
+    assert.equal(after.conversationId, before.conversationId);
+    assert.equal(after.canonicalUrl, before.canonicalUrl);
+    assert.equal(after.stableRank, before.stableRank);
+    assert.deepEqual(after.owner, before.owner);
+    assert.deepEqual(after.membership, before.membership);
+    assert.deepEqual(after.activity, before.activity);
+    assert.equal(searchCatalog(await env.repo.getSnapshot('unassigned'), 'Original research title', 'unassigned').length, 1);
+  }
+  await env.repo.discoverCandidates([{ url: URL, title: 'Updated specific browser title', source: 'local', titleBasis: 'browser-history' }]);
+  let after = (await env.repo.getSnapshot('unassigned')).conversations[0]!;
+  assert.equal(after.nativeTitle, 'Updated specific browser title');
+  assert.equal(after.key, before.key);
+  assert.equal(searchCatalog(await env.repo.getSnapshot('unassigned'), 'Updated specific browser title', 'unassigned').length, 1);
+  await env.repo.discoverCandidates([{ url: URL, title: 'Native member title', titleBasis: 'native-label' }]);
+  after = (await env.repo.getSnapshot('unassigned')).conversations[0]!;
+  assert.equal(after.nativeTitle, 'Native member title');
+  await env.repo.discoverCandidates([{ url: URL, title: 'Lower-trust history rename', titleBasis: 'browser-history' }]);
+  after = (await env.repo.getSnapshot('unassigned')).conversations[0]!;
+  assert.equal(after.nativeTitle, 'Native member title');
+  const alias = 'https://chat.openai.com/c/' + CID;
+  await env.repo.discoverCandidates([{ url: alias, title: 'Alias generic title', titleBasis: 'browser-history' }]);
+  const snapshot = await env.repo.getSnapshot('unassigned');
+  assert.equal(snapshot.conversations.length, 1);
+  assert.equal(snapshot.conversations[0]!.key, before.key);
+  assert.equal(snapshot.conversations[0]!.nativeTitle, 'Native member title');
+  assert.equal(snapshot.conversations[0]!.canonicalUrl, before.canonicalUrl);
+  env.repo.close();
+});
+
+test('D1 a missing title can be filled by a valid browser-history title without changing the conversation identity', async () => {
+  const { repo } = await setup();
+  const other = '00000000-abcd-1234-abcd-123456789abc';
+  const url = 'https://chatgpt.com/c/' + other;
+  await repo.discoverCandidates([{ url }]);
+  const before = (await repo.getSnapshot('unassigned')).conversations[0]!;
+  assert.equal(before.nativeTitle, null);
+  await repo.discoverCandidates([{ url, title: 'Recovered meaningful title', titleBasis: 'browser-history' }]);
+  const after = (await repo.getSnapshot('unassigned')).conversations[0]!;
+  assert.equal(after.nativeTitle, 'Recovered meaningful title');
+  assert.equal(after.key, before.key);
+  assert.equal(after.conversationId, before.conversationId);
+  assert.equal(after.stableRank, before.stableRank);
+  repo.close();
+});
+
+test('D1 title reconciliation survives repeated visit/import interleaving and preserves Project member titles', async () => {
+  const env = await setup();
+  await env.repo.discoverCandidates([{ url: URL, title: 'Original imported title', titleBasis: 'browser-history' }]);
+  await env.repo.discoverCandidates([{ url: URL, title: 'ChatGPT', titleBasis: 'browser-history' }]);
+  const history: HistoryPort = {
+    async search() { return [{ url: URL, title: 'ChatGPT', lastVisitTime: Date.parse('2026-11-02T00:00:00Z') }]; },
+    async getVisits() { return [{ isLocal: true }]; },
+  };
+  const job = createHistoryJob('all', false, Date.parse('2026-11-02T00:00:00Z'));
+  await env.repo.saveImportJob(job);
+  await stepHistoryImport(env.repo, history, job.id);
+  let record = (await env.repo.getSnapshot('unassigned')).conversations[0]!;
+  assert.equal(record.nativeTitle, 'Original imported title');
+  await env.repo.setSettings({ captureEnabled: true });
+  const projectId = 'g-p-1234567890abcdef1234567890abcdef';
+  await env.repo.observeLocalProjectCandidate({
+    state: 'candidate', relationBasis: 'linked-native-panel', projectId, nativeTitle: 'Synthetic project',
+    canonicalUrl: 'https://chatgpt.com/g/' + projectId + '/project',
+    members: [{ conversationId: CID, nativeTitle: 'Native Project member title', canonicalUrl: URL }],
+  }, { browserSessionId: 's', bindingId: 'b', observationId: 'o', sourceHref: 'https://chatgpt.com/g/' + projectId + '/project' });
+  await env.repo.discoverCandidates([{ url: URL, title: 'ChatGPT', titleBasis: 'browser-history' }]);
+  record = (await env.repo.getSnapshot('unassigned')).conversations[0]!;
+  assert.equal(record.nativeTitle, 'Native Project member title');
+  assert.equal(record.membership.state, 'UNKNOWN');
+  env.repo.close();
+});
+
+test('D1 title write transaction abort and retry preserve the previous title and one stable conversation', async () => {
+  const { repo } = await setup();
+  await repo.discoverCandidates([{ url: URL, title: 'Original title survives abort' }]);
+  const before = (await repo.getSnapshot('unassigned')).conversations[0]!;
+  const originalPut = IDBObjectStore.prototype.put; let calls = 0;
+  IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
+    if (this.name === 'conversations' && ++calls === 1) throw new DOMException('synthetic transaction interruption', 'AbortError');
+    return originalPut.apply(this, args);
+  };
+  try { await assert.rejects(repo.discoverCandidates([{ url: URL, title: 'ChatGPT' }]), { name: 'AbortError' }); }
+  finally { IDBObjectStore.prototype.put = originalPut; }
+  const afterAbort = (await repo.getSnapshot('unassigned')).conversations[0]!;
+  assert.equal(afterAbort.nativeTitle, before.nativeTitle);
+  assert.equal(afterAbort.key, before.key);
+  await repo.discoverCandidates([{ url: URL, title: 'ChatGPT' }]);
+  const afterRetry = (await repo.getSnapshot('unassigned')).conversations;
+  assert.equal(afterRetry.length, 1);
+  assert.equal(afterRetry[0]!.nativeTitle, 'Original title survives abort');
+  assert.equal(afterRetry[0]!.key, before.key);
+  repo.close();
 });

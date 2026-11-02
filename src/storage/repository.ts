@@ -36,8 +36,24 @@ function publicRecord(record: StoredConversation): ConversationRecord {
   return rest as ConversationRecord;
 }
 function settingsValue(row: SettingsRow): StartSettings { const { key: _key, localProfileKey: _profile, ...rest } = row; return rest; }
+type TitleBasis = NonNullable<CandidateInput['titleBasis']>;
+const TITLE_BASIS_RANK: Record<TitleBasis, number> = { unknown: 0, 'browser-history': 1, 'native-label': 2 };
+const GENERIC_CHATGPT_TITLES = new Set(['chatgpt', 'chatgpt - openai', 'chatgpt | openai', 'openai chatgpt', 'new chat', 'chatgpt - new chat']);
+function meaningfulTitle(value: string | null): string | null {
+  const normalized = value?.trim() ?? '';
+  if (!normalized) return null;
+  const key = normalized.normalize('NFKC').replace(/\s+/gu, ' ').toLocaleLowerCase();
+  return GENERIC_CHATGPT_TITLES.has(key) ? null : normalized;
+}
+function chooseTitle(previous: { nativeTitle: string | null; titleBasis: TitleBasis; titleObservedAt: string | null }, incoming: string | null, basis: TitleBasis, observedAt: string) {
+  const next = meaningfulTitle(incoming), current = meaningfulTitle(previous.nativeTitle);
+  if (!next) return { nativeTitle: current, titleBasis: current ? previous.titleBasis : 'unknown' as const, titleObservedAt: current ? previous.titleObservedAt : null };
+  if (current && TITLE_BASIS_RANK[previous.titleBasis] > TITLE_BASIS_RANK[basis]) return { nativeTitle: current, titleBasis: previous.titleBasis, titleObservedAt: previous.titleObservedAt };
+  return { nativeTitle: next, titleBasis: basis, titleObservedAt: observedAt };
+}
 function newCandidate(key: string, profile: string, identity: NonNullable<ReturnType<typeof parseConversationUrl>>, input: CandidateInput, now: string, rank: number, revision: number): StoredConversation {
-  return decorate({ key, provider: 'chatgpt', owner: { kind: 'unassigned', localProfileKey: profile, accountKey: null }, conversationId: identity.conversationId, canonicalUrl: identity.canonicalUrl, nativeTitle: title(input.title), titleBasis: input.title ? input.titleBasis ?? 'browser-history' : 'unknown', titleObservedAt: input.title ? now : null, availability: 'unverified', firstSeenAt: now, lastSeenAt: now, browserLastVisitAt: input.lastVisitAt ? iso(input.lastVisitAt) : null, activity: null, stableRank: rank, revision, membership: { state: 'UNKNOWN', projectId: null, reason: 'scope-unverified' } }, input.source ?? 'unknown');
+  const nativeTitle = meaningfulTitle(title(input.title));
+  return decorate({ key, provider: 'chatgpt', owner: { kind: 'unassigned', localProfileKey: profile, accountKey: null }, conversationId: identity.conversationId, canonicalUrl: identity.canonicalUrl, nativeTitle, titleBasis: nativeTitle ? input.titleBasis ?? 'browser-history' : 'unknown', titleObservedAt: nativeTitle ? now : null, availability: 'unverified', firstSeenAt: now, lastSeenAt: now, browserLastVisitAt: input.lastVisitAt ? iso(input.lastVisitAt) : null, activity: null, stableRank: rank, revision, membership: { state: 'UNKNOWN', projectId: null, reason: 'scope-unverified' } }, input.source ?? 'unknown');
 }
 
 export class Repository {
@@ -99,8 +115,12 @@ export class Repository {
         const fresh = newCandidate(p.key, ctx.settings.localProfileKey, p.identity, p.input, now, previous?.stableRank ?? ctx.rank(), ctx.revision.value + 1);
         if (previous) {
           fresh.firstSeenAt = previous.firstSeenAt; fresh.activity = previous.activity; fresh.availability = previous.availability;
+          // A history refresh is metadata for the same staged entity, not a new
+          // ownership/membership decision. Keep identity-bearing state stable.
+          fresh.owner = previous.owner; fresh.membership = previous.membership;
+          fresh.canonicalUrl = previous.canonicalUrl; fresh.stableRank = previous.stableRank;
           if (previous.localProjectCandidate) fresh.localProjectCandidate = previous.localProjectCandidate;
-          if (!fresh.nativeTitle || previous.titleBasis === 'native-label' && fresh.titleBasis !== 'native-label') { fresh.nativeTitle = previous.nativeTitle; fresh.titleBasis = previous.titleBasis; fresh.titleObservedAt = previous.titleObservedAt; }
+          Object.assign(fresh, chooseTitle(previous, fresh.nativeTitle, fresh.titleBasis, fresh.titleObservedAt ?? now));
           if (!fresh.browserLastVisitAt || previous.browserLastVisitAt && instant(previous.browserLastVisitAt)! > instant(fresh.browserLastVisitAt)!) fresh.browserLastVisitAt = previous.browserLastVisitAt;
         } else inserted++;
         await request(store.put(decorate(fresh, p.input.source))); accepted++; ctx.changed();
@@ -289,7 +309,7 @@ export class Repository {
       // not upgrade account/object availability from this weaker opening fact.
       if (input.confirmationBasis !== 'browser-navigation') record.availability = 'reachable';
       record.lastSeenAt = now; record.revision = ctx.revision.value + 1;
-      if (input.nativeTitle) { record.nativeTitle = title(input.nativeTitle); record.titleBasis = 'native-label'; record.titleObservedAt = now; }
+      Object.assign(record, chooseTitle(record, title(input.nativeTitle), 'native-label', now));
       await request(conversations.put(decorate(record, record.browserSource)));
       intent.resolvedRecordKey = key; intent.committedRecordKey = key; intent.confirmationBasis = input.confirmationBasis ?? 'metadata-arrival'; intent.state = 'committed'; await request(store.put(intent)); ctx.changed();
       return { state: intent.state, recordKey: key };
@@ -327,7 +347,7 @@ export class Repository {
       const oldWitness = oldEvidenceId ? await request<EvidenceWitness | undefined>(ctx.tx.objectStore('witnesses').get(oldEvidenceId)) : undefined;
       if (oldWitness && oldWitness.sourceDomain === input.witness.sourceDomain && oldWitness.sourceRevision > input.witness.sourceRevision) return key;
       const membership = reduceMembership(previousMembership, { membership: input.membership, witness: input.witness }, { scopeKey: input.scope.key, documentId: input.documentId, routeEpoch: input.routeEpoch, scopeEpoch: input.scopeEpoch }, oldWitness);
-      const record = decorate({ key, provider: 'chatgpt', owner: { kind: 'scoped', scopeKey: input.scope.key }, conversationId: parsed.conversationId, canonicalUrl: parsed.canonicalUrl, nativeTitle: title(input.nativeTitle) ?? old?.nativeTitle ?? null, titleBasis: input.nativeTitle ? 'native-label' : old?.titleBasis ?? 'unknown', titleObservedAt: input.nativeTitle ? now : old?.titleObservedAt ?? null, availability: old?.availability ?? 'unverified', firstSeenAt: old?.firstSeenAt ?? now, lastSeenAt: now, browserLastVisitAt: old?.browserLastVisitAt ?? null, activity: old?.activity ?? null, stableRank: old?.stableRank ?? ctx.rank(), revision: ctx.revision.value + 1, membership });
+      const record = decorate({ key, provider: 'chatgpt', owner: { kind: 'scoped', scopeKey: input.scope.key }, conversationId: parsed.conversationId, canonicalUrl: parsed.canonicalUrl, ...chooseTitle(old ?? { nativeTitle: null, titleBasis: 'unknown', titleObservedAt: null }, title(input.nativeTitle), 'native-label', now), availability: old?.availability ?? 'unverified', firstSeenAt: old?.firstSeenAt ?? now, lastSeenAt: now, browserLastVisitAt: old?.browserLastVisitAt ?? null, activity: old?.activity ?? null, stableRank: old?.stableRank ?? ctx.rank(), revision: ctx.revision.value + 1, membership });
       await request(ctx.tx.objectStore('scopes').put(input.scope)); await request(ctx.tx.objectStore('witnesses').put(input.witness));
       if (input.project) await request(ctx.tx.objectStore('projects').put({ ...input.project, revision: ctx.revision.value + 1 }));
       await request(store.put(record)); await pruneWitnesses(ctx); ctx.changed(); return key;
