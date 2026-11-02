@@ -14,7 +14,8 @@
     "audit": "node scripts/audit.mjs",
     "test:browser": "node tests/browser/extension.mjs",
     "package": "node scripts/package.mjs",
-    "verify": "npm run typecheck && npm test && npm run build && npm run audit"
+    "verify": "npm run typecheck && npm test && npm run build && npm run audit",
+    "test:edge-tabstrip": "node tests/browser/edge-tabstrip.mjs"
   },
   "devDependencies": {
     "@types/chrome": "0.3.7",

@@ -2,6 +2,14 @@
 
 当前合同修订：`2026-11-03-native-experience`。本文件说明验证范围；交付包的 `build.json`、`verification/*.json` 及对应GitHub Actions是实际SHA和最终结果依据，不能引用另一提交的绿色结果。
 
+## Edge 标签栏专项：真实 FAIL，不由页面层 PASS 替代（2026-11-03）
+
+基线7372bd17 clean build，Mac Edge 156.0.4314.58，全新独立 Profile。生产同一紫色PNG：直接入口真实标签栏256逻辑像素，原生入口0；页面图标两者均正确。两组最小夹具共18场景保留完整整窗截图、DOM/tabs元数据、地址栏值与哈希，证据见 [专项报告](evidence/edge-favicon-20261103/REPORT.md)。
+
+新增 `tests/browser/edge-tabstrip.mjs` + macOS窗口/像素helper：直接紫色正例、原生首次、原生UI改青色、再次打开、独立浏览器重启后的原生入口、重启后直接青色正例。每项两次真实标签栏截图；DOM/存储/PNG解码与标签栏结果分别记录；FAIL退出1，基础设施ERROR/BLOCKED退出2。仅常规CI变绿不得表述为此项通过。同SHA专用门回执另附PR #1，保持Draft。
+
+旧 `native-experience.mjs` 为headless并直接打开扩展URL，其href断言与网页截图均不覆盖浏览器标签栏。本轮没有修改或移除这些已通过的断言，也没有以恢复缓存/重装/修改用户真实Profile作为修复。没有再做本地书签、D1或历史目录专项。
+
 ## 本次新增覆盖
 
 原生体验测试运行真实扩展页面和真实书签API，含三种偏好、拒绝分支、实际撤权、显式去重迁移、标题与图标持久化、实际扩展Reload、恶意图片拒绝、统一来源渲染。`native-experience-validation.json`为Chromium；`edge-native-validation.json`仅在实际Edge执行时产生，不伪装CI环境。

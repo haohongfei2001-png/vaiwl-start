@@ -1,0 +1,812 @@
+{
+  "schema": "vaiwl-edge-favicon-evidence/1",
+  "sourceSha": "7372bd17af283a10b602648e4db36a8ff7b2b53d",
+  "dirty": false,
+  "edgeVersion": "156.0.4314.58",
+  "osVersion": "27.0",
+  "architecture": "arm64",
+  "productionRuntimeHashes": {
+    "manifest.json": "b14f8099a6836854327c36a1f79bbd5bcef943b62e1ab60b9a6533b92c5afccc",
+    "service-worker.js": "912fb0c8fe8cad323af179ab9099d1e0f65d65e82e976c36707b561924cc577e",
+    "content.js": "60f18ae3283c849928c153f9ac32af22a769967af8f80887d8fc49facb165e59",
+    "newtab.js": "2155ffa4aa4cb48cea06e2ea185711dc75c70f45e3553b403b010b6fa0e99cd7",
+    "newtab.html": "08758a3da7e2df6dedcd5b35150f4c1b56abc5ffd417171e18adbf261a735b05",
+    "newtab.css": "3ecd7c812c947c00454645e302ca49e05e545190697965a856824e853a2d4d12",
+    "source-check.js": "c3976d10475a070c8eacde575728a85900be84def311b1930ef1bac10fb4a87a",
+    "source-check.html": "4f8fa7730a65e6c11ac55ed4610542d7872bb8d0f468cede899e35fc0d2d0299",
+    "source-check.css": "aa92429e0414394021f25e7337b426c7827edd9483140b785beebdf5762ab013",
+    "tab-chrome.svg": "7dd23336734a93b216f00f4f85dee6ad769641e431e56a261e53ab6e58f26598",
+    "tab-edge.svg": "e110c154bef3cff8de34290d4f7697101af6edb1330bb5c4b1b213ec6c8eed5e",
+    "tab-product.svg": "e0e4e637d2a4084bb269bb5fbe062585a298c56d1a2eb82d36b06bae88fd9b22"
+  },
+  "production": [
+    {
+      "case": "01-direct-custom",
+      "documentUrl": "chrome-extension://hbhjbfcffbfedififolfjkocgcboggka/newtab.html",
+      "title": "新建标签页",
+      "icons": [
+        {
+          "kind": "data-png",
+          "sha256": "7175f49c9d4cdca39e54e1c707f74c9ada05b02f5324d98de4cab0b3cffe3403",
+          "resource": null
+        }
+      ],
+      "window": {
+        "pid": 92951,
+        "id": 99240,
+        "bounds": {
+          "Height": 760,
+          "Width": 1100,
+          "X": 223,
+          "Y": 40
+        }
+      },
+      "screenshot": {
+        "file": "screenshots/production-01-direct-custom.png",
+        "sha256": "5c80a9047d37c98aaef4495ce2d7c9fdfa4a9639a32aab3cc245e791881112bc",
+        "bytes": 211668
+      },
+      "observedTabstrip": "CUSTOM_MAGENTA",
+      "pixels": {
+        "imageHeight": 1520,
+        "imageWidth": 2200,
+        "marker": "magenta",
+        "markerBoundsInCrop": [
+          52,
+          24,
+          83,
+          55
+        ],
+        "markerLogicalPixels": 256,
+        "markerPixels": 1024,
+        "roiLogical": [
+          100,
+          0,
+          260,
+          44
+        ],
+        "scaleX": 2,
+        "scaleY": 2
+      }
+    },
+    {
+      "case": "02-native-custom",
+      "documentUrl": "chrome-extension://hbhjbfcffbfedififolfjkocgcboggka/newtab.html",
+      "title": "新建标签页",
+      "icons": [
+        {
+          "kind": "data-png",
+          "sha256": "7175f49c9d4cdca39e54e1c707f74c9ada05b02f5324d98de4cab0b3cffe3403",
+          "resource": null
+        }
+      ],
+      "window": {
+        "pid": 92951,
+        "id": 99240,
+        "bounds": {
+          "Height": 760,
+          "Width": 1100,
+          "X": 223,
+          "Y": 40
+        }
+      },
+      "screenshot": {
+        "file": "screenshots/production-02-native-custom.png",
+        "sha256": "22a18c6ac34569782ed4c638d18ec890e39a659b766753578e3933d075652e4f",
+        "bytes": 277192
+      },
+      "observedTabstrip": "EDGE_DEFAULT_NTP",
+      "pixels": {
+        "imageHeight": 1520,
+        "imageWidth": 2200,
+        "marker": "magenta",
+        "markerBoundsInCrop": [],
+        "markerLogicalPixels": 0,
+        "markerPixels": 0,
+        "roiLogical": [
+          100,
+          0,
+          260,
+          44
+        ],
+        "scaleX": 2,
+        "scaleY": 2
+      }
+    },
+    {
+      "case": "03-native-product",
+      "documentUrl": "chrome-extension://hbhjbfcffbfedififolfjkocgcboggka/newtab.html",
+      "title": "新建标签页",
+      "icons": [
+        {
+          "kind": "extension-resource",
+          "sha256": "1b675247b40d713006e8643e7bdfb8997c0048cb5893612b4b706934203cd721",
+          "resource": "chrome-extension://hbhjbfcffbfedififolfjkocgcboggka/tab-product.svg"
+        }
+      ],
+      "window": {
+        "pid": 92951,
+        "id": 99240,
+        "bounds": {
+          "Height": 760,
+          "Width": 1100,
+          "X": 223,
+          "Y": 40
+        }
+      },
+      "screenshot": {
+        "file": "screenshots/production-03-native-product.png",
+        "sha256": "9cc210fc91bc904eff409ba9389db18f7bb28296756bcbb74e05785a37255bae",
+        "bytes": 231543
+      },
+      "observedTabstrip": "EDGE_DEFAULT_NTP"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "no-manifest",
+      "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0",
+      "status": "CAPTURED",
+      "overrideAccepted": true,
+      "cases": [
+        {
+          "case": "01-native-static-red",
+          "documentUrl": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/newtab.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "extension-resource",
+              "sha256": "f94a1beeffc8fd6d21b00b1782e5043cac21559c5014bf37daa5c5c1a2d8fc42",
+              "resource": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/static-red.png"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "extension-resource",
+                "sha256": "f94a1beeffc8fd6d21b00b1782e5043cac21559c5014bf37daa5c5c1a2d8fc42",
+                "resource": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/static-red.png"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/no-manifest-01-native-static-red.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "02-native-dynamic-green",
+          "documentUrl": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/newtab.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "data-png",
+              "sha256": "8aa05d8eac31b108e7555bf16d4fcdfe3bd3578d5dfa2ee842372f2c130acc92",
+              "resource": null
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "data-png",
+                "sha256": "8aa05d8eac31b108e7555bf16d4fcdfe3bd3578d5dfa2ee842372f2c130acc92",
+                "resource": null
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/no-manifest-02-native-dynamic-green.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "03-native-reinsert-green",
+          "documentUrl": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/newtab.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "data-png",
+              "sha256": "8aa05d8eac31b108e7555bf16d4fcdfe3bd3578d5dfa2ee842372f2c130acc92",
+              "resource": null
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "data-png",
+                "sha256": "8aa05d8eac31b108e7555bf16d4fcdfe3bd3578d5dfa2ee842372f2c130acc92",
+                "resource": null
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/no-manifest-03-native-reinsert-green.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "04-native-blob-green",
+          "documentUrl": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/newtab.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "blob-png",
+              "sha256": "0f4a80c65d457e8af4924bfc1aeb2dafb66178f197203e6a4a51efed55317e57",
+              "resource": "blob:chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/327d6f0f-cf77-41a0-a642-27fe99d74f83"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "blob-png",
+                "sha256": "0f4a80c65d457e8af4924bfc1aeb2dafb66178f197203e6a4a51efed55317e57",
+                "resource": "blob:chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/327d6f0f-cf77-41a0-a642-27fe99d74f83"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/no-manifest-04-native-blob-green.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "05-replace-hash",
+          "documentUrl": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/newtab.html#probe",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "blob-png",
+              "sha256": "0f4a80c65d457e8af4924bfc1aeb2dafb66178f197203e6a4a51efed55317e57",
+              "resource": "blob:chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/327d6f0f-cf77-41a0-a642-27fe99d74f83"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "blob-png",
+                "sha256": "0f4a80c65d457e8af4924bfc1aeb2dafb66178f197203e6a4a51efed55317e57",
+                "resource": "blob:chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/327d6f0f-cf77-41a0-a642-27fe99d74f83"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/no-manifest-05-replace-hash.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "06-replace-query",
+          "documentUrl": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/newtab.html?probe=1",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "extension-resource",
+              "sha256": "f94a1beeffc8fd6d21b00b1782e5043cac21559c5014bf37daa5c5c1a2d8fc42",
+              "resource": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/static-red.png"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "extension-resource",
+                "sha256": "f94a1beeffc8fd6d21b00b1782e5043cac21559c5014bf37daa5c5c1a2d8fc42",
+                "resource": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/static-red.png"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/no-manifest-06-replace-query.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "07-replace-path",
+          "documentUrl": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/other-state.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "extension-resource",
+              "sha256": "f94a1beeffc8fd6d21b00b1782e5043cac21559c5014bf37daa5c5c1a2d8fc42",
+              "resource": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/static-red.png"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "extension-resource",
+                "sha256": "f94a1beeffc8fd6d21b00b1782e5043cac21559c5014bf37daa5c5c1a2d8fc42",
+                "resource": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/static-red.png"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/no-manifest-07-replace-path.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "08-location-other",
+          "documentUrl": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/other.html",
+          "title": "OTHER EXTENSION PAGE",
+          "domIcons": [
+            {
+              "kind": "extension-resource",
+              "sha256": "f94a1beeffc8fd6d21b00b1782e5043cac21559c5014bf37daa5c5c1a2d8fc42",
+              "resource": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/static-red.png"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/other.html",
+              "title": "OTHER EXTENSION PAGE",
+              "icon": {
+                "kind": "extension-resource",
+                "sha256": "f94a1beeffc8fd6d21b00b1782e5043cac21559c5014bf37daa5c5c1a2d8fc42",
+                "resource": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/static-red.png"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": "extension://jbcmjkblpfcmpnakmlbggdmacombenap/other.html"
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/no-manifest-08-location-other.png",
+            "sha256": "d0420dada7c729b1830650de06a2f889f2b08ad90b1e60454d7759219fd87f5c",
+            "bytes": 130396
+          },
+          "observedTabstrip": "STATIC_RED"
+        },
+        {
+          "case": "09-direct-static-red",
+          "documentUrl": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/newtab.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "extension-resource",
+              "sha256": "f94a1beeffc8fd6d21b00b1782e5043cac21559c5014bf37daa5c5c1a2d8fc42",
+              "resource": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/static-red.png"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/newtab.html",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "extension-resource",
+                "sha256": "f94a1beeffc8fd6d21b00b1782e5043cac21559c5014bf37daa5c5c1a2d8fc42",
+                "resource": "chrome-extension://jbcmjkblpfcmpnakmlbggdmacombenap/static-red.png"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": "extension://jbcmjkblpfcmpnakmlbggdmacombenap/newtab.html"
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/no-manifest-09-direct-static-red.png",
+            "sha256": "30a43199065bc444d017d04fc699bee08ad5a4740f636c62fb7d473dd8d38f68",
+            "bytes": 136044
+          },
+          "observedTabstrip": "STATIC_RED"
+        }
+      ],
+      "fixtureHashes": {
+        "worker.js": "e69b1a1801e3390fbfb8f2aa904df7b0fd2ae201fcf160c9445b7c805ddcdfc8",
+        "newtab.html": "09452966e350e9c5b1c7834eb12dfa25efdb6a1ec1fdb6a50a7e719575a205c0",
+        "manifest-blue.png": "d637cb4c0d2997ece51fdcef275348354aacdf100ea5f101fa2e65ab218e49eb",
+        "manifest.json": "f8ab134402a65423617f2f8d0730556ac932bf189ba47c8d21e80a5fb7a5800b",
+        "other.html": "0b306525a092d882ddd4f0e6fbb76d2ca8e590a6eb3c08ac8cf585eb8efb95db",
+        "static-red.png": "462b1cc7a63257c03fa5a08e0e7b69cf479ce881f096118bb304e7baa26639c5"
+      }
+    },
+    {
+      "id": "manifest-blue",
+      "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0",
+      "status": "CAPTURED",
+      "overrideAccepted": true,
+      "cases": [
+        {
+          "case": "01-native-static-red",
+          "documentUrl": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/newtab.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "extension-resource",
+              "sha256": "df90ab3182dafd12c5a245174068487f4007dbcd172a444bcb9b9c75983e3d11",
+              "resource": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/static-red.png"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "extension-resource",
+                "sha256": "df90ab3182dafd12c5a245174068487f4007dbcd172a444bcb9b9c75983e3d11",
+                "resource": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/static-red.png"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/manifest-blue-01-native-static-red.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "02-native-dynamic-green",
+          "documentUrl": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/newtab.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "data-png",
+              "sha256": "8aa05d8eac31b108e7555bf16d4fcdfe3bd3578d5dfa2ee842372f2c130acc92",
+              "resource": null
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "data-png",
+                "sha256": "8aa05d8eac31b108e7555bf16d4fcdfe3bd3578d5dfa2ee842372f2c130acc92",
+                "resource": null
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/manifest-blue-02-native-dynamic-green.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "03-native-reinsert-green",
+          "documentUrl": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/newtab.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "data-png",
+              "sha256": "8aa05d8eac31b108e7555bf16d4fcdfe3bd3578d5dfa2ee842372f2c130acc92",
+              "resource": null
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "data-png",
+                "sha256": "8aa05d8eac31b108e7555bf16d4fcdfe3bd3578d5dfa2ee842372f2c130acc92",
+                "resource": null
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/manifest-blue-03-native-reinsert-green.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "04-native-blob-green",
+          "documentUrl": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/newtab.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "blob-png",
+              "sha256": "83e2e5bd8880300b2bbfb2cdcff5ce99954274abc9853d4146f8475fc4752724",
+              "resource": "blob:chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/83d8098e-8435-480e-8fdf-70e821abd301"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "blob-png",
+                "sha256": "83e2e5bd8880300b2bbfb2cdcff5ce99954274abc9853d4146f8475fc4752724",
+                "resource": "blob:chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/83d8098e-8435-480e-8fdf-70e821abd301"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/manifest-blue-04-native-blob-green.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "05-replace-hash",
+          "documentUrl": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/newtab.html#probe",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "blob-png",
+              "sha256": "83e2e5bd8880300b2bbfb2cdcff5ce99954274abc9853d4146f8475fc4752724",
+              "resource": "blob:chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/83d8098e-8435-480e-8fdf-70e821abd301"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "blob-png",
+                "sha256": "83e2e5bd8880300b2bbfb2cdcff5ce99954274abc9853d4146f8475fc4752724",
+                "resource": "blob:chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/83d8098e-8435-480e-8fdf-70e821abd301"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/manifest-blue-05-replace-hash.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "06-replace-query",
+          "documentUrl": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/newtab.html?probe=1",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "extension-resource",
+              "sha256": "df90ab3182dafd12c5a245174068487f4007dbcd172a444bcb9b9c75983e3d11",
+              "resource": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/static-red.png"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "extension-resource",
+                "sha256": "df90ab3182dafd12c5a245174068487f4007dbcd172a444bcb9b9c75983e3d11",
+                "resource": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/static-red.png"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/manifest-blue-06-replace-query.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "07-replace-path",
+          "documentUrl": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/other-state.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "extension-resource",
+              "sha256": "df90ab3182dafd12c5a245174068487f4007dbcd172a444bcb9b9c75983e3d11",
+              "resource": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/static-red.png"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "edge://newtab/",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "extension-resource",
+                "sha256": "df90ab3182dafd12c5a245174068487f4007dbcd172a444bcb9b9c75983e3d11",
+                "resource": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/static-red.png"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": ""
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/manifest-blue-07-replace-path.png",
+            "sha256": "e1b1540ceb2ba33ecca5f6d8dcd54f7a062ec66778985c01bcffa3a6fad410e0",
+            "bytes": 155990
+          },
+          "observedTabstrip": "EDGE_DEFAULT_NTP"
+        },
+        {
+          "case": "08-location-other",
+          "documentUrl": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/other.html",
+          "title": "OTHER EXTENSION PAGE",
+          "domIcons": [
+            {
+              "kind": "extension-resource",
+              "sha256": "df90ab3182dafd12c5a245174068487f4007dbcd172a444bcb9b9c75983e3d11",
+              "resource": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/static-red.png"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/other.html",
+              "title": "OTHER EXTENSION PAGE",
+              "icon": {
+                "kind": "extension-resource",
+                "sha256": "df90ab3182dafd12c5a245174068487f4007dbcd172a444bcb9b9c75983e3d11",
+                "resource": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/static-red.png"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": "extension://hcjekhdbgkghgoimihmcfjmohkhnfola/other.html"
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/manifest-blue-08-location-other.png",
+            "sha256": "5ced90f7819c648c8707339d667def2d35a49dd8f9e761489890e6668d224c8d",
+            "bytes": 130825
+          },
+          "observedTabstrip": "STATIC_RED"
+        },
+        {
+          "case": "09-direct-static-red",
+          "documentUrl": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/newtab.html",
+          "title": "ISOLATED FAVICON FIXTURE",
+          "domIcons": [
+            {
+              "kind": "extension-resource",
+              "sha256": "df90ab3182dafd12c5a245174068487f4007dbcd172a444bcb9b9c75983e3d11",
+              "resource": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/static-red.png"
+            }
+          ],
+          "tabs": [
+            {
+              "url": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/newtab.html",
+              "title": "ISOLATED FAVICON FIXTURE",
+              "icon": {
+                "kind": "extension-resource",
+                "sha256": "df90ab3182dafd12c5a245174068487f4007dbcd172a444bcb9b9c75983e3d11",
+                "resource": "chrome-extension://hcjekhdbgkghgoimihmcfjmohkhnfola/static-red.png"
+              }
+            }
+          ],
+          "addressField": [
+            {
+              "title": "地址和搜索栏",
+              "value": "extension://hcjekhdbgkghgoimihmcfjmohkhnfola/newtab.html"
+            }
+          ],
+          "screenshot": {
+            "file": "screenshots/manifest-blue-09-direct-static-red.png",
+            "sha256": "7369f8d0d3d94f98787d5ab00eb769dc7df8dcb36a49cf00ed5447c4353a21ea",
+            "bytes": 136100
+          },
+          "observedTabstrip": "STATIC_RED"
+        }
+      ],
+      "fixtureHashes": {
+        "worker.js": "e69b1a1801e3390fbfb8f2aa904df7b0fd2ae201fcf160c9445b7c805ddcdfc8",
+        "newtab.html": "09452966e350e9c5b1c7834eb12dfa25efdb6a1ec1fdb6a50a7e719575a205c0",
+        "manifest-blue.png": "d637cb4c0d2997ece51fdcef275348354aacdf100ea5f101fa2e65ab218e49eb",
+        "manifest.json": "17ad77c26de46565427fe1f355c423fdb6bcdd8af536f3928d8543af90ae899f",
+        "other.html": "0b306525a092d882ddd4f0e6fbb76d2ca8e590a6eb3c08ac8cf585eb8efb95db",
+        "static-red.png": "462b1cc7a63257c03fa5a08e0e7b69cf479ce881f096118bb304e7baa26639c5"
+      }
+    }
+  ],
+  "conclusion": "BROWSER_NATIVE_NTP_TABSTRIP_LIMITATION_IN_TESTED_VERSION",
+  "featureStatus": "FAIL",
+  "productionChanged": false
+}

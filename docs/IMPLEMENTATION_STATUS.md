@@ -2,6 +2,12 @@
 
 合同：`VAIWL-START-FREE/1.0 / 2026-11-03-native-experience`。唯一分支：`codex/free-v1-implementation`，Draft PR #1。
 
+## Edge 原生新标签页 favicon 专项结论（2026-11-03）
+
+**当前仍为 FAIL / BROWSER_NATIVE_NTP_TABSTRIP_LIMITATION_IN_TESTED_VERSION。** 在 macOS Edge 156.0.4314.58 的全新隔离 Profile 中，同一自定义 PNG 在直接扩展入口显示正常，在原生新标签页入口 DOM / favIconUrl 正确而真实标签栏仍为默认图标。两组共18个最小夹具场景排除了静态/动态资源、manifest fallback 与链接更新等原因。普通扩展页跳转能恢复图标，但地址栏显示扩展 URL，未采纳为正式修复。结论限定于被测版本，不宣称 Edge 永久不支持。
+
+本轮只增加真实标签栏像素测试、证据与状态修正；生产实现和正式要求未降低。旧 headless / DOM 图标 PASS 不能替代本项。详见 [专项证据与替代方案](evidence/edge-favicon-20261103/REPORT.md)；新门为 `npm run test:edge-tabstrip`，已知失败保持 FAIL/退出码1。普通 CI 成功不解除本项阻断。
+
 ## 已实现的产品行为
 
 - 工作空间统一项目→窗口。UNKNOWN只有一个待归属日期区，不按主动打开/历史浏览分组。PROJECT/NONE和候选仍遵守原证据、Profile/账号边界。
