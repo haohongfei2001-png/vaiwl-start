@@ -13,7 +13,10 @@ assert.equal(manifest.chrome_url_overrides.newtab, 'newtab.html');
 const html = await readFile('dist/newtab.html', 'utf8');
 assert.ok(!/<iframe|\son\w+\s*=|javascript:/i.test(html));
 assert.ok(!/<script(?![^>]*\bsrc=)[^>]*>/i.test(html));
-const bundles = ['content.js', 'newtab.js', 'service-worker.js'];
+const probeHtml = await readFile('dist/source-check.html', 'utf8');
+assert.ok(!/<iframe|\son\w+\s*=|javascript:/i.test(probeHtml));
+assert.ok(!/<script(?![^>]*\bsrc=)[^>]*>/i.test(probeHtml));
+const bundles = ['content.js', 'newtab.js', 'service-worker.js', 'source-check.js'];
 const sources = JSON.parse(await readFile('artifacts/build-meta.json', 'utf8'));
 for (const name of bundles) {
   const code = await readFile('dist/' + name, 'utf8');

@@ -2,6 +2,23 @@
 
 唯一实现线：`codex/free-v1-implementation`。合同：`VAIWL-START-FREE/1.0`。
 
+## 本轮 M0 恢复（2026-11-02）
+
+恢复基线：`a6697b0496f9adaef17495b786712ad50fa49e65`，远端 PR #1 为 Open/Draft；基线 Actions `41361304201` 为 SUCCESS，两个交付 artifact 均未过期。当前代码提交由本文件所属 Git 提交与包内 `build.json` 定位；后续同 SHA 机器回执不能用工作期 dirty 回执替代。
+
+本轮修复了真实断点：Project SPA 路由通知、固定 parser 有限 hydration 等待、身份单 reader/路由失效、BFCache suspend/resume、来源状态绑定与30秒期限、Start 目标文档/路由冻结、reload/绕行/迟到错误/关闭和旧 HELLO 竞争。未更改 12-store 数据层、冻结首页布局、历史导入或 Free/Pro 边界。
+
+新增正式构建中的 `source-check.html` 受控入口，位于设置的来源详情内。只采固定来源，严格导出脱敏白名单；每个预定步骤一次、整轮30分钟，无开关提升来源权威。结束、过期、worker中断或撤权均停止并清理本轮密钥。结构选取只限已知元数据边界，不读正文或文字。唯一用户操作组见 [M0_CONTROLLED_CHECK.zh-CN.md](M0_CONTROLLED_CHECK.zh-CN.md)。
+
+| 来源 | 本轮可验证增量 | 真实状态 |
+|---|---|---|
+| M0-A | 不再永久缓存；主体/roster 可作本轮匿名对照，切换迟到结果拒绝 | BLOCKED：仍没有独立当前 workspace 语义来源 |
+| M0-B | Project SPA 与延迟渲染可进入原严格候选 parser；同名身份可比较 | BLOCKED：缺 Start 现场结构与已证 scope，候选仍 UNKNOWN |
+| M0-C | 受控选取仅输出结构；普通路由/空值/无 badge 均不推断 | BLOCKED：没有已证明的正向 NONE 来源 |
+| M0-D | Start 意图已实际绑定目标文档/route epoch；竞争失效收口 | BLOCKED：缺独立当前会话身份和加载成功证据，零 OpenDay |
+
+当前会话 Browser 连接返回需要 originating browser context，不能访问用户 Mac；未执行真实账号、Mac Chrome/Edge 取证。真实来源未提升，原生点击和地址栏入口未宣称通过。独立源码审查结论只允许作为 SOURCE_GATE_BLOCKED 开发候选交付。
+
 ## 当前阶段
 
 `SOURCE_GATE_BLOCKED`；可加载的受限目录开发候选已经实现。M1、M2 和 M3 中不依赖未证来源的链路已通过本地自动化验证；完整 Free V1 未验收。
@@ -53,7 +70,7 @@
 
 ## 下一项
 
-完整产品仍需真实来源与实际设备验收，并完成冻结验收表中未完整覆盖的组合场景：在 Mac Chrome/Edge 取得 current-context、明确 NONE、限定 P 与当前会话成功抵达的元数据证据，然后以新证据修订固定 profile，执行四条真实连续旅程。最小步骤在 INSTALL.zh-CN.md 与 M0_SOURCE_GATE.md。无新来源证据时不继续放宽选择器/猜接口，不把 UNKNOWN 改为 NONE。main 和原 VAIWL PR #16 保持未修改。
+完整产品仍需真实来源与实际设备验收，并完成冻结验收表中未完整覆盖的组合场景：在 Mac Chrome/Edge 取得 current-context、明确 NONE、限定 P 与当前会话成功抵达的元数据证据，然后以新证据修订固定 profile，执行四条真实连续旅程。本轮唯一最小操作组已实现在 M0_CONTROLLED_CHECK.zh-CN.md 和扩展受控核验页。无新来源证据时不继续放宽选择器/猜接口，不把 UNKNOWN 改为 NONE。main 和原 VAIWL PR #16 保持未修改。
 
 ## 性能修复与最终候选门
 

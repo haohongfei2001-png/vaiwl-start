@@ -31,16 +31,11 @@
 
 “从首页移除”仅移除本地入口并写防重导入墓碑，不会删除 ChatGPT 会话。设置的“恢复收录”解除该本地移除；“清除本地数据”会清除此扩展自己的目录、活动、网站和设置。当前版本没有跨设备同步或备份 UI，卸载扩展可能丢失本地目录。
 
-## 真实 Mac 最小验收
+## 本轮唯一 Mac 操作组
 
-使用合成数据，避免把私人标题、session JSON、邮箱、token 或聊天正文放进公开证据。
+本轮来源取证只按随包 [M0_CONTROLLED_CHECK.zh-CN.md](M0_CONTROLLED_CHECK.zh-CN.md) 操作。入口在 Start → 设置 → 来源状态与构建 → 受控来源核验。它直接导出脱敏JSON，不需要开发者工具或复制session/网络响应。
 
-1. 在实际 Chrome 与 Edge 分别侧载同一 ZIP，记录浏览器完整版本、macOS 版本和 build SHA；新装时不应自动请求历史/ChatGPT权限。先拒绝历史权限，再验证网站仍可用。
-2. 在原生 ChatGPT 选择一个合成 Project P、其中会话 C 和普通会话 N；访问后返回 Start，主动导入。确认链接可搜、可打开、能在重启后保留，移除后再次导入不会复活。当前候选这些记录应仍为待确认，不能填为 P/NONE 通过。
-3. 对照 `M0_SOURCE_GATE.md`，只在用户自然打开的原生界面记录 current-context、P 成员关系、明确 NONE 与当前会话标识区的结构证据。不要读取正文或完整 conversation 接口；不要猜测新端点。若这些结构仍无可靠来源，维持 BLOCKED 即为正确结果。
-4. 原生元数据适配器得到可验证的新证据并单独修订后，才执行 `docs/free-v1/06-ACCEPTANCE.md` 的四条真实连续旅程。此前测试通过不能补填为来源通过。
-
-每条回执记录 `{id,status,buildSha,browserVersion,environment,steps,observed,artifactRefs,limitations}`。只有真实来源门与 Chrome/Edge 旅程均通过后，才可使用 `FREE_V1_ACCEPTED`。本包不发布商店、不合并 main。
+更新时覆盖**原来已加载的同一个路径**并重新加载，保留扩展ID与目录；不要卸载旧扩展或另加一个不同路径的副本。四项来源未取得独立真实证明前，不重复执行完整Chrome/Edge旅程。只有全部来源接通后，才执行冻结的双浏览器完整验收。
 
 ## 从源码构建
 
@@ -53,6 +48,7 @@ npx playwright install --with-deps chromium
 npm run test:browser
 node tests/browser/import-recovery.mjs
 node tests/browser/privacy-boundaries.mjs
+node tests/browser/source-recovery.mjs
 node tests/browser/storage-faults.mjs
 node tests/ui/production-ui.mjs
 node tests/browser/performance.mjs

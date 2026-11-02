@@ -9,6 +9,7 @@ export async function synchronizePermissions(captureEnabled: boolean): Promise<v
   if (!connected) {
     const previous = await session();
     await invalidateBindings();
+    await chrome.storage.session.remove('sourceStatus');
     if (chrome.scripting) {
       try { await chrome.scripting.unregisterContentScripts({ ids: ['vaiwl-start-chatgpt'] }); } catch { /* not registered / permission already revoked */ }
     }

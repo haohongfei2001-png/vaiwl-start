@@ -25,7 +25,7 @@ UI fixture 只由测试进程直接写入隔离 IndexedDB。生产构建没有 U
 
 ## 构建关联
 
-每个开发包内 `build.json` 记录完整 Git SHA、dirty 标志、source gate、适配器版本和六个运行文件 SHA-256。交付打包拒绝 dirty 工作树。
+每个开发包内 `build.json` 记录完整 Git SHA、dirty 标志、source gate、适配器版本和九个运行文件 SHA-256。交付打包拒绝 dirty 工作树。
 
 测试脚本将机器回执写入 `artifacts/privacy-audit.json`、`browser-validation.json`、`ui-validation.json`。只把与包 SHA 完全一致且 dirty=false 的回执放入 ZIP 的 `verification` 目录。GitHub Actions 使用同一个 push SHA 重新检出、安装锁定依赖、验证并上传构建和证据。
 
@@ -52,3 +52,11 @@ UI fixture 只由测试进程直接写入隔离 IndexedDB。生产构建没有 U
 [第三阶段CI](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41360320317) 的搜索呈现p95=123.7ms，确为FAIL；所有功能套件通过不能替代该门。原始机器与逐次样本保存在 `docs/evidence/performance-8878287.json`。A/B/trace与未采用方案保存在 `performance-rendering-diagnosis.json`。最终仅改变搜索背景模糊的绘制方式，保留3px效果、原遮罩、100条分页、2000条数据、20次样本和双rAF的100ms门。
 
 包与验收生成器会核对当前HEAD/dirty状态，拒绝用旧dist搭配新文档；所有同SHA失败（含性能和视觉回执）均使交付打包失败。
+
+## M0 恢复专项
+
+新增 unit 套件为 open-lifecycle、source-probe、structure-probe、collector-lifecycle、source-check。覆盖Start不可变目标绑定、Project SPA、同文档C→Q→C、旧文档清理竞争、刷新/失败/取消、DST、单reader/身份失效、模拟BFCache、精确导出与取消/撤权竞争。模拟生命周期和受控DOM仅是U层，不冒称真实BFCache/Mac。
+
+`tests/browser/source-recovery.mjs` 使用正式生产JavaScript和明确标注的可选权限预授测试manifest，在隔离合成HTTPS页面检验Project路由/延迟渲染、身份重新采样、受控入口与Start绑定；仅增加同SHA `source-recovery-validation.json`，不改真实来源L层的BLOCKED。没有启用currentContext、projectMembership、positiveNone、arrival或addressBar。
+
+独立审查实际发现并已修复：结束核验后仍派发PROBE、旧取消影响后续任务、导出嵌套对象泄漏风险、超时/worker中断遗留running、原生Alt-click不可靠。结构选取现在使用悬停+Option/Alt+Shift+M，不执行原生控件点击。最终计数与结果以同SHA CI/包内机器回执为准。

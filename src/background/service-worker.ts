@@ -3,7 +3,9 @@ import { parseConversationUrl } from '../domain/ids.js';
 import { COLLECTOR_PROTOCOL, PROTOCOL, bounded, exact, parseEnvelope, publicError, trustedCollectorSender, trustedExtensionSender } from '../shared/protocol.js';
 import { CHATGPT_METADATA_PROFILE, SOURCE_FAILURE_CODES } from '../collectors/chatgpt/profile.js';
 import { capabilities, CONNECTION, synchronizePermissions } from './permissions.js';
-import { bindCurrentDocument, registerNavigation } from './navigation.js';
+import { bindCurrentDocument, registerNavigation, requireCurrentBinding } from './navigation.js';
+import { sourceCheckCommand, stopSourceCheck } from './source-check.js';
+import { SOURCE_CHECK_PROTOCOL } from '../shared/source-check.js';
 import { session, invalidateBindings } from './session.js';
 import { openFromStart } from './open-broker.js';
 import { createHistoryJob, stepHistoryImport, type HistoryJob } from './import-history.js';
@@ -20,7 +22,10 @@ async function snapshot(selectedScope?: string) {
   const repo = await repository();
   const current = await session(); await repo.expireIntents(current.id);
   const [catalog, caps, fingerprint, source] = await Promise.all([repo.getSnapshot(selectedScope), capabilities(), build(), chrome.storage.session.get('sourceStatus')]);
-  return { ...catalog, capabilities: { ...caps, captureEnabled: catalog.settings.captureEnabled, sourceStatus: source.sourceStatus || null }, build: fingerprint };
+  const status = source.sourceStatus as { tabId: number; browserSessionId: string; scopeEpoch: number; bindingId: string; routeEpoch: number; sampledAt: number; code: string; profileId: string } | undefined;
+  const binding = status ? current.bindings[String(status.tabId)] : undefined;
+  const fresh = status && caps.chatgpt && catalog.settings.captureEnabled && status.browserSessionId === current.id && status.scopeEpoch === current.scopeEpoch && binding?.id === status.bindingId && binding.routeEpoch === status.routeEpoch && Date.now() >= status.sampledAt && Date.now() - status.sampledAt < 30000;
+  return { ...catalog, capabilities: { ...caps, captureEnabled: catalog.settings.captureEnabled, sourceStatus: fresh ? { code: status.code, profileId: status.profileId, sampledAt: status.sampledAt } : null }, build: fingerprint };
 }
 function integer(value: unknown) { if (!Number.isSafeInteger(value) || (value as number) < 0) throw new Error('INVALID_MESSAGE'); }
 const imports = new Map<string, Promise<HistoryJob>>();
@@ -40,14 +45,14 @@ async function uiCommand(message: unknown, sender: chrome.runtime.MessageSender)
     case 'SETTINGS_UPDATE':
       exact(p, ['patch']); exact(p.patch, [], ['libraryTimeZone', 'shortcutSectionCollapsed', 'selectedScope', 'currentSegment', 'captureEnabled']);
       await repo.setSettings(p.patch, expectedRevision);
-      if ('captureEnabled' in p.patch) await synchronizePermissions(p.patch.captureEnabled);
+      if ('captureEnabled' in p.patch) { await synchronizePermissions(p.patch.captureEnabled); if (!p.patch.captureEnabled) await stopSourceCheck(); }
       break;
     case 'SHORTCUT_UPSERT': exact(p, ['shortcut']); exact(p.shortcut, ['label', 'url'], ['id', 'pinned']); await repo.saveShortcut(p.shortcut as any, expectedRevision); break;
     case 'SHORTCUT_MOVE': exact(p, ['id', 'toIndex']); bounded(p.id, 128); integer(p.toIndex); await repo.moveShortcut(p.id, p.toIndex, expectedRevision); break;
     case 'SHORTCUT_REMOVE': exact(p, ['id']); bounded(p.id, 128); await repo.removeShortcut(p.id, expectedRevision); break;
     case 'RECORD_REMOVE': exact(p, ['recordKey']); bounded(p.recordKey, 128); await repo.removeConversation(p.recordKey, expectedRevision); break;
     case 'RECORD_RESTORE': exact(p, ['recordKey']); bounded(p.recordKey, 128); await repo.restoreConversation(p.recordKey, expectedRevision); break;
-    case 'CLEAR_LOCAL': exact(p, []); await repo.clearLocalData(expectedRevision); await synchronizePermissions(false); await chrome.storage.session.remove('sourceStatus'); break;
+    case 'CLEAR_LOCAL': exact(p, []); await repo.clearLocalData(expectedRevision); await synchronizePermissions(false); await stopSourceCheck(); await chrome.storage.session.remove(['sourceStatus', 'sourceCheckRun']); break;
     case 'PERMISSIONS_SYNC': {
       exact(p, [], ['enableCapture']);
       if (p.enableCapture !== undefined && typeof p.enableCapture !== 'boolean') throw new Error('INVALID_MESSAGE');
@@ -104,18 +109,20 @@ async function collectorCommand(message: unknown, sender: chrome.runtime.Message
   else if (message.command === 'SOURCE_STATUS') exact(p, ['bindingId', 'routeEpoch', 'code', 'profileId']);
   else throw new Error('INVALID_MESSAGE');
   bounded(p.bindingId, 80); integer(p.routeEpoch);
-  const current = await session(), binding = current.bindings[String(sender.tab!.id!)];
-  if (!binding || binding.id !== p.bindingId || binding.documentId !== sender.documentId || binding.routeEpoch !== p.routeEpoch || binding.scopeEpoch !== current.scopeEpoch) throw new Error('STALE_DOCUMENT');
-  const live = await chrome.webNavigation.getFrame({ tabId: sender.tab!.id!, frameId: 0 });
-  if (live?.documentId !== binding.documentId || live.documentLifecycle !== 'active' || live.url !== binding.href) throw new Error('STALE_DOCUMENT');
+  const binding = await requireCurrentBinding(sender, { id: p.bindingId, routeEpoch: p.routeEpoch });
+  if (!(await repo.getSnapshot()).settings.captureEnabled) throw new Error('PERMISSION_REQUIRED');
   if (message.command === 'SOURCE_STATUS') {
     if (!SOURCE_FAILURE_CODES.includes(p.code) || p.profileId !== CHATGPT_METADATA_PROFILE.id) throw new Error('INVALID_MESSAGE');
-    await chrome.storage.session.set({ sourceStatus: { code: p.code, profileId: p.profileId } });
+    await requireCurrentBinding(sender, binding);
+    const current = await session();
+    await chrome.storage.session.set({ sourceStatus: { code: p.code, profileId: p.profileId, sampledAt: Date.now(), browserSessionId: current.id, scopeEpoch: binding.scopeEpoch, bindingId: binding.id, routeEpoch: binding.routeEpoch, tabId: binding.tabId } });
     return { accepted: true };
   }
   if (!Array.isArray(p.candidates) || p.candidates.length > 200) throw new Error('INVALID_MESSAGE');
   for (const candidate of p.candidates) { exact(candidate, ['url', 'title']); bounded(candidate.url, 8192); bounded(candidate.title, 512); if (!parseConversationUrl(candidate.url)) throw new Error('INVALID_MESSAGE'); }
   if (p.candidates.length) {
+    await requireCurrentBinding(sender, binding);
+    if (!(await repo.getSnapshot()).settings.captureEnabled) throw new Error('PERMISSION_REQUIRED');
     await repo.discoverCandidates(p.candidates.map((c: any) => ({ ...c, source: 'unknown', titleBasis: 'native-label' })));
     await broadcast();
   }
@@ -125,8 +132,10 @@ async function collectorCommand(message: unknown, sender: chrome.runtime.Message
 chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   if ((message as any)?.protocol === PROTOCOL && (message as any)?.event === 'revision') return;
   const isCollector = (message as any)?.protocol === COLLECTOR_PROTOCOL;
-  const protocol = isCollector ? COLLECTOR_PROTOCOL : PROTOCOL;
-  void (isCollector ? collectorCommand(message, sender) : uiCommand(message, sender)).then(data => respond({ protocol, ok: true, data })).catch(error => respond({ protocol, ok: false, code: publicError(error) }));
+  const isCheck = (message as any)?.protocol === SOURCE_CHECK_PROTOCOL;
+  const protocol = isCheck ? SOURCE_CHECK_PROTOCOL : isCollector ? COLLECTOR_PROTOCOL : PROTOCOL;
+  const work = isCheck ? Promise.all([repository(), build()]).then(([repo, fingerprint]) => sourceCheckCommand(message, sender, repo, { sha: String(fingerprint.sha) })) : isCollector ? collectorCommand(message, sender) : uiCommand(message, sender);
+  void work.then(data => respond({ protocol, ok: true, data })).catch(error => respond({ protocol, ok: false, code: publicError(error) }));
   return true;
 });
 
@@ -156,7 +165,7 @@ chrome.runtime.onStartup.addListener(() => { void session().then(s => repository
 chrome.permissions.onRemoved.addListener(() => {
   void (async () => {
     const repo = await repository(), caps = await capabilities();
-    if (!caps.chatgpt) await synchronizePermissions(false);
+    if (!caps.chatgpt) { await synchronizePermissions(false); await stopSourceCheck(); }
     if (!caps.history) {
       for (const job of (await repo.getSnapshot()).importJobs) if (['running', 'paused', 'partial'].includes(job.state)) { job.state = 'permission-revoked'; await repo.saveImportJob(job); }
     }

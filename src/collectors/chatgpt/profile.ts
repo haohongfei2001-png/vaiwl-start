@@ -1,6 +1,6 @@
 /** Packaged candidates only. A browser/page/config value cannot enable authority. */
 export const CHATGPT_METADATA_PROFILE = Object.freeze({
-  id: 'start-chatgpt-metadata-candidate-20261102', revision: 1,
+  id: 'start-chatgpt-metadata-candidate-20261102', revision: 2,
   upstreamSha: '1903b00f774b4fd7f3d15b3669878c32e2c7a9c8',
   liveVerified: false,
   capabilities: Object.freeze({ currentContext: false, projectMembership: false, positiveNone: false, arrival: false, addressBar: false }),

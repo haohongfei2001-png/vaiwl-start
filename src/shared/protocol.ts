@@ -28,5 +28,6 @@ export function publicError(error: unknown): string {
   const code = error instanceof Error ? error.message : '';
   const safe = new Set(['INVALID_MESSAGE', 'UNAUTHORIZED_SENDER', 'PERMISSION_REQUIRED', 'STALE_DOCUMENT', 'STALE_REVISION', 'SOURCE_GATE_BLOCKED', 'RECORD_NOT_FOUND', 'INVALID_URL', 'INVALID_TIME_ZONE', 'NAVIGATION_FAILED', 'HISTORY_UNAVAILABLE', 'IMPORT_NOT_FOUND', 'IMPORT_NOT_RUNNING', 'IMPORT_BUSY', 'INVALID_SHORTCUT', 'REVISION_CONFLICT', 'record-not-found', 'revision-conflict', 'invalid-url', 'invalid-time-zone', 'invalid-website-url']);
   if (error instanceof DOMException && error.name === 'QuotaExceededError') return 'STORAGE_QUOTA';
-  return safe.has(code) ? code : 'REQUEST_FAILED';
+  const probeCodes = ['PROBE_EXPIRED', 'PROBE_NOT_STARTED', 'PROBE_ALREADY_STARTED', 'PROBE_BUDGET_USED', 'PROBE_CANCELLED', 'PROBE_UNAVAILABLE', 'PROBE_TIMEOUT'];
+  return safe.has(code) || probeCodes.includes(code) ? code : 'REQUEST_FAILED';
 }

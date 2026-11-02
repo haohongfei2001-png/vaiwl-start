@@ -3,6 +3,7 @@
 import { instant } from '../../domain/time.js';
 import { CHATGPT_METADATA_PROFILE, normalizeSourceFailure } from './profile.js';
 import type { SourceStatus } from './profile.js';
+import { createProbeAliaser } from './probe.js';
 
 const ORIGIN = 'https://chatgpt.com';
 const SESSION = '/api/auth/session';
@@ -19,6 +20,15 @@ export interface IdentityCandidate {
   readonly transport: 'isolated-fixed-fetch';
 }
 interface ReaderDependencies { fetch?: typeof globalThis.fetch; now?: () => number; elapsedNow?: () => number }
+export interface IdentityProbeSummary extends SourceStatus {
+  principalPresent: boolean;
+  principalAlias: string | null;
+  rosterCount: number;
+  contexts: Array<{ alias: string; kind: 'personal' | 'organization' | 'unknown' }>;
+  currentContext: 'unproven';
+}
+const status = (state: SourceStatus['state'], code: SourceStatus['code']): SourceStatus => ({ state, code, profileId: CHATGPT_METADATA_PROFILE.id });
+const emptyProbe = (source: SourceStatus): IdentityProbeSummary => ({ ...source, principalPresent: false, principalAlias: null, rosterCount: 0, contexts: [], currentContext: 'unproven' });
 
 async function readJSON(response: Response, target: string, limit: number, check: () => void): Promise<unknown> {
   try {
@@ -87,7 +97,7 @@ function contextsFrom(value: unknown): IdentityCandidate['contexts'] {
  * Production calls readSessionStatus(), which checks the isolated page origin. */
 export function createSessionCandidateReader({ fetch = globalThis.fetch, now = Date.now, elapsedNow = () => performance.now() }: ReaderDependencies = {}) {
   let rawReads = 0;
-  async function read({ signal }: { signal?: AbortSignal } = {}): Promise<IdentityCandidate> {
+  async function readInternal({ signal, principalObserved }: { signal?: AbortSignal; principalObserved?: (principalId: string) => Promise<void> }): Promise<IdentityCandidate> {
     if (rawReads !== 0) throw Error('session-read-busy');
     const controller = new AbortController();
     const started = elapsedNow(); let last = started, token: string | null = null, timedOut = false;
@@ -117,6 +127,7 @@ export function createSessionCandidateReader({ fetch = globalThis.fetch, now = D
         if (!Number.isFinite(time) || !record(session) || !record(session.user) || !identifier(session.user.id) || typeof session.expires !== 'string' || instant(session.expires) === null || instant(session.expires)! <= time || typeof session.accessToken !== 'string' || !session.accessToken || session.accessToken.length > 16384 || !/^[\x21-\x7e]+$/.test(session.accessToken)) throw Error('invalid-session-schema');
         const principalId = session.user.id, expiresAt = session.expires;
         token = session.accessToken; delete session.accessToken;
+        if (principalObserved) { await principalObserved(principalId); check(); }
         const accounts = await json(ACCOUNTS, 1024 * 1024); check();
         const contexts = contextsFrom(accounts), returnedAt = now();
         if (!Number.isFinite(returnedAt) || instant(expiresAt)! <= returnedAt) throw Error('session-expired');
@@ -127,14 +138,40 @@ export function createSessionCandidateReader({ fetch = globalThis.fetch, now = D
     catch (error) { throw Error(normalizeSourceFailure(error)); }
     finally { token = null; clearTimeout(timer); signal?.removeEventListener('abort', abort); controller.abort(); }
   }
-  return Object.freeze({ read });
+  const read = ({ signal }: { signal?: AbortSignal } = {}) => readInternal({ signal });
+  async function readProbe(saltHex: string, signal?: AbortSignal): Promise<IdentityProbeSummary> {
+    const alias = await createProbeAliaser(saltHex);
+    let principalAlias: string | null = null;
+    try {
+      const candidate = await readInternal({ signal, principalObserved: async principal => { principalAlias = await alias('principal', principal); } });
+      const contexts = await Promise.all(candidate.contexts.map(async context => ({ alias: await alias('context', context.id), kind: context.kind })));
+      if (signal?.aborted) throw Error('session-aborted');
+      return { ...emptyProbe(status('candidate', 'current-context-unproven')), principalPresent: true, principalAlias, rosterCount: contexts.length, contexts };
+    } catch (error) {
+      // A valid principal from the first fixed response is a diagnostic candidate
+      // even if roster validation fails. It never establishes current context.
+      return { ...emptyProbe(status('blocked', normalizeSourceFailure(error))), principalPresent: principalAlias !== null, principalAlias };
+    }
+  }
+  return Object.freeze({ read, readProbe });
 }
 
-/** Call only after explicit ChatGPT connection; only this enum may enter IPC. */
-export async function readSessionStatus(signal?: AbortSignal): Promise<SourceStatus> {
-  if (globalThis.location?.origin !== ORIGIN) return { state: 'blocked', code: 'source-origin-rejected', profileId: CHATGPT_METADATA_PROFILE.id };
-  try {
-    await createSessionCandidateReader().read({ signal });
-    return { state: 'candidate', code: 'current-context-unproven', profileId: CHATGPT_METADATA_PROFILE.id };
-  } catch (error) { return { state: 'blocked', code: normalizeSourceFailure(error), profileId: CHATGPT_METADATA_PROFILE.id }; }
+/** One collector owns one transport reader, so overlapping routes cannot bypass
+ * its busy guard. No raw identity object is exposed by these production methods. */
+export function createSessionStatusReader(dependencies: ReaderDependencies = {}) {
+  const reader = createSessionCandidateReader(dependencies);
+  async function readStatus(signal?: AbortSignal): Promise<SourceStatus> {
+    if (globalThis.location?.origin !== ORIGIN) return status('blocked', 'source-origin-rejected');
+    try {
+      await reader.read({ signal });
+      return status('candidate', 'current-context-unproven');
+    } catch (error) { return status('blocked', normalizeSourceFailure(error)); }
+  }
+  async function readProbe(saltHex: string, signal?: AbortSignal): Promise<IdentityProbeSummary> {
+    if (globalThis.location?.origin !== ORIGIN) return emptyProbe(status('blocked', 'source-origin-rejected'));
+    return reader.readProbe(saltHex, signal);
+  }
+  return Object.freeze({ readStatus, readProbe });
 }
+/** Compatibility API; callers with a lifecycle use createSessionStatusReader. */
+export const readSessionStatus = (signal?: AbortSignal): Promise<SourceStatus> => createSessionStatusReader().readStatus(signal);
