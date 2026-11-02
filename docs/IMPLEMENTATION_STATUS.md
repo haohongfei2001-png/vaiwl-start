@@ -16,6 +16,25 @@
 
 代码能力标记：`LOCAL_WORKSPACE_READY`。这不是完整 `FREE_V1_ACCEPTED`，也不声称真实ChatGPT已认证Project/NONE。
 
+## D1 标题覆盖缺陷修复（2026-11-03）
+
+真实 Mac Chrome 验收已确认：同一会话 ID 的有效原标题被浏览器历史通用标题 ChatGPT 覆盖，随后原题搜索返回 0。根因位于 Repository.discoverCandidates()：此前只保护 native-label，相同 browser-history 来源的新值可以无条件覆盖旧值；chrome.history.onVisited 和历史导入都会进入该写入路径。
+
+修复合同：
+- 空白、空值及已识别的通用 ChatGPT 页面标题不构成有效会话标题，不能覆盖已有标题。
+- 标题来源按 native-label > browser-history > unknown 排序；更高可信度可更新较低可信度，同等级有效标题仍可更新，避免永久冻结旧标题。
+- 新记录与重复观察共用同一会话 ID；历史刷新保留既有 owner、membership、canonical URL、stableRank、activity、首次发现时间和 Project 候选。
+- commitArrival 与 confirmObservation 也使用相同标题裁决，避免其他写入路径绕过保护。
+- 不修改现有 IndexedDB schema，不重导入历史。
+
+回归测试新增于 tests/unit/storage.test.ts：通用标题/空值保护、同等级有效标题更新、原生标题优先级、URL alias 去重、原题搜索、重复访问与历史导入交错、Project 成员标题保护、事务中断及重试。当前本地 TypeScript 检查通过，110 项单元测试通过。
+
+本修复尚需同 SHA CI、正式开发包哈希核验和 PR 更新；在这些结果完成前不标记为正式交付。真实 Mac 原位回归尚未执行，原有 IndexedDB 未被修改。
+
+## D2 会话跳回 ChatGPT 首页（独立 BLOCKED）
+
+实机证据仅证明 Start 首次发出的目标 URL 与原会话身份匹配，之后页面跳回 ChatGPT 根页面；没有保存该次导航的完整逐事件 URL/redirect 链、Chrome error/commit/completed 事件序列或目标文档内容。因此无法区分 ChatGPT 登录/应用路由重定向、服务端响应、浏览器导航替换或其他运行时因素。本轮只读核对 open-broker.ts 和 navigation.ts：Start 使用已存 intent.targetUrl 调用 chrome.tabs.update；后续仅对活动顶层 ChatGPT 会话 URL 做身份绑定。现有证据不足以确定跳转根因，本轮没有修改导航行为，D2 保持 BLOCKED。
+
 ## 能力限制
 
 | 能力 | 当前状态 |
@@ -39,4 +58,4 @@
 
 [安装说明](INSTALL.zh-CN.md)已改成保留现有目录的原位更新和3组最少产品核验，不再要求先完成旧M0诊断。PR始终Draft，main不合并，商店不发布，原VAIWL仓库只读。
 
-[当前合同修订](free-v1/10-LOCAL-FIRST-AMENDMENT.md)逐项说明每次放宽的数据语义、安全条件与误判风险。
+[当前合同修订](free-v1/11-NATIVE-EXPERIENCE-AMENDMENT.md)逐项说明每次放宽的数据语义、安全条件与误判风险。
