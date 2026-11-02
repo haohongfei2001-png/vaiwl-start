@@ -233,8 +233,11 @@ function renderWorkspace(): void {
   if (showCandidates && projection.undatedCandidateProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无日期的本地候选项目' }, [
     el('h2', {}, ['本地候选项目 · 尚无可用日期']), el('div', { class: 'project-grid' }, projection.undatedCandidateProjects.map(candidateProjectCard))]));
   if (showNone && projection.undatedNone.length) content.append(el('section', { class: 'undated-section' }, [el('h2', {}, ['无项目 · 尚无主动打开记录']), el('div', { class: 'unknown-grid' }, projection.undatedNone.map(conversationRow))]));
-  const hasDisplayed = (showProjects && (projection.projects.length || projection.undatedProjects.length)) || (showCandidates && (projection.candidateProjects.length || projection.undatedCandidateProjects.length)) || (showNone && (projection.dates.length || projection.undatedNone.length)) || (showPending && (projection.pendingDates.length || projection.unknown.length));
-  if (!hasDisplayed) {
+  // Undated entries are independent of k. Keeping them reachable must not make
+  // an otherwise empty 30-day segment appear occupied or suppress its hint.
+  const hasDatedRecords = (showProjects && projection.projects.length) || (showCandidates && projection.candidateProjects.length)
+    || (showNone && projection.dates.length) || (showPending && projection.pendingDates.length);
+  if (!hasDatedRecords) {
     content.append(el('section', { class: 'period-empty' }, [el('h2', {}, ['这一段没有记录']), el('p', {}, [view.filter === 'project' ? '还没有已确认项目归属的会话，也可以继续查看相邻 30 天。' : view.filter === 'none' ? '这一段没有已确认无项目的会话。' : '可以继续向前翻，也可以搜索全部本地会话。']), button('搜索全部已知', { class: 'text-button', id: 'empty-search' }, 'search')]));
   }
   if (showPending && projection.unknown.length) content.append(unknownSection(projection.unknown, view.filter === 'unknown' || selectedScope === 'unassigned'));

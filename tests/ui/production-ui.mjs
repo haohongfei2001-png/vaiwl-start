@@ -207,7 +207,11 @@ try {
   await firstCard.getByRole('button', { name: '较早会话', exact: true }).click();
   check('UI-no-top-arrow', await page.locator('#period-newer').count() === 0, 'k=0 has no newer-period button.');
   await page.locator('#period-older').click();
-  check('UI-empty-adjacent-segment', await page.getByText('这一段没有记录', { exact: true }).isVisible(), 'One click goes to the adjacent empty segment rather than skipping it.');
+  check('UI-empty-adjacent-segment', await page.evaluate(() => JSON.parse(sessionStorage.getItem('vaiwl-start-view/1')).k) === 1
+    && await page.locator('.date-window').count() === 0 && await page.locator('.project').count() === 0
+    && await page.getByText('这一段没有记录', { exact: true }).isVisible()
+    && await page.locator(`.undated-section [data-record-key="${undated.key}"]`).count() === 1,
+    'One click reaches empty k1 without skipping it. Global undated entries stay reachable but cannot suppress the current empty-period hint.');
   await page.locator('#period-older').click();
   const earlierKnownVisible = await page.getByText('更早区间的独立会话', { exact: true }).isVisible();
   const olderProjectsAbsent = await page.locator('.project').count() === 0;

@@ -1,10 +1,31 @@
 # 可执行验收标准
 
-这些是**待开发产品**的验收要求，默认全部 NOT_RUN。不能把设计样稿的34项检查改填成以下产品通过数。每个PASS必须关联实际build SHA、浏览器版本、输入/动作和可核对的结果；真实用户数据不进入公开证据。
+> **当前有效修订：2026-11-02-local-first，用户已批准。** [统一修订合同](10-LOCAL-FIRST-AMENDMENT.md)覆盖原 M0 全局前置门：本地时间组织、Start 主动打开与局部候选项目可独立运行；账号隔离及正式原生归属证明仍保留。`LOCAL_WORKSPACE_READY` 不等于 `FREE_V1_ACCEPTED`。
+
+这些是当前产品的验收要求；每轮仅继承有对应证据的状态，其余记录 NOT_RUN/BLOCKED。不能把设计样稿的34项检查改填成以下产品通过数。每个PASS必须关联实际build SHA、浏览器版本、输入/动作和可核对的结果；真实用户数据不进入公开证据。
 
 标记：U=纯领域/事务自动测试；B=实际扩展浏览器测试；L=真实ChatGPT元数据与动作；V=视觉/键盘审查。U不能替代B/L，Chromium headless不能替代完整Edge。
 
-## A. 来源与范围（发布阻断项）
+## L. 本次本地工作空间修订验收
+
+| ID | 输入/动作 | 精确通过条件 | 层 |
+|---|---|---|---|
+| L01 | 已导入历史仍UNKNOWN，包含已有564条真实目录 | 按有效浏览日期分到30日窗口；未损失记录、不再全堆长列表；同名不合并 | U+B+L |
+| L02 | 日期浏览、筛选、搜索、刷新 | browserLastVisitAt不生成OpenDay、不填activity，不冒充正式NONE | U+B |
+| L03 | Start真实点击一条未分配会话，精确导航完成 | 原稳定key产生当日活动；无正文/阅读要求，confirmationBasis准确 | U+B+L |
+| L04 | 同一天重复主动打开、并发/重复完成事件 | 仅一个OpenDay活动单位，最后时刻可更新；intent原子幂等 | U+B |
+| L05 | 刷新、被动恢复、脚本加载、错误目标、onErrorOccurred | 不制造新活动或消费错误目标intent | U+B |
+| L06 | 旧目录原位升级，关闭tab/重启浏览器 | 数据库version/store不变，目录、已有活动、网站与墓碑保留 | U+B+L |
+| L07 | 已确认A、B与本地未分配历史并存 | scope与Profile隔离；owner不明不得向A/B提交，旧本地活动不迁移 | U+B+L |
+| L08 | 可靠局部Project观察，账号或正式来源未证 | 原记录加候选字段，仍UNKNOWN，显式候选卡；不写正式projects、不重复会话 | U+B+L |
+| L09 | 同名/同ProjectID的不同观察边界、冲突/撤销 | 不能跨观察/账号自动合并，候选不覆盖正式PROJECT/NONE | U+B |
+| L10 | 后续得到有效归属，或本地会话新主动打开 | 对应投影移到适用唯一位置；历史日期与活动日期区分，无会话复制 | U+B |
+| L11 | 时间窗口、旧成员、搜索、网站与性能 | 沿用30日历日、空段不跳、5/+12、稳定焦点/滚动锚和既有性能门槛 | U+B+V |
+| L12 | 撤权/关闭继续收录，与完成事件竞争 | 事务内拒绝迟到新活动；已有目录仍可用，设置按实际能力说明 | U+B |
+
+L01/L03/L06/L08的合成夹具只证明实现行为，不能填成用户Mac或真实ChatGPT来源通过。无实机访问时保留最少真实项，不要求再开发诊断页面。
+
+## A. 正式原生来源与范围（不阻断独立本地能力）
 
 | ID | 输入/动作 | 精确通过条件 | 层 |
 |---|---|---|---|
@@ -23,11 +44,11 @@
 
 | ID | 输入/动作 | 精确通过条件 | 层 |
 |---|---|---|---|
-| O01 | Start左键或Enter打开已有会话，成功抵达 | 只有一条有效intent和当日OpenDay；不需发送消息 | B+L |
+| O01 | Start左键或Enter打开已有未分配会话，精确导航完成 | 真实intent经onCommitted冻结、onCompleted与frame/document/URL核对后写原key当日OpenDay；不需正文或发送 | B+L |
 | O02 | Start中键/Ctrl/Cmd显式后台打开 | 抵达后当日一个单位；后台active=false不误拒绝明确意图 | B |
 | O03 | 原生ChatGPT会话链接真实点击+SPA路由 | sender/document/route/目标关联后计一日 | L |
 | O04 | element.click/dispatchEvent/pushState，无手势 | 活动增量为0 | U+B |
-| O05 | 点击被取消、转到别的会话、登录页或404 | 无活动；intent rejected/expired，不凭onVisited补计 | B+L |
+| O05 | 导航报错、转到别的会话或登录页URL，旧文档迟到 | 无活动；intent rejected/expired，不凭onVisited补计；同URL应用错误不由浏览器完成事件保证可见性 | B+L |
 | O06 | 多tab同C同日同时打开、重复消息/双击 | OpenDay唯一键仅1，lastOpenedAt为最后合法打开，事务无裂缝 | U+B |
 | O07 | 刷新、恢复关闭tab、浏览器重启恢复20tab、自动激活邻tab | 活动增量全部为0 | B |
 | O08 | history.back/go脚本且含forward_back/from_address_bar | 活动增量0；不把qualifier名称当充分手势证明 | B |
@@ -35,16 +56,16 @@
 | O10 | 外站链接/书签/切回tab，无独立可证意图 | 可收录，活动不猜；限制与产品说明一致 | B |
 | O11 | intent写后worker终止，再收到匹配抵达 | session未变且TTL内最多提交一次 | B |
 | O12 | 浏览器重启或扩展Reload，旧tabId被复用 | browserSessionId不同，旧intent不消费 | B |
-| O13 | staging点击，抵达时首次核验A | 本次新OpenDay只落A的resolvedRecordKey；旧staging活动不迁移、不双写 | U+B |
+| O13 | 未分配记录从Start点击，账号仍未证 | 新OpenDay只落原本地key；后续账号证据不得迁移旧本地活动，不双写 | U+B |
 | O14 | 请求预期A，最终抵达B | 拒绝，不借未分配兜底写A或B活动 | U+B |
 | O15 |23:59:59手势，次日00:00:02抵达 | 使用签发时issuedTimeZone/issuedLocalDate；只有前一天活动 | U+B |
 | O16 | 意图存续期用户改时区、系统时钟异常 | 已签发日键不变；异常时间不造新鲜活动 | U |
-| O17 | HTTP cache/BFCache抵达且有明确有效意图 | 可正常记；无意图自动恢复仍0，缓存本身不判主动性 | B |
+| O17 | 缓存导航且有明确有效意图及匹配导航完成 | 可记；无意图自动恢复仍0；缺完成事件的BFCache保守漏记，不以缓存推断主动性 | B |
 | O18 | 空白新聊/脚本获得新conversation ID | 可新收录，无确认打开则活动0；没有发送追踪或正文采集 | B+L |
 | T01 | contracts/time-vectors.json全部边界 | 与继承纯函数一致，30个日历日无缺日/重叠 | U |
 | T02 | 一个P成员今天活动，其余60天前 | P只在当前段一张卡；旧成员在P内可展开 | U+B |
 | T03 | NONE旧日期会话今天再次主动打开 | 只出现在今天，旧日期无重复实体 | U+B |
-| T04 | 未知日期、仅history.lastVisitTime | 不塞今天/最老段；独立无日期入口可搜索打开 | U+B |
+| T04 | UNKNOWN仅有有效browserLastVisitAt；真正缺失/无效日期 | 前者按浏览日期进入显式待确认日期窗且不造活动；后者保持无日期入口；正式NONE无活动不混入正式日期窗 | U+B |
 | T05 | 当前段→空段→更早已知段→返回 | 每次k±1，不跳空；k=0没有向上按钮 | B |
 | T06 | 10个活动同毫秒/缺日期的对象，多次投影 | 稳定rank/ID顺序完全相同，不随机跳动 | U |
 | T07 | 指针按下/IME期间更新排序；之后安全点 | 操作目标不漂移，完成后≤1秒更新并恢复同recordKey焦点/锚 | B+V |
@@ -86,7 +107,7 @@
 
 ## 必需的真实连续旅程
 
-1. 新装 → 拒绝history仍可用网站 → 再授权导入 → UNKNOWN可打开 → P/NONE来源逐条确认 → 关闭全部tab → 重启 → 从首页重新打开。
+1. 本地旅程：新装或原位升级 → 拒绝history仍可用网站 → 授权导入/保留已有目录 → UNKNOWN按浏览日期浏览 → Start主动打开形成独立活动 → 关闭tab再进/重启仍保留。正式P/NONE来源逐条确认另行记录，不前置阻断本旅程。
 2. 项目中打开旧会话 → 项目进入当前段 → 旧成员仍在父卡 → 在原生ChatGPT切到另一会话 → 回Start排序正确 → 同日重开不重复。
 3. A账号资料库 → 切B → 同名P/C → 旧A消息迟到 → 回选A本地目录；无跨scope数据覆盖和活动错记。
 4. 一次明确后台打开、一次刷新、一次恢复多个tab、一次脚本history.go；只有明确打开生成活动。
@@ -95,4 +116,4 @@
 
 每条记录为 `{id,status,buildSha,browserVersion,environment,steps,observed,artifactRefs,limitations}`。状态只有PASS/FAIL/BLOCKED/NOT_RUN；禁止“基本通过”替代失败。公开仓只存合成/脱敏结果与固定失败码，不上传用户原始页面、账号标识或会话标题。
 
-完整Free V1必须S01–S09、O01–O08/O10–O18、T/D/U及四条连续旅程通过；O09只有启用地址栏能力才强制，否则记录SUPPORTED入口限制。Edge真实验收不能被API兼容性文档或Chromium样稿替代。来源门失败时可交付目录受限候选，但状态不得是FREE_V1_ACCEPTED。
+本轮先按L01–L12与相关O/T/D/U验收本地工作空间，分别记录代码、隔离浏览器与真实Mac证据。正式原生账号/PROJECT/NONE仍需S01–S09及适用旅程的真实验证，完整Chrome/Edge验收完成前不得声明FREE_V1_ACCEPTED。原生链接O03与地址栏O09在未启用时如实记录入口限制，不再共同阻断Start活动。本地可靠功能不因正式来源未齐而关闭，Edge不能以Chromium文档或样稿替代。

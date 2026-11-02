@@ -1,64 +1,39 @@
-# Free V1 测试证据说明
+# Free V1 · 同提交验证与真实来源边界
 
-## 分层结论
+当前合同修订：`2026-11-02-local-first`。本文件说明验证范围；交付包的 `build.json`、`verification/*.json` 及对应GitHub Actions是实际SHA和最终结果依据，不能引用另一提交的绿色结果。
 
-源码与合成数据测试不能证明真实 ChatGPT 来源。当前交付维持 `SOURCE_GATE_BLOCKED`，没有 `FREE_V1_ACCEPTED` 或真实 Mac/Edge 通过声明。
+## 自动验证
 
-| 层 | 测试入口 | 能证明的范围 |
+| 层 | 本轮覆盖 | 真实边界 |
 |---|---|---|
-| 类型/纯函数/事务 | `npm run typecheck` / `npm test` | URL、时间、来源解码、三态、IDB/CAS、日活动、逐条解析与墓碑、历史分批/恢复/饱和、IPC与打开幂等 |
-| 打包隐私审计 | `npm run build` / `npm run audit` | MV3最小权限、无正文接口/正文文本回退、无生产fixture、无运行时第三方依赖、文件hash |
-| 真实安装的隔离浏览器 | `npm run test:browser` | 生产包安装、IPC边界、历史API、可信中键导航、worker及浏览器重启、目录留存与删除恢复 |
-| 导入中断恢复 | `node tests/browser/import-recovery.mjs` | 257条实际history，首批200+57待处理，关闭页面/终止worker后续跑；history权限变体明确标注 |
-| 来源和IPC边界 | `node tests/browser/privacy-boundaries.mjs` | 精确host权限测试变体；悬置已知session GET时缓存先显示，实际Chrome子frame与伪字段拒绝，HTML仅作文本 |
-| 原生浏览器存储故障 | `node tests/browser/storage-faults.mjs` | 实际IndexedDB执行未修改生产存储模块；v1升级中断、并发重开、注入quota回滚/重试，非物理磁盘耗尽 |
-| 正式UI | `node tests/ui/production-ui.mjs` | 实际MV3中渲染合成IDB数据的布局、5/+12、旧项、搜索、网站、键盘、scope隔离与窄屏 |
-| 真实ChatGPT与正式Chrome/Edge | 冻结06验收表与M0文档 | 当前 BLOCKED / NOT_RUN；必须后续现场证明 |
+| TypeScript与单元 | 当前95项，包含日期投影、564合成历史、30日/DST、IDB持久化、账号/资料库隔离、墓碑、候选快照、导航失败与提交竞态 | 注入的browser端口、fake-indexeddb、受控jsdom geometry |
+| 已安装Chromium | 真实安装生产扩展代码，历史导入/恢复、权限和IPC、Start可信中键点击、onCompleted、同日重开、刷新与关闭标签留存 | 网络站点和账号响应是显式合成夹具，不是真实ChatGPT |
+| 正式UI | 原首页、30日上下段、空段不跳、旧成员、搜索、网站与6项本地历史/候选流程 | 564条目录为合成；不能代替用户已有564条的升级验证 |
+| 隐私审计 | 最小权限、生产依赖、无正文端点/整页文本、无token/邮箱/预览持久化、hash对应 | 不以静态检查代替真实来源认证 |
+| 性能 | 2000会话/20项目，20次首屏与20次搜索 | 既有p95门槛首屏500ms、搜索反馈100ms未放宽 |
+| 验收矩阵 | L01–L12新增独立本地能力；S/O/T/D/U继续按证据层映射 | 带L的真实设备/来源项保持BLOCKED，绿色CI不等于FREE_V1_ACCEPTED |
 
-## 合成与真实 API 的边界
+测试结果只在`buildSha`和`dirty`与当前构建一致时收录。打包拒绝dirty工作树与同构建失败回执。用户手势由真正的浏览器输入触发；页面脚本伪造的click不能产生OpenIntent。
 
-所有本轮自动化浏览器 profile 都是隔离临时目录，没有访问用户浏览器、私人会话或真实账号。
+## 实现阶段真实失败保留
 
-`tests/browser/extension.mjs` 首先加载原样生产 manifest，验证只安装 storage、没有自动申请可选权限。为实际测试 `chrome.history.search/getVisits`，脚本随后复制一个临时测试包，仅将 history 从 optional 改为 required，其他 JavaScript 字节保持不变，并由测试生成少量合成浏览记录。这证明真实浏览器 API 到生产导入代码的闭环；不冒称无头环境已经接受过生产的浏览器原生权限弹窗。此测试变体不会进入开发 ZIP。
+- 提交：`80ed8939e27df52a06446877cbf8e590c91ef00d`。
+- [CI41449102208](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41449102208)：domain/package成功，installed Chromium作业在UI-empty-adjacent-segment失败。
+- 这是本轮产品回归：无日期入口错误抑制空段提示。已修为只看当前段有日期的组，并强化原断言，未扩大超时或删除测试。
+- [固定失败回执](evidence/local-first-ci-80ed8939.json)。后续CI成功不能覆盖这次失败事实。
 
-UI fixture 只由测试进程直接写入隔离 IndexedDB。生产构建没有 URL 参数、隐藏开关、消息命令或导入路径可以将这些假数据作为验证来源。截图中的项目与会话为合成示例，不是自动读取的真实 Project/NONE。
+## 当前能力语义
 
-## 构建关联
+浏览器导航完成确认主动打开；不确认阅读、正文或业务请求成功，不将availability自动升级为reachable。历史lastVisitAt只影响历史浏览窗口，不写OpenDay。局部Project观察始终是候选，UNKNOWN不能借此变成PROJECT/NONE或归入某已确认账号。
 
-每个开发包内 `build.json` 记录完整 Git SHA、dirty 标志、source gate、适配器版本和九个运行文件 SHA-256。交付打包拒绝 dirty 工作树。
+已认证scope的活动仍要求当前owner证据；未知本地活动不随账号绑定自动搬移。撤权/停止采集和文档/session失效都必须阻止旧事件提交。数据库schema仍为v1/12 store，旧数据无迁移。
 
-测试脚本将机器回执写入 `artifacts/privacy-audit.json`、`browser-validation.json`、`ui-validation.json`。只把与包 SHA 完全一致且 dirty=false 的回执放入 ZIP 的 `verification` 目录。GitHub Actions 使用同一个 push SHA 重新检出、安装锁定依赖、验证并上传构建和证据。
+## 最少真实Mac证据
 
-开发中发现并已修正的具体问题：同版本归属冲突被重放消解；NONE/PROJECT证据误配；非ready scope写入；同步历史别名遮蔽本地记录；并发OPEN重复开页；IMPORT_STEP响应形状差异；旧文档删除新绑定；连接权限同步意外重开收录；后台OPEN未发布revision导致下一操作冲突。对应的有效测试或实际浏览器回归保留在源码中。
+1. 原位更新后，用户已有目录数量不减少，出现浏览日期窗口，跨段和旧会话搜索可用。
+2. Start真实打开一条会话产生本地当日活动；同日再开仍一个活动日，刷新不造活动。
+3. 正常浏览Project时检验当前结构能否形成标记候选；关闭标签和正常重启后目录、网站与活动仍保留。
 
-## 明确未完成的门
+这些实机项未记录时不能标PASS；不需要新增诊断器、发送消息或重新导入全部历史。原生Project/NONE认证与Edge设备兼容继续独立验收。
 
-- S01–S06/S09 真实 current-context、正确P、正向NONE与账号切换来源。
-- O01/O03等要求成功抵达的真实主动活动链。当前URL到达仍不会创建活动。
-- O09 地址栏适配器保持禁用；刷新、恢复、script导航不猜活动。
-- macOS 正式 Chrome/Edge 的原生权限交互、垂直标签、200%浏览器缩放及四条完整旅程。
-- 2000条/20项目性能由独立脚本实际测量，20次首屏与20次搜索；同SHA机器、冷热条件、逐次样本和p95在 performance-validation.json。开发期测得宽搜索失败后已分页修复，不能用小样本截图或更换计时口径代替该门。
-
-现代正式 Chrome/Edge 的命令行侧载行为与 Chromium 测试通道不同，因此自动化 Chromium 通过不能填写为 Edge 通过。依据：[Playwright 官方扩展测试说明](https://playwright.dev/docs/chrome-extensions)；正式使用仍按扩展管理页手动“加载已解压”流程验证。
-
-## 复合验收映射
-
-`acceptance-matrix.json` 对每行列出具体 `predicates` 与 `missingConditions`。一份UI/单元回执整体PASS，不能代替该行全部条件。纯单元回执记录实际测试名称；需要视觉审查的行还要求显式的同SHA `review-validation.json`。CI不会伪造人工/模型视觉审阅。未知或未完成行保留NOT_RUN，真实来源与设备门保留BLOCKED。
-
-存储故障harness由当前生产模块直接打包，报告记录每个实际依赖源文件和测试bundle hash；它不代表生产IPC或权限弹窗已验收。当前v1只有初始建库与同版本重开，没有虚构历史版本迁移。
-
-## 已保留的性能失败与实质修复
-
-[第三阶段CI](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41360320317) 的搜索呈现p95=123.7ms，确为FAIL；所有功能套件通过不能替代该门。原始机器与逐次样本保存在 `docs/evidence/performance-8878287.json`。A/B/trace与未采用方案保存在 `performance-rendering-diagnosis.json`。最终仅改变搜索背景模糊的绘制方式，保留3px效果、原遮罩、100条分页、2000条数据、20次样本和双rAF的100ms门。
-
-包与验收生成器会核对当前HEAD/dirty状态，拒绝用旧dist搭配新文档；所有同SHA失败（含性能和视觉回执）均使交付打包失败。
-
-## M0 恢复专项
-
-新增 unit 套件为 open-lifecycle、source-probe、structure-probe、collector-lifecycle、source-check。覆盖Start不可变目标绑定、Project SPA、同文档C→Q→C、旧文档清理竞争、刷新/失败/取消、DST、单reader/身份失效、模拟BFCache、精确导出与取消/撤权竞争。模拟生命周期和受控DOM仅是U层，不冒称真实BFCache/Mac。
-
-`tests/browser/source-recovery.mjs` 使用正式生产JavaScript和明确标注的可选权限预授测试manifest，在隔离合成HTTPS页面检验Project路由/延迟渲染、身份重新采样、受控入口与Start绑定；仅增加同SHA `source-recovery-validation.json`，不改真实来源L层的BLOCKED。没有启用currentContext、projectMembership、positiveNone、arrival或addressBar。
-
-独立审查实际发现并已修复：结束核验后仍派发PROBE、旧取消影响后续任务、导出嵌套对象泄漏风险、超时/worker中断遗留running、原生Alt-click不可靠。结构选取现在使用悬停+Option/Alt+Shift+M，不执行原生控件点击。最终计数与结果以同SHA CI/包内机器回执为准。
-
-M0实现提交 `264b01faa1a278f6f9a0c047a709e966df04ad97` 本地完整验证通过，但其GitHub运行 `41406773477` 在搜索重开步骤真实失败。精简失败证据见 `evidence/m0-ci-264b01f-ui-failure.json`。两项有限复核未证明生产缺陷；测试补齐“页面有焦点、可见、无模态框、非编辑目标”这些已冻结的 `/` 前提，仍只发一次按键、使用原有超时，并在失败时输出有限的合成焦点/按键状态。没有改变生产搜索逻辑或降低判断标准。
+旧669f基线测试和来源诊断已保留在Git历史中，仅作为旧合同记录，不再是本地工作空间的整体开关。

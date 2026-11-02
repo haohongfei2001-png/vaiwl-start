@@ -1,5 +1,7 @@
 # 数据合同与状态转换
 
+> **当前有效修订：2026-11-02-local-first，用户已批准。** [统一修订合同](10-LOCAL-FIRST-AMENDMENT.md)覆盖原 M0 全局前置门：本地时间组织、Start 主动打开与局部候选项目可独立运行；账号隔离及正式原生归属证明仍保留。`LOCAL_WORKSPACE_READY` 不等于 `FREE_V1_ACCEPTED`。
+
 规范类型见 `contracts/free-v1.ts`。TypeScript 不能替代运行时校验：跨上下文消息、未来备份文件和网页字段全部要精确字段白名单、长度/URL/日期限制、判别联合校验。未知额外字段拒绝；输入不能自己声明 verified、scope、source authority。
 
 ## 1. 身份与主键
@@ -39,11 +41,14 @@
 
 书面规范中的 `[ownerKey,lastActiveAt]` 对应平铺派生字段：ownerKey 为 scope key 或 `unassigned:<localProfileKey>`；无活动不进入时间索引，用稳定 rank 查询无日期部分。绝不以 null/undefined/boolean 作为不合法 IDB key。
 
+本次修订不改变数据库 version/store/index。会话允许可选 `localProjectCandidate`；已有 v1 记录缺少该字段可直接读取。该字段 key 隔离 Profile/session/binding/observationId/Project ID，不进入正式 projects 表；形状与边界见修订合同第5节。`browserLastVisitAt` 仅供待确认日期投影，仍不进入活动索引。
+
 ## 4. 归属归约
 
 | 输入与前态 | 后态 | 强制规则 |
 |---|---|---|
-| 只有历史 URL / 标题 | UNKNOWN / scope-unverified | 不推 NONE，不绑定当前账号 |
+| 只有历史 URL / 标题 | UNKNOWN / scope-unverified | 可按浏览日期组织，不推 NONE、不绑定当前账号、不造活动 |
+| 未分配记录 + 可靠局部 Project 元数据 | UNKNOWN + localProjectCandidate | 独立候选卡，原 key 不变，不授予正式 PROJECT/scope |
 | 已证scope + 会话ID，没有成员证据 | UNKNOWN / no-membership-source | 保留打开与查找 |
 | 已证scope + 当前正确P成员区域或已核验窄metadata | PROJECT(P) | 必须匹配会话ID、P ID、scope、文档/route epoch |
 | 当前对象明确且经实测有NONE语义的字段/原生状态 | NONE | missing/null/无badge不够 |
@@ -54,7 +59,7 @@
 | 列表中不再出现某对象 | 不删除 | 不把partial库存当完整集合 |
 | 明确来源撤销且无其他有效见证 | UNKNOWN / source-revoked | 历史入口保留；账号混淆时禁止写入 |
 
-归属是“上次确认的原生事实”，不是保证当前云端实时状态；离线缓存允许展示，详情显示核对时间。时间流逝本身不制造移出或删除。正向新的可靠变化触发重新分组。UNKNOWN记录不能藏在NONE或旧P里。
+归属是“上次确认的原生事实”，不是保证当前云端实时状态；离线缓存允许展示，详情显示核对时间。时间流逝本身不制造移出或删除。正向新的可靠变化触发重新分组。UNKNOWN 不能藏在正式 NONE 或旧 P 中；可独立按浏览/活动日期组织，或在有局部证据时进入显式候选项目。
 
 ## 5. 主动打开状态机
 
@@ -63,12 +68,12 @@
 1. 扩展可信界面或隔离内容脚本记录受信click/auxclick/键盘激活的目标。只检查事件类别及目标，不记录键入字符。worker 校验 sender.id、sender.tab、frameId=0、documentId、来源URL与scopeEpoch。页面提供的 isTrusted=true 字段不自证；受信事件检查发生在实际监听器里。
 2. worker 生成 operation/intent ID，以本机接收时间建立 issuedAt、issuedTimeZone、issuedLocalDate 和60秒截止，先写入IDB再派发 Start 自有导航。原生链接不拦截真实ChatGPT行为，只做意图与随后导航关联。Start自有导航按修饰键调用最小tabs/windows操作，无批量开页或tab重排。
 3. 限定导航链中匹配 browserSessionId、targetTabId、documentId、routeEpoch、精确会话ID。原生中键新tab使用 createdNavigationTarget 的 source tab/frame 与唯一目标匹配；有多个可匹配意图时不猜，记 ambiguous-arrival。同tab SPA 需要route epoch加一后的目标匹配。不能只看URL含某字符串。
-4. 真实抵达定义为当前已提交、documentLifecycle=active且非未激活prerender的文档/SPA会话路由（可为用户明确打开的后台tab），受支持原生标题/会话标识区确认相同对象；登录页、404、空白壳和不同会话不成功。不读取消息区域来证明抵达。HTTP缓存不决定主动性；有真实意图且已恢复为active的BFCache导航可按同一关联规则验证，无意图自动恢复仍为零。身份未证只可提交到未分配记录；expectedScope不匹配拒绝。
-5. 请求targetRecordKey保持不变。若expectedScopeKey非null，抵达必须匹配该scope；若原请求为未分配候选且抵达证明A，resolvedRecordKey置为A的scoped key；身份仍未证则保持staging key。IDB一个事务创建/更新resolved record、必要时建CandidateResolution、原子消费intent并写committedRecordKey、仅向resolvedRecordKey upsert一条openDays、更新其conversation.activity、增加revision。本次新事件只落一处；候选旧访问/旧活动绝不搬到A。相同intent重放不重复；两tab同日同时打开只有一个活动日，lastOpenedAt取较晚有效时间。
+4. 当前 Start 路径由首个有效 onCommitted 绑定精确 top-frame document/route，再由 onCompleted 及当前 frame/document/精确会话 URL 确认浏览器导航完成。导航错误、错误目标、登录页重定向、旧文档与被动恢复拒绝；不要求原生标题/正文完整加载来源。confirmationBasis 为 browser-navigation，只表示主动打开。同 URL 应用错误/权限提示仍可能完成导航，因此不能据此设置 reachable 或声称阅读完成。未分配记录可写本地活动；已确认 scope 仍要求当前 owner 证据且 expectedScope 不匹配拒绝。
+5. 当前 browser-navigation 路径的 targetRecordKey、resolvedRecordKey、committedRecordKey 指向原未分配记录，不迁移已有活动。提交事务再次检查 captureEnabled，权限/session/epoch变更使旧事件失效。以下逐条账号解析规则仅用于有真实独立 scope 见证的正式路径，不由本地候选或浏览器 URL 自动触发：请求targetRecordKey保持不变。若expectedScopeKey非null，抵达必须匹配该scope；若原请求为未分配候选且抵达证明A，resolvedRecordKey置为A的scoped key；身份仍未证则保持staging key。IDB一个事务创建/更新resolved record、必要时建CandidateResolution、原子消费intent并写committedRecordKey、仅向resolvedRecordKey upsert一条openDays、更新其conversation.activity、增加revision。本次新事件只落一处；候选旧访问/旧活动绝不搬到A。相同intent重放不重复；两tab同日同时打开只有一个活动日，lastOpenedAt取较晚有效时间。
 6. 日期在签发时由资料库IANA时区和issuedAt计算并冻结在issuedTimeZone/issuedLocalDate，抵达期间设置变更不得改此键，跨午夜抵达仍归手势发生日；事件若在60秒内跨午夜，不能归导航结束日。时钟后退/超大跳变导致关系不可信时拒绝该活动，不借历史lastVisitTime补算。browser webNavigation.timeStamp 只与同来源时间相互比较，不能和Date.now混算延迟。
 7. 浏览器重启或扩展Reload使 browserSessionId 更换；旧intent不能被复用。worker单独休眠/重启保留session值与未过期intent，可继续完成。过期与已消费记录在下次入口/事务批量清理；不保活worker。
 
-原生链接观察只对已核验会话导航控件启用，不在整个document上提取任意链接或正文。点击外部普通网页、网站快捷项不进入本活动管道。
+原生链接活动当前未启用；未来只对已核验会话导航控件启用，不在整个document上提取任意链接或正文。点击外部普通网页、网站快捷项不进入本活动管道。
 
 ## 6. 地址栏分支
 

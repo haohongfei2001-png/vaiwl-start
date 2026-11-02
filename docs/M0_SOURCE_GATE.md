@@ -1,8 +1,28 @@
-# M0 · 真实来源门
+# M0 · 本地能力与正式来源分开生效
+
+合同修订：**2026-11-02-local-first，用户已批准**。以 [统一修订合同](free-v1/10-LOCAL-FIRST-AMENDMENT.md) 为当前权威；其覆盖原M0共同前置门。本地工作空间代码状态 `LOCAL_WORKSPACE_READY`，不代表真实原生来源或完整 `FREE_V1_ACCEPTED`。
+
+| 能力 | 当前生产语义 | 仍保留的边界 |
+|---|---|---|
+| 本地历史时间组织 | UNKNOWN按有效browserLastVisitAt进入历史浏览日期窗 | 不推账号/PROJECT/NONE，不回填活动 |
+| Start本地主动打开 | 真实手势→onCommitted绑定→onCompleted+精确frame/document→原key OpenDay | 导航失败/错误目标/重放拒绝，提交前权限与事务内captureEnabled复核；不声称阅读或自动设置reachable |
+| 局部Project候选 | 严格局部ID、名称、成员信息挂在原未分配UNKNOWN记录 | 候选key隔离Profile/session/binding/observationId/projectId，不跨观察合并，不写正式Project资产 |
+| 已确认账号资料库活动 | 继续要求当前owner与expectedScope匹配 | 不能把本地账号未知活动写入已确认账号库 |
+| 正式账号/current context | 尚无本次新的真实来源通过证据 | roster/default/null不自证当前空间 |
+| 正式Project/NONE | 未取得正式来源的记录仍UNKNOWN；可信正式证据可逐条生效 | 候选/标题相似/缺badge/普通URL不成为认证归属 |
+| 原生链接、地址栏活动 | 独立未启用入口 | 不再阻断Start自身入口 |
+
+最少实机验收是保留已有目录并看日期窗、一次真实Start打开与同日去重、刷新不记、自然Project浏览可否形成候选、关闭重开后保留。已有source-check是历史辅助材料，不是本地工作空间必经步骤，也不在本轮新增诊断器。
+
+以下保留旧基线来源事实、固定源码和历史失败原因以便追溯；其中“独立正文加载来源”“全部门先行”“唯一下一步为结构诊断”的旧产品裁决均已被本修订替代。当前字段的状态以以上表格、实施状态和同SHA验收记录为准。
+
+---
+
+# 旧来源研究记录（669f756基线；历史资料）
 
 合同：`VAIWL-START-FREE/1.0`。日期：2026-11-02（Asia/Shanghai）。
 
-**状态：SOURCE_GATE_BLOCKED。** 已实现无正文候选读取、严格 Project DOM 解析和失败边界；没有取得 Start 自身真实账号、当前空间、正向 NONE 或当前会话抵达的实机认证。本文件不能替代与最终 build SHA 绑定的验收记录。
+**历史基线状态：SOURCE_GATE_BLOCKED；此状态不再是本地功能的总开关。** 已实现无正文候选读取、严格 Project DOM 解析和失败边界；没有取得 Start 自身真实账号、当前空间、正向 NONE 或当前会话抵达的实机认证。本文件不能替代与最终 build SHA 绑定的验收记录。
 
 ## 本轮恢复结论
 

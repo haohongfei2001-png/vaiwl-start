@@ -6,7 +6,7 @@ A new tab workspace for ChatGPT conversations and projects.
 
 Implemented on the sole `codex/free-v1-implementation` branch, in [Draft PR #1](https://github.com/haohongfei2001-png/vaiwl-start/pull/1). The candidate has a persistent local directory, bounded browser-history import, scoped data/transaction core, the frozen new-tab UI, website management, and loadable MV3 packaging.
 
-**SOURCE_GATE_BLOCKED:** current account/workspace, positive Project/NONE, and metadata-only arrival authority still require real source evidence. Production preserves candidates as UNKNOWN and does not manufacture activity. This is a usable restricted local catalog, not FREE_V1_ACCEPTED.
+**LOCAL_WORKSPACE_READY:** imported UNKNOWN history is organized into explicitly labelled 30-day browsing windows. Trusted Start gestures plus exact browser navigation completion create local opening days, independently of ChatGPT body rendering. Bounded native Project panels can populate labelled local candidates. Account ownership, authenticated native Project/NONE and real Mac/Edge acceptance remain separately unverified; this is not FREE_V1_ACCEPTED. See the [user-approved local-first amendment](docs/free-v1/10-LOCAL-FIRST-AMENDMENT.md).
 
 - [安装与实际使用](docs/INSTALL.zh-CN.md)
 - [唯一实施状态](docs/IMPLEMENTATION_STATUS.md)

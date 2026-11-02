@@ -13,6 +13,13 @@ for(const name of [U,B,I,P,N,F,V,R,'privacy-audit','performance-validation']){
 // Each full claim names actual predicates. File-level success alone is insufficient.
 // Unit IDs are actual test names, matched by stable prefixes. Visual review is explicit.
 const full={
+ L02:{[U]:['contract correction: 564 synthetic history','confirmed local opening replaces'],[V]:['UI-local-564-history-date-windows','UI-local-history-reload-no-passive-activity']},
+ L04:{[U]:['Local-first repeated Start opens'],[N]:['SOURCE-B-same-day-reopen-one-day']},
+ L05:{[U]:['Local-first completion without a gesture','M0-D reload, history traversal'],[N]:['SOURCE-B-passive-loading-no-activity','SOURCE-B-refresh-cannot-reuse-gesture']},
+ L09:{[U]:['Local-first Project candidate groups','candidate keys separate observation','candidate metadata cannot take precedence'],[V]:['UI-local-project-candidate-distinct']},
+ L10:{[U]:['a verified membership update moves','confirmed local opening replaces'],[N]:['SOURCE-B-Start-click-bound-document']},
+ L11:{[U]:['history windows retain local-calendar boundaries','history ordering uses visit time'],[V]:['UI-local-pending-30-day-navigation','UI-local-full-history-search','UI-empty-adjacent-segment','UI-pinning-preserves-order'],['performance-validation']:['PERF-newtab-2000-20','PERF-search-feedback']},
+ L12:{[U]:['Local-first capture disabled at the final transaction','Local-first completion without a gesture'],[P]:['PRIVACY-B-no-false-authority-or-activity']},
  S10:{[R]:['REVIEW-source-status-separation']},
  T01:{[U]:['T01 inherited calendar vectors']},
  T02:{[U]:['T02/T03/T04/T06 projects occupy one segment'],[V]:['UI-old-stays-in-parent','UI-empty-segment-to-known-and-back']},
@@ -59,8 +66,13 @@ const gaps={
  U11:'Fallback action is implemented; another override extension or managed enterprise policy needs the actual device scenario.',
 };
 const related={
+ L01:{[U]:['contract correction: 564 synthetic history'],[V]:['UI-local-564-history-date-windows']},
+ L03:{[U]:['Local-first Start freezes one document'],[N]:['SOURCE-B-Start-click-bound-document']},
+ L06:{[U]:['Local-first repeated Start opens'],[B]:['B-browser-restart-durable-directory'],[N]:['SOURCE-B-close-keeps-local-record']},
+ L07:{[U]:['local history projection and search exclude','S07/O13/D07 one of 500 candidates'],[V]:['UI-search-scope-isolation']},
+ L08:{[U]:['Local-first Project observation preserves'],[N]:['SOURCE-B-local-project-keeps-UNKNOWN'],[V]:['UI-local-project-candidate-distinct']},
  S03:{[N]:['SOURCE-B-project-SPA-delayed-hydration']},
- S08:{[N]:['SOURCE-B-fixed-metadata-requests-only','SOURCE-B-zero-authority-and-activity']},
+ S08:{[N]:['SOURCE-B-fixed-metadata-requests-only','SOURCE-B-local-activity-without-native-authority']},
  O01:{[N]:['SOURCE-B-Start-click-bound-document']},
  S07:{[U]:['S07/O13/D07 one of 500 candidates']},
  O04:{[B]:['B-synthetic-click-no-intent']},
@@ -78,7 +90,7 @@ function predicate(name,id){
 }
 const records=[];
 for(const line of specification.split('\n')){
- const cells=line.split('|').map(s=>s.trim());if(!/^[SOTDU]\d{2}$/.test(cells[1]||''))continue;
+ const cells=line.split('|').map(s=>s.trim());if(!/^[SOTDUL]\d{2}$/.test(cells[1]||''))continue;
  const [id,action,requirement,layer]=cells.slice(1,5);
  const predicates=Object.entries(full[id]||related[id]||{}).flatMap(([name,ids])=>ids.map(check=>predicate(name,check)));
  const blocked=layer.includes('L')||sourceDependent.has(id)||deviceDependent.has(id);
@@ -91,9 +103,9 @@ for(const line of specification.split('\n')){
   artifactRefs:[...new Set(predicates.filter(c=>c.status!=='NOT_RUN').map(c=>c.artifact))],requirement,layer,predicates,missingConditions:missing,
   limitations:['Row PASS never implies Free V1 acceptance or real Mac/Edge compatibility.',...(id==='D10'?['Current v1 initial-schema recovery and same-version reopen; quota is injected into a real browser transaction, not physical disk exhaustion or a nonexistent legacy migration.']:[])]});
 }
-for(let n=1;n<=4;n++)records.push({id:'JOURNEY-'+n,status:'BLOCKED',buildSha:build.sha,browserVersion:null,environment:'Real Mac Chrome and Edge',steps:'Frozen continuous journey '+n,observed:'Live context/PROJECT/NONE/arrival sources are unproven.',artifactRefs:['M0_SOURCE_GATE.md'],limitations:['Synthetic browser tests do not replace this journey.']});
+for(let n=1;n<=4;n++)records.push({id:'JOURNEY-'+n,status:'BLOCKED',buildSha:build.sha,browserVersion:null,environment:'Real Mac Chrome and Edge',steps:'Continuous journey '+n+' with local-first amendment',observed:'Actual device journey and authenticated native context/PROJECT/NONE remain unverified. This does not block tested local history and Start navigation activity.',artifactRefs:['M0_SOURCE_GATE.md'],limitations:['Synthetic browser tests do not replace this journey.']});
 const engineeringGates=[U,'privacy-audit',B,I,P,N,F,V,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
 const evidenceFailures=Object.entries(evidence).filter(([,r])=>r.status==='FAIL'||r.checks?.some(c=>typeof c==='object'&&c.status==='FAIL')).map(([name])=>name+'.json');
-const status=records.some(r=>r.status==='FAIL')||evidenceFailures.length?'FAIL':'SOURCE_GATE_BLOCKED';
-await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status,sourceGate:build.sourceGate,buildSha:build.sha,dirty:build.dirty,engineeringGates,evidenceFailures,records},null,2));
+const status=records.some(r=>r.status==='FAIL')||evidenceFailures.length?'FAIL':engineeringGates.every(g=>g.status==='PASS')?'LOCAL_WORKSPACE_READY':'IMPLEMENTATION_READY_FOR_CI';
+await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status,sourceGate:build.sourceGate,amendment:build.amendment,nativeAttribution:'UNVERIFIED',buildSha:build.sha,dirty:build.dirty,engineeringGates,evidenceFailures,records},null,2));
 console.log(JSON.stringify({status,buildSha:build.sha,records:records.length,statuses:records.reduce((n,r)=>({...n,[r.status]:(n[r.status]||0)+1}),{}),engineeringGates}));

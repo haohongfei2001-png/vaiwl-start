@@ -1,0 +1,12 @@
+{
+  "buildSha": "80ed8939e27df52a06446877cbf8e590c91ef00d",
+  "runId": 41449102208,
+  "runUrl": "https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41449102208",
+  "status": "FAIL",
+  "passed": ["95 unit tests", "types", "build", "privacy audit", "base installed extension", "history recovery", "privacy boundaries", "18 source recovery checks", "storage faults"],
+  "failed": {"jobId": 125289562711, "check": "UI-empty-adjacent-segment", "file": "tests/ui/production-ui.mjs", "line": 210},
+  "rootCause": "Real UI regression: undated entries were incorrectly counted as records belonging to the adjacent empty 30-day segment, hiding its empty-state notice.",
+  "fix": "Only dated project, candidate, formal-date and pending-date groups determine whether this segment is empty; undated entries remain independently accessible.",
+  "testChange": "Keep the failing assertion and strengthen it with exact k=1, zero dated groups and continued undated access; no timeout increase or fixture weakening.",
+  "limitations": "All installed-browser sources are synthetic; no real ChatGPT or Mac certification. Final verification belongs to a later exact SHA."
+}
