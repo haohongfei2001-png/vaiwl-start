@@ -50,6 +50,8 @@ jobs:
       - run: node tests/browser/source-recovery.mjs
       - run: node tests/browser/storage-faults.mjs
       - run: node tests/ui/production-ui.mjs
+      - run: node tests/browser/native-experience.mjs
+      - run: node tests/browser/upgrade-native.mjs
       - run: node tests/browser/performance.mjs
       - run: npm run audit
       - run: node scripts/acceptance.mjs
@@ -64,6 +66,10 @@ jobs:
             artifacts/privacy-boundaries-validation.json
             artifacts/source-recovery-validation.json
             artifacts/storage-faults-validation.json
+            artifacts/native-experience-validation.json
+            artifacts/native-upgrade-validation.json
+            artifacts/native-workspace.png
+            artifacts/native-settings.png
             artifacts/ui-validation.json
             artifacts/ui-review.png
             artifacts/ui-*-held.png

@@ -1,14 +1,18 @@
 # VAIWL Start · 本地工作空间纠偏
 
-合同：`VAIWL-START-FREE/1.0 / 2026-11-02-local-first`。唯一分支：`codex/free-v1-implementation`，Draft PR #1。
+合同：`VAIWL-START-FREE/1.0 / 2026-11-03-native-experience`。唯一分支：`codex/free-v1-implementation`，Draft PR #1。
 
 ## 已实现的产品行为
 
-- 未分配UNKNOWN历史按有效浏览日期形成独立30日窗口，保留搜索、稳定排序、5/+12展开与无日期入口。
-- 本地真实主动日期与浏览日期分别标记。Start手势经过精确浏览器导航完成后写原记录OpenDay，同日去重；刷新、恢复、无意图采集不造活动。
+- 工作空间统一项目→窗口。UNKNOWN只有一个待归属日期区，不按主动打开/历史浏览分组。PROJECT/NONE和候选仍遵守原证据、Profile/账号边界。
+- 展示排序取同记录有效浏览时间与已确认打开时间的较新者，拒绝同日未来时间；只在详情保留来源差异。Start手势经过精确浏览器导航完成后写原记录OpenDay，同日去重；刷新、恢复、无意图采集不造活动。
 - 受限原生Project面板观察保留为明确的本地候选，ID/名称/已观察成员可用；不伪装成已认证账号或原生归属，不跨观察合并。
 - 数据库名、version=1、12个store、旧key、网站、墓碑及导入checkpoint保留；没有清空或重建现有用户数据。
 - 原首页视觉、30日历日公式和浏览器原生导航保留。无AI、云服务或新诊断页面。
+
+- 原生书签为首页网站入口，按需bookmarks权限及一次性三种显示偏好；原始书签只在用户确认迁移时create，不自动移动或删除。旧shortcuts完整保留在设置兼容区。
+- 标签页名称与favicon独立设置，Chrome/Edge及常用界面语言默认；本地近似图标而非内部资源。PNG/JPEG/WebP≤1MiB/2048px、重编码128px PNG；本地持久化，不改安装身份和内部Logo。
+- 新偏好使用独立chrome.storage.local键；没有数据库版本或store变更。清除全部Start数据时同步清除这些偏好，但不删除浏览器原生书签。
 
 代码能力标记：`LOCAL_WORKSPACE_READY`。这不是完整 `FREE_V1_ACCEPTED`，也不声称真实ChatGPT已认证Project/NONE。
 

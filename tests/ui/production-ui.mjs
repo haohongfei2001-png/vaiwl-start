@@ -119,7 +119,7 @@ try {
   await page.locator('#sites-dialog [data-close]').first().click();
   const scope = `scope:${'a'.repeat(64)}`;
   const otherScope = `scope:${'b'.repeat(64)}`;
-  const now = new Date(Date.now() - 1000);
+  const now = new Date(Date.now() - 600000);
   const today = now.toISOString();
   const old = new Date(now.getTime() - 70 * 86400000).toISOString();
   const projects = ['VAIWL', 'Riftlet', '研究笔记', 'PAIA', '产品调研', 'HOLDSNOW'].map((nativeTitle, index) => ({
@@ -227,7 +227,7 @@ try {
   const returnedToEmpty = await page.getByText('这一段没有记录', { exact: true }).isVisible();
   await page.locator('#period-newer').click();
   check('UI-empty-segment-to-known-and-back', earlierKnownVisible && olderProjectsAbsent && returnedToEmpty && await page.locator('.project').count() === 6 && await page.locator('#period-newer').count() === 0, 'k0 → empty k1 → known NONE at k2 → empty k1 → k0; no empty segment is skipped and old project members do not duplicate their current parent.');
-  check('UI-undated-independent-entry', await page.locator(`.undated-section [data-record-key="${undated.key}"]`).count() === 1 && await page.locator(`.date-window [data-record-key="${undated.key}"]`).count() === 0, 'A history.lastVisitTime-only record stays in the independent undated section, outside dated windows.');
+  check('UI-undated-independent-entry', await page.locator(`.undated-section [data-record-key="${undated.key}"]`).count() === 1 && await page.locator(`.date-window [data-record-key="${undated.key}"]`).count() === 0, 'A record with neither a valid visit nor confirmed-open time stays in the independent undated section, outside dated windows.');
   await page.keyboard.press('/'); await page.locator('#search-input').fill(undated.nativeTitle);
   assert.equal(await page.locator('.search-result').getAttribute('data-record-key'), undated.key);
   const undatedTabPromise = context.waitForEvent('page'); await page.keyboard.press('Control+Enter');
@@ -238,7 +238,7 @@ try {
     const record = tx.objectStore('conversations').get(key), intents = tx.objectStore('openIntents').getAll(), days = tx.objectStore('openDays').getAll();
     return new Promise(resolve => { tx.oncomplete = () => { db.close(); resolve({ record: record.result, intents: intents.result, days: days.result }); }; });
   }, undated.key);
-  check('UI-undated-search-open-remains-undated', undatedAfterOpen.record.activity === null && undatedAfterOpen.record.browserLastVisitAt === today && undatedAfterOpen.intents.some(intent => intent.targetRecordKey === undated.key && intent.evidence.gesture === 'keyboard') && !undatedAfterOpen.days.some(day => day.recordKey === undated.key), 'The undated entry is searchable and dispatches a persistent open intent; unverified arrival cannot turn history.lastVisitTime into an activity date.');
+  check('UI-undated-search-open-remains-undated', undatedAfterOpen.record.activity === null && undatedAfterOpen.record.browserLastVisitAt === null && undatedAfterOpen.intents.some(intent => intent.targetRecordKey === undated.key && intent.evidence.gesture === 'keyboard') && !undatedAfterOpen.days.some(day => day.recordKey === undated.key), 'The undated entry is searchable and dispatches a persistent open intent; unverified arrival cannot turn history.lastVisitTime into an activity date.');
   await undatedTab.close(); await page.bringToFront(); await page.keyboard.press('Escape');
   // Closing a native dialog alone does not assert the documented '/' preconditions.
   // Wait for them without forcing focus, retrying the key, or extending the timeout.
@@ -355,11 +355,13 @@ try {
     document.addEventListener('compositionend', event => { window.__gestureEvidence.imeEnd = { at: performance.now(), trusted: event.isTrusted }; }, true);
   });
   const pointerKey = records[6].key, pointerChangedKey = records[17].key;
-  await page.evaluate(() => window.scrollTo(0, 500));
+  // The compact native-bookmark header shortens the page. Keep scroll headroom
+  // for the exact-anchor oracle; bottom-clamped pages cannot move past maxScroll.
+  await page.evaluate(() => window.scrollTo(0, Math.min(250, Math.max(0, document.documentElement.scrollHeight - innerHeight - 100))));
   const pointerTarget = page.locator(`#workspace-content [data-record-key="${pointerKey}"]`);
   const pointerBox = await pointerTarget.boundingBox(); assert.ok(pointerBox && pointerBox.y >= 0);
   await page.mouse.move(pointerBox.x + 35, pointerBox.y + pointerBox.height / 2);
-  await page.keyboard.down('Control'); await page.mouse.down();
+  await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control'); await page.mouse.down();
   const pointerBefore = await page.evaluate(changedKey => {
     const anchor = [...document.querySelectorAll('#workspace-content [data-record-key]')].find(row => row.getBoundingClientRect().bottom > 80);
     window.__pointerAnchorKey = anchor.dataset.recordKey;
@@ -372,7 +374,7 @@ try {
   const pointerHeld = await page.evaluate(() => ({ first: document.querySelector('.project [data-record-key]').dataset.recordKey, focus: document.activeElement.dataset.recordKey, offset: document.querySelector(`[data-record-key="${window.__pointerAnchorKey}"]`).getBoundingClientRect().top }));
   await mkdir('artifacts', { recursive: true }); await page.screenshot({ path: 'artifacts/ui-pointer-held.png', fullPage: false });
   assert.equal(pointerHeld.first, pointerBefore.first); assert.equal(pointerHeld.focus, pointerKey); assert.ok(Math.abs(pointerHeld.offset - pointerBefore.offset) <= 1);
-  const pointerOpenPromise = context.waitForEvent('page'); await page.mouse.up(); await page.keyboard.up('Control');
+  const pointerOpenPromise = context.waitForEvent('page'); await page.mouse.up(); await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
   const pointerOpen = await pointerOpenPromise;
   await page.waitForFunction(() => !!window.__gestureEvidence.pointerApplied, null, { timeout: 1000 });
   const pointerAfter = await page.evaluate(() => ({ evidence: window.__gestureEvidence, focus: document.activeElement.dataset.recordKey, offset: document.querySelector(`[data-record-key="${window.__pointerAnchorKey}"]`).getBoundingClientRect().top }));
@@ -484,7 +486,7 @@ try {
     const req = indexedDB.open('vaiwl-start', 1); const db = await new Promise(resolve => { req.onsuccess = () => resolve(req.result); });
     const tx = db.transaction(['settings', 'conversations', 'openDays', 'revisions'], 'readwrite');
     const settings = tx.objectStore('settings').get('main'), beforeDays = tx.objectStore('openDays').count();
-    const at = new Date(); at.setUTCHours(8, 0, 0, 0); const now = at.toISOString();
+    const at = new Date(Date.now() - 1000); const now = at.toISOString();
     settings.onsuccess = () => {
       const profile = settings.result.localProfileKey;
       for (let n = 0; n < 564; n++) {
@@ -505,7 +507,7 @@ try {
   const historySection = localPage.locator('.pending-dates');
   await historySection.waitFor();
   check('UI-local-564-history-date-windows', await historySection.locator('.date-window').count() === 30 && await localPage.locator('#period-older').isVisible()
-    && await localPage.getByRole('heading', { name: '历史浏览／归属待确认', exact: true }).isVisible()
+    && await localPage.getByRole('heading', { name: '待归属', exact: true }).isVisible()
     && await localPage.locator('[data-date-basis="confirmed-open"]').count() === 0
     && await localPage.locator('.unknown-section').count() === 0,
   '564 synthetic local histories occupy their browser-visit calendar windows; the current window has 30 dates, no false active-date section or unstructured pending list.');

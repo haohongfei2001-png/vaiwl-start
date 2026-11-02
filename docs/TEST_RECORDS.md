@@ -1,12 +1,20 @@
 # Free V1 · 同提交验证与真实来源边界
 
-当前合同修订：`2026-11-02-local-first`。本文件说明验证范围；交付包的 `build.json`、`verification/*.json` 及对应GitHub Actions是实际SHA和最终结果依据，不能引用另一提交的绿色结果。
+当前合同修订：`2026-11-03-native-experience`。本文件说明验证范围；交付包的 `build.json`、`verification/*.json` 及对应GitHub Actions是实际SHA和最终结果依据，不能引用另一提交的绿色结果。
+
+## 本次新增覆盖
+
+原生体验测试运行真实扩展页面和真实书签API，含三种偏好、拒绝分支、实际撤权、显式去重迁移、标题与图标持久化、实际扩展Reload、恶意图片拒绝、统一来源渲染。`native-experience-validation.json`为Chromium；`edge-native-validation.json`仅在实际Edge执行时产生，不伪装CI环境。
+
+`native-upgrade-validation.json`从已批准6dfed27实际旧代码创建数据库，在隔离Profile填充12个store，再同路径换新代码。核对同ID、所有store内容完全一致、墓碑和去重关系、旧shortcut可达及重启留存。它不是用户真实资料库已被更新的证明。
+
+本轮真实测试失败记录：旧领域夹具把“无日期”记录同时设置为有浏览时间，不再符合新展示合同，改为真正两种时间均缺失，并另加history-only日期断言；旧UI来源标题/选择器改为统一区域；原测试在Mac用Control点击引发右键语义，改为Mac Meta /其他平台Control；排序夹具改用过去时间；紧凑书签头部缩短页面后，原固定scrollY=500接近滚动下限，保留精确锚点断言并建立100px可滚动余量，未放宽1px/1000ms判定或删除用例。主测试仍67项。
 
 ## 自动验证
 
 | 层 | 本轮覆盖 | 真实边界 |
 |---|---|---|
-| TypeScript与单元 | 当前95项，包含日期投影、564合成历史、30日/DST、IDB持久化、账号/资料库隔离、墓碑、候选快照、导航失败与提交竞态 | 注入的browser端口、fake-indexeddb、受控jsdom geometry |
+| TypeScript与单元 | 当前106项，包含日期投影、564合成历史、30日/DST、IDB持久化、账号/资料库隔离、墓碑、候选快照、导航失败与提交竞态 | 注入的browser端口、fake-indexeddb、受控jsdom geometry |
 | 已安装Chromium | 真实安装生产扩展代码，历史导入/恢复、权限和IPC、Start可信中键点击、onCompleted、同日重开、刷新与关闭标签留存 | 网络站点和账号响应是显式合成夹具，不是真实ChatGPT |
 | 正式UI | 原首页、30日上下段、空段不跳、旧成员、搜索、网站与6项本地历史/候选流程 | 564条目录为合成；不能代替用户已有564条的升级验证 |
 | 隐私审计 | 最小权限、生产依赖、无正文端点/整页文本、无token/邮箱/预览持久化、hash对应 | 不以静态检查代替真实来源认证 |

@@ -1,3 +1,4 @@
+import { NATIVE_KEYS } from '../domain/native-experience.js';
 import { createRepository, type Repository } from '../storage/repository.js';
 import { parseConversationUrl } from '../domain/ids.js';
 import { COLLECTOR_PROTOCOL, PROTOCOL, bounded, exact, parseEnvelope, publicError, trustedCollectorSender, trustedExtensionSender } from '../shared/protocol.js';
@@ -53,7 +54,7 @@ async function uiCommand(message: unknown, sender: chrome.runtime.MessageSender)
     case 'SHORTCUT_REMOVE': exact(p, ['id']); bounded(p.id, 128); await repo.removeShortcut(p.id, expectedRevision); break;
     case 'RECORD_REMOVE': exact(p, ['recordKey']); bounded(p.recordKey, 128); await repo.removeConversation(p.recordKey, expectedRevision); break;
     case 'RECORD_RESTORE': exact(p, ['recordKey']); bounded(p.recordKey, 128); await repo.restoreConversation(p.recordKey, expectedRevision); break;
-    case 'CLEAR_LOCAL': exact(p, []); await repo.clearLocalData(expectedRevision); await synchronizePermissions(false); await stopSourceCheck(); await chrome.storage.session.remove(['sourceStatus', 'sourceCheckRun']); break;
+    case 'CLEAR_LOCAL': exact(p, []); await repo.clearLocalData(expectedRevision); await chrome.storage.local.remove([...NATIVE_KEYS]); await synchronizePermissions(false); await stopSourceCheck(); await chrome.storage.session.remove(['sourceStatus', 'sourceCheckRun']); break;
     case 'PERMISSIONS_SYNC': {
       exact(p, [], ['enableCapture']);
       if (p.enableCapture !== undefined && typeof p.enableCapture !== 'boolean') throw new Error('INVALID_MESSAGE');

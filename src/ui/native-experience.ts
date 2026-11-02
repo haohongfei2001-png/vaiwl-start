@@ -8,7 +8,7 @@ export async function sanitizeIcon(file: File): Promise<string> {
   const expected = imageDimensions(bytes, file.type);
   const bitmap = await createImageBitmap(file);
   try {
-    if (bitmap.width !== expected.width || bitmap.height !== expected.height) throw Error('图片尺寸校验失败。');
+    if (!(bitmap.width === expected.width && bitmap.height === expected.height || bitmap.width === expected.height && bitmap.height === expected.width)) throw Error('图片尺寸校验失败。');
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
     const context = canvas.getContext('2d'); if (!context) throw Error('浏览器无法处理这张图片。');
     const ratio = Math.min(128 / bitmap.width, 128 / bitmap.height);

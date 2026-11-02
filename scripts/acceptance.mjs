@@ -6,13 +6,21 @@ const currentDirty=execFileSync('git',['status','--porcelain','--untracked-files
 if(build.sha!==currentSha||build.dirty!==currentDirty)throw Error('Stale build fingerprint; rebuild before aggregating acceptance.');
 const specification = await readFile('docs/free-v1/06-ACCEPTANCE.md', 'utf8');
 const U='unit-validation', B='browser-validation', I='import-recovery-validation', P='privacy-boundaries-validation', N='source-recovery-validation', F='storage-faults-validation', V='ui-validation', R='review-validation';
+const X='native-experience-validation', G='native-upgrade-validation';
 const evidence={};
-for(const name of [U,B,I,P,N,F,V,R,'privacy-audit','performance-validation']){
+for(const name of [U,B,I,P,N,F,V,R,X,G,'privacy-audit','performance-validation']){
   try{const result=JSON.parse(await readFile('artifacts/'+name+'.json','utf8'));if(result.buildSha===build.sha&&result.dirty===build.dirty)evidence[name]=result;}catch{/* Other-build or missing evidence never passes. */}
 }
 // Each full claim names actual predicates. File-level success alone is insufficient.
 // Unit IDs are actual test names, matched by stable prefixes. Visual review is explicit.
 const full={
+ X01:{[X]:['N-default-browser-title','N-default-browser-favicon','N-independent-custom-title','N-independent-product-icon','N-brand-identity-unchanged','N-restore-default']},
+ X02:{[X]:['N-upload-raster-reencoded','N-upload-reject-evil.svg','N-upload-reject-fake.png','N-upload-reject-too-big.png','N-restart-persistence','N-extension-reload-persistence']},
+ X03:{[X]:['N-always-bar-hidden','N-user-hidden-bar','N-no-permission-help','N-denial-does-not-block-workspace','N-real-optional-revocation','N-revocation-keeps-legacy-and-workspace']},
+ X04:{[X]:['N-empty-native-bookmark-bar','N-native-create-and-order','N-native-folder-hierarchy','N-native-rename-url','N-native-move-order','N-native-move-folder','N-native-delete-event','N-read-never-mutates-tree']},
+ X05:{[X]:['N-migration-cancel-no-write','N-explicit-deduplicated-migration','N-legacy-all-preserved','N-migration-idempotent']},
+ X06:{[X]:['N-one-unified-pending-area','N-no-visible-source-groups','N-no-duplicate-conversation','N-undated-remains-reachable','N-unified-30-day-pages','N-display-does-not-write-activity'],[U]:['latest valid display time','invalid and same-day future timestamps','project follows newest member','candidate keys separate observation','conflicted or revoked candidate evidence']},
+ X07:{[G]:['UP-baseline-real-v1-12-populated-stores','UP-same-path-same-id','UP-all-12-stores-byte-equivalent','UP-visibility-preserves-resolution-and-tombstone','UP-legacy-shortcut-reachable','UP-restart-preserves-v1']},
  L02:{[U]:['contract correction: 564 synthetic history','confirmed local opening replaces'],[V]:['UI-local-564-history-date-windows','UI-local-history-reload-no-passive-activity']},
  L04:{[U]:['Local-first repeated Start opens'],[N]:['SOURCE-B-same-day-reopen-one-day']},
  L05:{[U]:['Local-first completion without a gesture','M0-D reload, history traversal'],[N]:['SOURCE-B-passive-loading-no-activity','SOURCE-B-refresh-cannot-reuse-gesture']},
@@ -90,7 +98,7 @@ function predicate(name,id){
 }
 const records=[];
 for(const line of specification.split('\n')){
- const cells=line.split('|').map(s=>s.trim());if(!/^[SOTDUL]\d{2}$/.test(cells[1]||''))continue;
+ const cells=line.split('|').map(s=>s.trim());if(!/^[SOTDULX]\d{2}$/.test(cells[1]||''))continue;
  const [id,action,requirement,layer]=cells.slice(1,5);
  const predicates=Object.entries(full[id]||related[id]||{}).flatMap(([name,ids])=>ids.map(check=>predicate(name,check)));
  const blocked=layer.includes('L')||sourceDependent.has(id)||deviceDependent.has(id);
@@ -98,13 +106,13 @@ for(const line of specification.split('\n')){
  const status=predicates.some(c=>c.status==='FAIL')?'FAIL':blocked?'BLOCKED':complete?'PASS':'NOT_RUN';
  const missing=status==='PASS'?[]:[gaps[id]||(blocked?'Requires proven live source authority or actual Mac Chrome/Edge acceptance.':'Complete same-build evidence, including any required explicit visual review, is not available.')];
  records.push({id,status,buildSha:build.sha,browserVersion:evidence[B]?.browserVersion||evidence[V]?.browser||null,
-  environment:'Isolated Linux Chromium and synthetic catalog. Declared history/host/storage harnesses are test-only; original production installation is checked separately.',
+  environment:`Isolated ${process.platform} Chromium and synthetic catalog. Declared history/host/storage harnesses are test-only; original production installation is checked separately.`,
   steps:action,observed:status==='PASS'?'Every declared predicate passed at the required test layer for this build.':missing.join(' '),
   artifactRefs:[...new Set(predicates.filter(c=>c.status!=='NOT_RUN').map(c=>c.artifact))],requirement,layer,predicates,missingConditions:missing,
   limitations:['Row PASS never implies Free V1 acceptance or real Mac/Edge compatibility.',...(id==='D10'?['Current v1 initial-schema recovery and same-version reopen; quota is injected into a real browser transaction, not physical disk exhaustion or a nonexistent legacy migration.']:[])]});
 }
 for(let n=1;n<=4;n++)records.push({id:'JOURNEY-'+n,status:'BLOCKED',buildSha:build.sha,browserVersion:null,environment:'Real Mac Chrome and Edge',steps:'Continuous journey '+n+' with local-first amendment',observed:'Actual device journey and authenticated native context/PROJECT/NONE remain unverified. This does not block tested local history and Start navigation activity.',artifactRefs:['M0_SOURCE_GATE.md'],limitations:['Synthetic browser tests do not replace this journey.']});
-const engineeringGates=[U,'privacy-audit',B,I,P,N,F,V,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
+const engineeringGates=[U,'privacy-audit',B,I,P,N,F,V,X,G,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
 const evidenceFailures=Object.entries(evidence).filter(([,r])=>r.status==='FAIL'||r.checks?.some(c=>typeof c==='object'&&c.status==='FAIL')).map(([name])=>name+'.json');
 const status=records.some(r=>r.status==='FAIL')||evidenceFailures.length?'FAIL':engineeringGates.every(g=>g.status==='PASS')?'LOCAL_WORKSPACE_READY':'IMPLEMENTATION_READY_FOR_CI';
 await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status,sourceGate:build.sourceGate,amendment:build.amendment,nativeAttribution:'UNVERIFIED',buildSha:build.sha,dirty:build.dirty,engineeringGates,evidenceFailures,records},null,2));
