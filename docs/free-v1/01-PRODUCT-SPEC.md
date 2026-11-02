@@ -1,5 +1,7 @@
 # Free V1 冻结产品规格
 
+> 当前优先修订：[2026-11-03 原生体验与统一工作空间](11-NATIVE-EXPERIENCE-AMENDMENT.md)。废止可见来源分组，首页快捷入口改为原生书签；下文冲突处以本修订为准。
+
 > **当前有效修订：2026-11-02-local-first，用户已批准。** [统一修订合同](10-LOCAL-FIRST-AMENDMENT.md)覆盖原 M0 全局前置门：本地时间组织、Start 主动打开与局部候选项目可独立运行；账号隔离及正式原生归属证明仍保留。`LOCAL_WORKSPACE_READY` 不等于 `FREE_V1_ACCEPTED`。
 
 ## 1. 用户承诺

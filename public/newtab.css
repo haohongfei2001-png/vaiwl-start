@@ -35,3 +35,20 @@ dialog{border:1px solid var(--line);border-radius:17px;background:white;color:va
    background blocks; typing must not resample the full viewport each frame. */
 body:has(#search-dialog[open]) :is(.topbar,.site-section,#workspace-content,#history-rail,#toast){filter:blur(3px)}
 #search-dialog::backdrop{backdrop-filter:none}
+
+/* Native bookmarks remain subordinate to the two-dimensional workspace. */
+.native-settings { padding: 16px 0; border-bottom: 1px solid #ecece9; }
+.native-settings h3 { margin: 0 0 8px; font-size: 14px; }
+.native-input-row { display: flex; gap: 8px; align-items: center; }
+.native-input-row input { min-width: 0; flex: 1; }
+.bookmark-prompt { display: flex; align-items: center; gap: 16px; color: #74776e; font-size: 12px; }
+.native-bookmark-list { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: flex-start; }
+.native-bookmark { max-width: 220px; height: 34px; font-size: 12px; }
+.native-bookmark span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.native-bookmark svg, .bookmark-folder svg { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.bookmark-folder { font-size: 12px; min-width: 100px; max-width: 100%; }
+.bookmark-folder summary { display: flex; gap: 6px; align-items: center; cursor: pointer; min-height: 34px; max-width: 220px; overflow-wrap: anywhere; }
+.bookmark-folder-items { padding: 4px 0 4px 12px; border-left: 1px solid #e7e8e3; }
+.bookmark-folder-items .native-bookmark { display: flex; }
+.native-bookmark-disabled { display: inline-block; padding: 8px; color: #8b8d85; font-size: 12px; }
+[hidden] { display: none !important; }

@@ -27,7 +27,7 @@ test('contract correction: 564 synthetic history records become dated local wind
   for (let k = 0; k < 4; k++) {
     const projection = projectCatalog(snapshot, { ...view, k });
     assert.ok(projection.pendingDates.length > 0);
-    assert.ok(projection.pendingDates.every(group => group.basis === 'browser-history'));
+    assert.ok(projection.pendingDates.every(group => !('basis' in group)));
     assert.equal(projection.unknown.length, 0);
     assert.equal(projection.dates.length, 0);
     assert.equal(projection.projects.length, 0);
@@ -44,8 +44,8 @@ test('confirmed local opening replaces only its history placement and remains di
   const row = candidate('opened-locally', '2026-08-01T05:00:00.000Z');
   row.activity = { firstConfirmedOpenAt: now, lastConfirmedOpenAt: now, lastActiveDate: '2026-11-02', timeZone: 'Asia/Shanghai' };
   const snapshot = catalog([row, candidate('history-today', now)]), projection = projectCatalog(snapshot, view);
-  assert.deepEqual(projection.pendingDates.map(group => [group.basis, group.date, group.records.map(record => record.key)]), [
-    ['browser-history', '2026-11-02', ['history-today']], ['confirmed-open', '2026-11-02', ['opened-locally']],
+  assert.deepEqual(projection.pendingDates.map(group => [group.date, group.records.map(record => record.key)]), [
+    ['2026-11-02', ['history-today', 'opened-locally']],
   ]);
   assert.equal(projection.dates.length, 0);
   assert.equal(keys(projectCatalog(snapshot, { ...view, k: 3 })).length, 0);

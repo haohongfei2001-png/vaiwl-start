@@ -1,3 +1,4 @@
+import { initNativeExperience } from './native-experience.js';
 import type { ConversationRecord, ProjectRecord, WebsiteShortcut, OpenDisposition, ImportCheckpoint } from '../../contracts/free-v1.js';
 import type { CatalogSnapshot } from '../storage/repository.js';
 import { projectCatalog, searchCatalog, type PendingDateGroup, type CandidateProjectCard } from '../domain/projection.js';
@@ -123,7 +124,7 @@ function projectCard(card: Card): HTMLElement {
     const old = el('div', { class: 'old-list', id: `older-${project.key}` }, [el('div', { class: 'conversation-list' }, card.older.map(conversationRow))]);
     old.hidden = !expanded; body.append(old);
   }
-  if (card.undated.length) body.append(el('p', { class: 'project-undated-label' }, ['尚无主动打开记录']), el('div', { class: 'conversation-list' }, card.undated.map(conversationRow)));
+  if (card.undated.length) body.append(el('p', { class: 'project-undated-label' }, ['尚无可用日期']), el('div', { class: 'conversation-list' }, card.undated.map(conversationRow)));
   if (!card.recent.length && !card.older.length && !card.undated.length) body.append(el('p', { class: 'project-note' }, ['尚未收录会话，可以打开原生项目。']));
   return el('article', { class: 'project', 'data-project': project.key, 'aria-labelledby': `project-${project.key}` }, [
     el('header', { class: 'project-head' }, [el('span', { class: 'project-symbol' }, [icon('folder')]), el('h3', { id: `project-${project.key}`, title: projectTitle }, [projectTitle]), button('', { class: 'icon-button', 'data-project-menu': project.key, 'data-focus-key': `project-menu:${project.key}`, 'aria-label': `${projectTitle}项目操作` }, 'more')]), body]);
@@ -169,16 +170,16 @@ function unknownSection(records: ConversationRecord[], force: boolean): HTMLElem
   return el('section', { class: 'unknown-section', 'aria-label': label }, [header, content]);
 }
 
-function pendingDateSection(groups: PendingDateGroup[], basis: PendingDateGroup['basis']): HTMLElement {
-  const label = basis === 'confirmed-open' ? '主动打开／归属待确认' : '历史浏览／归属待确认';
-  return el('section', { class: 'date-section pending-dates', 'data-date-basis': basis, 'aria-label': label }, [
+function pendingDateSection(groups: PendingDateGroup[]): HTMLElement {
+  const label = '待归属';
+  return el('section', { class: 'date-section pending-dates', 'aria-label': label }, [
     el('div', { class: 'section-heading' }, [el('h2', {}, [label])]),
     el('div', { class: 'date-grid' }, groups.map(group => {
-      const key = `pending:${selectedScope}:${basis}:${group.date}`, limit = view.limits[key] || 5;
+      const key = `pending:${selectedScope}:${group.date}`, limit = view.limits[key] || 5;
       const list = el('div', { class: 'conversation-list' }, group.records.slice(0, limit).map(conversationRow));
       if (group.records.length > limit) list.append(button('显示更多', { class: 'more-rows', 'data-more': key, 'data-focus-key': `more:${key}`, 'aria-label': `显示更多 ${group.date} 的待确认会话` }));
       return el('article', { class: 'date-window', 'data-date': group.date }, [
-        el('h3', { 'aria-label': `${group.date} · ${basis === 'confirmed-open' ? '主动打开' : '浏览器最近访问'}` }, [icon('calendar'), dateLabel(group.date)]), list]);
+        el('h3', { 'aria-label': group.date }, [icon('calendar'), dateLabel(group.date)]), list]);
     }))]);
 }
 
@@ -200,7 +201,7 @@ function firstUse(): HTMLElement {
   return el('section', { class: 'first-use' }, [el('div', { class: 'brand-mark', 'aria-hidden': 'true' }, [el('i'), el('i'), el('i'), el('i')]),
     el('h1', {}, ['让对话留在手边。']), el('p', {}, ['把浏览过的 ChatGPT 会话保存在这里。', el('br'), '关掉浏览器标签，下一次也能接着开始。']),
     el('div', { class: 'first-actions' }, [el('a', { class: 'primary', href: 'https://chatgpt.com/' }, ['打开 ChatGPT', icon('external')]), button('导入浏览历史', { class: 'secondary', id: 'first-import' })]),
-    el('p', { class: 'quiet' }, ['也可以先添加常用网站，按自己的节奏开始。']),
+    el('p', { class: 'quiet' }, ['也可以先使用浏览器书签，按自己的节奏开始。']),
     button('连接 ChatGPT，继续收录会话链接', { class: 'text-button', id: 'first-connect' })]);
 }
 
@@ -213,7 +214,7 @@ function renderWorkspace(): void {
   const projection = projectCatalog(snapshot, { ...calendar, k: view.k, selectedScope: selectedScope || 'unassigned' });
   content.replaceChildren(workspaceHeading());
   if (selectedScope === 'unassigned' && snapshot.conversations.length) {
-    content.append(el('div', { class: 'import-note' }, [icon('info'), el('div', {}, ['本地历史已按时间整理', el('p', {}, ['账号与原生归属尚待确认。浏览日期仅用于历史浏览，不计作主动活动。'])]), button('导入更多', { class: 'text-button', id: 'import-more' })]));
+    content.append(el('div', { class: 'import-note' }, [icon('info'), el('div', {}, ['会话已保存在本机', el('p', {}, ['已确认的项目会在这里展开；其他会话仍可直接打开。'])]), button('导入更多', { class: 'text-button', id: 'import-more' })]));
   }
   const showProjects = view.filter === 'all' || view.filter === 'project';
   const showNone = view.filter === 'all' || view.filter === 'none';
@@ -224,15 +225,12 @@ function renderWorkspace(): void {
   if (showNone && projection.dates.length) content.append(el('section', { class: 'date-section', 'aria-label': '无项目会话' }, [
     el('div', { class: 'section-heading' }, [el('h2', {}, ['无项目'])]), el('div', { class: 'date-grid' }, projection.dates.map(group => el('article', { class: 'date-window' }, [
       el('h3', { 'aria-label': group.date }, [icon('calendar'), dateLabel(group.date)]), el('div', { class: 'conversation-list' }, group.records.map(conversationRow))]))) ]));
-  if (showPending) for (const basis of ['confirmed-open', 'browser-history'] as const) {
-    const groups = projection.pendingDates.filter(group => group.basis === basis);
-    if (groups.length) content.append(pendingDateSection(groups, basis));
-  }
-  if (showProjects && projection.undatedProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无主动打开记录的项目' }, [
-    el('h2', {}, ['项目 · 尚无主动打开记录']), el('div', { class: 'project-grid' }, projection.undatedProjects.map(projectCard))]));
+  if (showPending && projection.pendingDates.length) content.append(pendingDateSection(projection.pendingDates));
+  if (showProjects && projection.undatedProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无可用日期的项目' }, [
+    el('h2', {}, ['项目 · 尚无可用日期']), el('div', { class: 'project-grid' }, projection.undatedProjects.map(projectCard))]));
   if (showCandidates && projection.undatedCandidateProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无日期的本地候选项目' }, [
     el('h2', {}, ['本地候选项目 · 尚无可用日期']), el('div', { class: 'project-grid' }, projection.undatedCandidateProjects.map(candidateProjectCard))]));
-  if (showNone && projection.undatedNone.length) content.append(el('section', { class: 'undated-section' }, [el('h2', {}, ['无项目 · 尚无主动打开记录']), el('div', { class: 'unknown-grid' }, projection.undatedNone.map(conversationRow))]));
+  if (showNone && projection.undatedNone.length) content.append(el('section', { class: 'undated-section' }, [el('h2', {}, ['无项目 · 尚无可用日期']), el('div', { class: 'unknown-grid' }, projection.undatedNone.map(conversationRow))]));
   // Undated entries are independent of k. Keeping them reachable must not make
   // an otherwise empty 30-day segment appear occupied or suppress its hint.
   const hasDatedRecords = (showProjects && projection.projects.length) || (showCandidates && projection.candidateProjects.length)
@@ -365,7 +363,7 @@ function renderRemoved(): void {
 }
 
 function render(): void {
-  renderSites(); renderWorkspace();
+  renderSites(); nativeExperience.refresh(); renderWorkspace();
   if (byId<HTMLDialogElement>('sites-dialog').open) renderEditor();
   if (byId<HTMLDialogElement>('search-dialog').open) renderSearch();
   if (byId<HTMLDialogElement>('import-dialog').open) renderImport();
@@ -505,7 +503,7 @@ document.addEventListener('click', event => {
     }
     case 'project-find': if (currentProject) openSearch(currentProject); break;
     case 'settings-trigger': renderSettings(); showDialog('settings-dialog'); break;
-    case 'site-edit': case 'add-site': renderEditor(); showDialog('sites-dialog'); if (control.id === 'add-site') byId('site-name').focus(); break;
+    case 'legacy-sites': case 'site-edit': case 'add-site': renderEditor(); showDialog('sites-dialog'); if (control.id === 'add-site') byId('site-name').focus(); break;
     case 'cancel-site-edit': clearSiteForm(); break;
     case 'site-toggle': if (snapshot) void mutate('SETTINGS_UPDATE', { patch: { shortcutSectionCollapsed: !snapshot.settings.shortcutSectionCollapsed } }); break;
     case 'show-more-sites': allSitesVisible = !allSitesVisible; renderSites(); break;
@@ -587,6 +585,8 @@ window.addEventListener('pageshow', event => { stopped = false; if (event.persis
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { void refresh().then(() => pumpImport()).catch(fail); } });
 window.addEventListener('resize', () => { if (snapshot) renderSites(); });
 subscribeRevision(() => { void refresh().catch(fail); });
+
+const nativeExperience = initNativeExperience({ shortcuts: () => snapshot?.shortcuts ?? [], openSettings: () => { renderSettings(); showDialog('settings-dialog'); }, preserve: preservePosition });
 
 void refresh(true).then(() => {
   window.scrollTo(0, initialScrollY);

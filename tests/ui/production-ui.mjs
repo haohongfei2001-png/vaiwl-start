@@ -28,6 +28,10 @@ async function installTestFont(page) {
     if (!document.fonts.check('14px "VAIWL Review CJK"', '工作区')) throw Error('test-cjk-font-unavailable');
   }, fontData);
 }
+async function openLegacy(page) {
+  await page.locator('#settings-trigger').click();
+  await page.locator('#legacy-sites').click();
+}
 const check = (id, condition, observed) => { assert.ok(condition, `${id}: ${observed}`); checks.push({ id, status: 'PASS', observed }); };
 try {
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
@@ -43,7 +47,7 @@ try {
   const permission = await worker.evaluate(() => chrome.permissions.getAll());
   check('UI-no-auto-permission', !['history', 'scripting', 'webNavigation'].some(name => permission.permissions?.includes(name)) && !permission.origins?.some(origin => origin.includes('chatgpt.com')), `Initial granted permissions: ${JSON.stringify(permission)}`);
 
-  await page.getByRole('button', { name: '添加网站', exact: true }).click();
+  await openLegacy(page);
   await page.locator('#site-name').focus(); await page.keyboard.press('/');
   const slashEditor = await page.evaluate(() => ({ searchOpen: document.getElementById('search-dialog').open, text: document.getElementById('site-name').value }));
   await page.locator('#site-name').fill('First'); await page.locator('#site-url').fill('https://example.com/one');
@@ -83,11 +87,13 @@ try {
     return { cancelled, open: document.getElementById('search-dialog').open };
   });
   check('UI-slash-editing-modifier-guards', slashEditor.text === '/' && !slashEditor.searchOpen && !slashModifiers.open && slashModifiers.cancelled.every(value => !value), 'A real slash types into the website editor; modified slash events on the non-editing page neither open search nor cancel browser handling.');
+  await openLegacy(page);
   await page.locator('#site-toggle').click();
   await page.waitForFunction(() => document.getElementById('site-toggle')?.getAttribute('aria-expanded') === 'false');
   check('UI-collapsed-pins-only', (await page.locator('.site-title').allTextContents()).join('|') === 'Second', 'Collapsed sites show only pinned shortcuts.');
   await page.reload(); await page.waitForSelector('html[data-start-ready="true"]');
   await installTestFont(page);
+  await openLegacy(page);
   check('UI-shortcuts-reload', (await page.locator('.site-title').allTextContents()).join('|') === 'Second', 'Pinned order and collapse survive actual page reload.');
   await page.locator('#site-toggle').click();
   await page.getByRole('link', { name: '打开 First edited', exact: true }).waitFor();
@@ -98,6 +104,7 @@ try {
     // A native popup's initial TLS navigation can precede test interception in Chrome.
     const target = await context.newPage();
     await target.goto(`chrome-extension://${id}/newtab.html`); await target.waitForSelector('html[data-start-ready="true"]');
+    await openLegacy(target);
     await target.getByRole('link', { name: `打开 ${label}`, exact: true }).click();
     await target.waitForURL(url, { waitUntil: 'domcontentloaded', timeout: 5000 });
     assert.equal(await target.title(), 'Shortcut verification'); await target.close();
@@ -109,9 +116,10 @@ try {
   });
   check('UI-website-native-open-no-activity', shortcutActivity.intents === 0 && shortcutActivity.days === 0, 'Both HTTP and HTTPS shortcuts open their exact controlled native-browser targets; neither creates a ChatGPT intent or OpenDay.');
 
+  await page.locator('#sites-dialog [data-close]').first().click();
   const scope = `scope:${'a'.repeat(64)}`;
   const otherScope = `scope:${'b'.repeat(64)}`;
-  const now = new Date(); now.setUTCHours(8, 0, 0, 0);
+  const now = new Date(Date.now() - 1000);
   const today = now.toISOString();
   const old = new Date(now.getTime() - 70 * 86400000).toISOString();
   const projects = ['VAIWL', 'Riftlet', '研究笔记', 'PAIA', '产品调研', 'HOLDSNOW'].map((nativeTitle, index) => ({
@@ -139,7 +147,7 @@ try {
   records.push(conversation('整理一份阅读清单', { state: 'NONE', projectId: null, evidenceId: 'test-none', confirmedAt: today }));
   records.push(conversation('更早区间的独立会话', { state: 'NONE', projectId: null, evidenceId: 'test-older-none', confirmedAt: today }, old));
   const undated = conversation('尚无日期的无项目会话', { state: 'NONE', projectId: null, evidenceId: 'test-none-undated', confirmedAt: today }, null);
-  undated.browserLastVisitAt = today; records.push(undated);
+  undated.browserLastVisitAt = null; records.push(undated);
   records.push(conversation('<img src=x onerror=window.__xss=1>', { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, null));
   records.push(conversation('Other account secret', { state: 'NONE', projectId: null, evidenceId: 'test-other', confirmedAt: today }, today, otherScope));
   records.push(conversation('Other account pending', { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, null, otherScope));
@@ -494,7 +502,7 @@ try {
   });
   await localPage.reload(); await localPage.waitForSelector('html[data-start-ready="true"]');
   await localPage.locator('#scope-selector').selectOption('unassigned');
-  const historySection = localPage.locator('[data-date-basis="browser-history"]');
+  const historySection = localPage.locator('.pending-dates');
   await historySection.waitFor();
   check('UI-local-564-history-date-windows', await historySection.locator('.date-window').count() === 30 && await localPage.locator('#period-older').isVisible()
     && await localPage.getByRole('heading', { name: '历史浏览／归属待确认', exact: true }).isVisible()

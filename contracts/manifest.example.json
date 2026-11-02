@@ -5,11 +5,29 @@
   "minimum_chrome_version": "120",
   "description": "A local new tab workspace for ChatGPT conversations and projects.",
   "incognito": "not_allowed",
-  "permissions": ["storage"],
-  "optional_permissions": ["history", "scripting", "webNavigation"],
-  "optional_host_permissions": ["https://chatgpt.com/*"],
-  "background": {"service_worker": "service-worker.js", "type": "module"},
-  "chrome_url_overrides": {"newtab": "newtab.html"},
-  "action": {"default_title": "打开 VAIWL Start"},
-  "content_security_policy": {"extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; connect-src 'self' https://chatgpt.com"}
+  "permissions": [
+    "storage"
+  ],
+  "optional_permissions": [
+    "history",
+    "scripting",
+    "webNavigation",
+    "bookmarks"
+  ],
+  "optional_host_permissions": [
+    "https://chatgpt.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "action": {
+    "default_title": "打开 VAIWL Start"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; connect-src 'self' https://chatgpt.com"
+  }
 }

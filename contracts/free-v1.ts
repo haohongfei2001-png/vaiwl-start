@@ -1,4 +1,4 @@
-/** VAIWL-START-FREE/1.0, amendment 2026-11-02-local-first (user approved). */
+/** VAIWL-START-FREE/1.0, amendment 2026-11-03-native-experience (user approved). */
 export type ISOInstant = string;
 export type LocalDate = string; // YYYY-MM-DD, validated Gregorian date
 export type IANATimeZone = string;
@@ -225,4 +225,12 @@ export interface DomainMutation {
   expectedRevision: Revision;
   operationId: string;
   // Concrete request union defined by implementation; exact-field validators mandatory.
+}
+
+/** Separate chrome.storage.local keys; no IndexedDB schema migration. */
+export interface NativeExperiencePreferences {
+  'native.title'?: string; // empty => browser/locale default
+  'native.icon'?: { kind: 'browser' | 'product' } | { kind: 'upload'; data: string };
+  'native.bookmarks'?: 'always' | 'newtab' | 'hidden'; // absent => ask once
+  'native.bookmarksCollapsed'?: boolean;
 }

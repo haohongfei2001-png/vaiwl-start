@@ -1,15 +1,25 @@
 import type { ConversationRecord, ProjectRecord } from '../../contracts/free-v1.js';
 import type { CatalogSnapshot } from '../storage/repository.js';
 import { dayLabel, freeSegmentFor, instant, localDay } from './time.js';
-export interface ProjectionView { H: 30; T: number; Z: string; k: number; selectedScope: string }
-export interface ProjectCard { project: ProjectRecord; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestActiveAt: string | null; segment: number | null }
+export interface ProjectionView { H: 30; T: number; Z: string; k: number; selectedScope: string; now?: string }
+export interface ProjectCard { project: ProjectRecord; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestActiveAt: string | null; latestDisplayAt: string | null; segment: number | null }
 export type LocalProjectCandidate = NonNullable<ConversationRecord['localProjectCandidate']>;
 export interface CandidateProjectCard { candidate: LocalProjectCandidate; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestDisplayAt: string | null; segment: number | null; stableRank: number }
 export interface DateGroup { date: string; records: ConversationRecord[] }
-export interface PendingDateGroup extends DateGroup { basis: 'browser-history' | 'confirmed-open' }
+export type PendingDateGroup = DateGroup;
 export interface CatalogProjection { projects: ProjectCard[]; candidateProjects: CandidateProjectCard[]; undatedCandidateProjects: CandidateProjectCard[]; dates: DateGroup[]; pendingDates: PendingDateGroup[]; unknown: ConversationRecord[]; undatedNone: ConversationRecord[]; undatedProjects: ProjectCard[] }
-export function compareRecords(a: ConversationRecord, b: ConversationRecord): number {
-  const aTime = instant(a.activity?.lastConfirmedOpenAt), bTime = instant(b.activity?.lastConfirmedOpenAt);
+/** Display metadata only: never writes activity/OpenDay or transfers visits across owners. */
+export function lastDisplayAt(record: ConversationRecord, now = new Date().toISOString()): string | null {
+  const cutoff = instant(now); if (cutoff === null) return null;
+  let latest: number | null = null;
+  for (const value of [record.activity?.lastConfirmedOpenAt, record.browserLastVisitAt]) {
+    const time = instant(value);
+    if (time !== null && time <= cutoff && (latest === null || time > latest)) latest = time;
+  }
+  return latest === null ? null : new Date(latest).toISOString();
+}
+export function compareRecords(a: ConversationRecord, b: ConversationRecord, now = new Date().toISOString()): number {
+  const aTime = instant(lastDisplayAt(a, now)), bTime = instant(lastDisplayAt(b, now));
   return (bTime ?? -Infinity) - (aTime ?? -Infinity) || a.stableRank - b.stableRank || a.key.localeCompare(b.key);
 }
 function scoped(snapshot: CatalogSnapshot, selectedScope: string): ConversationRecord[] {
@@ -21,27 +31,32 @@ function localCandidate(record: ConversationRecord): LocalProjectCandidate | nul
     && record.membership.reason !== 'conflicting-evidence' && record.membership.reason !== 'source-revoked'
     ? record.localProjectCandidate ?? null : null;
 }
-function pendingPlacement(record: ConversationRecord, view: ProjectionView): { at: string | null; segment: number | null; basis: PendingDateGroup['basis'] } {
-  const activeSegment = freeSegmentFor(record.activity?.lastConfirmedOpenAt, view);
-  const basis = activeSegment === null ? 'browser-history' : 'confirmed-open';
-  const at = basis === 'confirmed-open' ? record.activity!.lastConfirmedOpenAt : record.browserLastVisitAt;
-  return { at, basis, segment: activeSegment ?? freeSegmentFor(at, view) };
+function pendingPlacement(record: ConversationRecord, view: ProjectionView): { at: string | null; segment: number | null } {
+  const at = lastDisplayAt(record, view.now);
+  return { at, segment: freeSegmentFor(at, view) };
 }
 export function projectCatalog(snapshot: CatalogSnapshot, view: ProjectionView): CatalogProjection {
   if (view.H !== 30 || !Number.isSafeInteger(view.k) || view.k < 0) throw Error('invalid-view');
-  const records = scoped(snapshot, view.selectedScope).sort(compareRecords);
+  view = { ...view, now: view.now ?? new Date().toISOString() };
+  const records = scoped(snapshot, view.selectedScope);
+  const times = new Map(records.map(record => [record.key, pendingPlacement(record, view)]));
+  records.sort((a, b) => (instant(times.get(b.key)!.at) ?? -Infinity) - (instant(times.get(a.key)!.at) ?? -Infinity)
+    || a.stableRank - b.stableRank || a.key.localeCompare(b.key));
   const out: CatalogProjection = { projects: [], candidateProjects: [], undatedCandidateProjects: [], dates: [], pendingDates: [], unknown: [], undatedNone: [], undatedProjects: [] };
   const projects = snapshot.projects.filter(p => p.scopeKey === view.selectedScope);
   const projectIds = new Set(projects.map(p => p.projectId));
   for (const project of projects) {
     const members = records.filter(r => r.membership.state === 'PROJECT' && r.membership.projectId === project.projectId);
     // Future/invalid activities are not treated as fresh. Undated children remain with the parent.
-    const dated = members.filter(r => freeSegmentFor(r.activity?.lastConfirmedOpenAt, view) !== null);
-    const latestActiveAt = dated[0]?.activity?.lastConfirmedOpenAt ?? null;
-    const segment = freeSegmentFor(latestActiveAt, view);
-    const card: ProjectCard = { project, latestActiveAt, segment, recent: [], older: [], undated: [] };
+    const dated = members.filter(r => times.get(r.key)!.segment !== null);
+    const latestDisplayAt = dated.length ? times.get(dated[0]!.key)!.at : null;
+    // Retained field keeps its original meaning; it is no longer a placement key.
+    const active = members.map(r => r.activity?.lastConfirmedOpenAt).filter((at): at is string => instant(at) !== null && instant(at)! <= instant(view.now)!).sort((a, b) => instant(b)! - instant(a)!);
+    const latestActiveAt = active[0] ?? null;
+    const segment = freeSegmentFor(latestDisplayAt, view);
+    const card: ProjectCard = { project, latestActiveAt, latestDisplayAt, segment, recent: [], older: [], undated: [] };
     for (const record of members) {
-      const own = freeSegmentFor(record.activity?.lastConfirmedOpenAt, view);
+      const own = times.get(record.key)!.segment;
       if (own === null || segment === null) card.undated.push(record);
       else if (own === segment) card.recent.push(record);
       else card.older.push(record);
@@ -60,7 +75,7 @@ export function projectCatalog(snapshot: CatalogSnapshot, view: ProjectionView):
     group.members.push(record); candidateMemberKeys.add(record.key); candidateGroups.set(candidate.key, group);
   }
   for (const { candidate, members } of candidateGroups.values()) {
-    const rows = members.map(record => ({ record, ...pendingPlacement(record, view) })).sort((a, b) =>
+    const rows = members.map(record => ({ record, ...times.get(record.key)! })).sort((a, b) =>
       (a.segment === null ? Infinity : a.segment) - (b.segment === null ? Infinity : b.segment)
       || (instant(b.at) ?? -Infinity) - (instant(a.at) ?? -Infinity) || a.record.stableRank - b.record.stableRank || a.record.key.localeCompare(b.record.key));
     const latest = rows.find(row => row.segment !== null);
@@ -81,36 +96,32 @@ export function projectCatalog(snapshot: CatalogSnapshot, view: ProjectionView):
   for (const record of records) {
     if (candidateMemberKeys.has(record.key)) continue;
     if (record.membership.state === 'UNKNOWN' || record.membership.state === 'PROJECT' && !projectIds.has(record.membership.projectId)) {
-      // Time browsing does not assert account ownership or native membership. A
-      // confirmed local open replaces this record's history-only placement, but
-      // neither this projection nor browserLastVisitAt creates an OpenDay.
-      const { at, basis, segment } = pendingPlacement(record, view);
+      // Unified display time does not assert ownership, membership or active use.
+      const { at, segment } = times.get(record.key)!;
       if (segment === null) out.unknown.push(record);
       else if (segment === view.k) {
-        const date = dayLabel(localDay(at!, view.Z)), key = `${basis}:${date}`;
-        const group = pendingDates.get(key) ?? { date, basis, records: [] };
+        const date = dayLabel(localDay(at!, view.Z)), key = date;
+        const group = pendingDates.get(key) ?? { date, records: [] };
         group.records.push(record); pendingDates.set(key, group);
       }
       continue;
     }
     if (record.membership.state !== 'NONE') continue;
-    const segment = freeSegmentFor(record.activity?.lastConfirmedOpenAt, view);
+    const { at, segment } = times.get(record.key)!;
     if (segment === null) out.undatedNone.push(record);
-    else if (segment === view.k) { const date = dayLabel(localDay(record.activity!.lastConfirmedOpenAt, view.Z)); const items = dates.get(date) ?? []; items.push(record); dates.set(date, items); }
+    else if (segment === view.k) { const date = dayLabel(localDay(at!, view.Z)); const items = dates.get(date) ?? []; items.push(record); dates.set(date, items); }
   }
-  out.projects.sort((a, b) => instant(b.latestActiveAt)! - instant(a.latestActiveAt)! || a.project.stableRank - b.project.stableRank || a.project.key.localeCompare(b.project.key));
+  out.projects.sort((a, b) => instant(b.latestDisplayAt)! - instant(a.latestDisplayAt)! || a.project.stableRank - b.project.stableRank || a.project.key.localeCompare(b.project.key));
   out.undatedProjects.sort((a, b) => a.project.stableRank - b.project.stableRank || a.project.key.localeCompare(b.project.key));
   out.dates = [...dates.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([date, rows]) => ({ date, records: rows }));
-  out.pendingDates = [...pendingDates.values()].sort((a, b) => b.date.localeCompare(a.date) || a.basis.localeCompare(b.basis));
-  for (const group of out.pendingDates) if (group.basis === 'browser-history') group.records.sort((a, b) =>
-    instant(b.browserLastVisitAt)! - instant(a.browserLastVisitAt)! || a.stableRank - b.stableRank || a.key.localeCompare(b.key));
+  out.pendingDates = [...pendingDates.values()].sort((a, b) => b.date.localeCompare(a.date));
   return out;
 }
 export interface SearchResult { record: ConversationRecord; project: ProjectRecord | null; candidateProject: LocalProjectCandidate | null; path: string }
 export function searchCatalog(snapshot: CatalogSnapshot, query: string, selectedScope: string): SearchResult[] {
   const q = query.normalize('NFKC').trim().toLocaleLowerCase();
   const projects = new Map(snapshot.projects.filter(p => p.scopeKey === selectedScope).map(p => [p.projectId, p]));
-  return scoped(snapshot, selectedScope).sort(compareRecords).flatMap(record => {
+  return scoped(snapshot, selectedScope).sort((a, b) => compareRecords(a, b)).flatMap(record => {
     const project = record.membership.state === 'PROJECT' ? projects.get(record.membership.projectId) ?? null : null;
     const candidateProject = localCandidate(record);
     if (![record.nativeTitle ?? '', project?.nativeTitle ?? '', candidateProject?.nativeTitle ?? '', record.canonicalUrl].some(value => value.normalize('NFKC').toLocaleLowerCase().includes(q))) return [];

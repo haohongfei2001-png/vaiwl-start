@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 const manifest = JSON.parse(await readFile('dist/manifest.json', 'utf8'));
 assert.equal(manifest.manifest_version, 3);
 assert.deepEqual(manifest.permissions, ['storage']);
-assert.deepEqual(manifest.optional_permissions.sort(), ['history', 'scripting', 'webNavigation'].sort());
+assert.deepEqual(manifest.optional_permissions.sort(), ['bookmarks', 'history', 'scripting', 'webNavigation'].sort());
 assert.deepEqual(manifest.optional_host_permissions, ['https://chatgpt.com/*']);
 assert.equal(manifest.incognito, 'not_allowed');
 assert.equal(manifest.externally_connectable, undefined);
