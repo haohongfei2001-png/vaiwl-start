@@ -60,3 +60,5 @@ UI fixture 只由测试进程直接写入隔离 IndexedDB。生产构建没有 U
 `tests/browser/source-recovery.mjs` 使用正式生产JavaScript和明确标注的可选权限预授测试manifest，在隔离合成HTTPS页面检验Project路由/延迟渲染、身份重新采样、受控入口与Start绑定；仅增加同SHA `source-recovery-validation.json`，不改真实来源L层的BLOCKED。没有启用currentContext、projectMembership、positiveNone、arrival或addressBar。
 
 独立审查实际发现并已修复：结束核验后仍派发PROBE、旧取消影响后续任务、导出嵌套对象泄漏风险、超时/worker中断遗留running、原生Alt-click不可靠。结构选取现在使用悬停+Option/Alt+Shift+M，不执行原生控件点击。最终计数与结果以同SHA CI/包内机器回执为准。
+
+M0实现提交 `264b01faa1a278f6f9a0c047a709e966df04ad97` 本地完整验证通过，但其GitHub运行 `41406773477` 在搜索重开步骤真实失败。精简失败证据见 `evidence/m0-ci-264b01f-ui-failure.json`。两项有限复核未证明生产缺陷；测试补齐“页面有焦点、可见、无模态框、非编辑目标”这些已冻结的 `/` 前提，仍只发一次按键、使用原有超时，并在失败时输出有限的合成焦点/按键状态。没有改变生产搜索逻辑或降低判断标准。

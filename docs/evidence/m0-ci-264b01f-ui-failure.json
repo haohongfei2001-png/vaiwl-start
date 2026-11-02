@@ -1,0 +1,17 @@
+{
+  "status": "FAIL",
+  "buildSha": "264b01faa1a278f6f9a0c047a709e966df04ad97",
+  "runId": 41406773477,
+  "jobId": 125150480577,
+  "url": "https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41406773477",
+  "step": "node tests/ui/production-ui.mjs",
+  "failure": "Line 233: filling #search-input timed out because the input was not visible after background-open, return, Escape, then one slash key.",
+  "priorSteps": { "unit": 75, "browser": 17, "importRecovery": 8, "privacyBoundaries": 9, "sourceRecovery": 14, "storageFaults": 3 },
+  "localSameSha": { "uiChecks": 61, "status": "PASS", "pageErrors": 0 },
+  "targetedInvestigation": {
+    "nativeDialog": "Synthetic Chromium test retaining, removing and replacing the original opener all reopened with slash; detached-opener hypothesis not proved.",
+    "productionJourneyPrefix": "Same-SHA production UI journey through the failed boundary passed 32 prior checks, zero page errors. Escape moved focus to BODY; one unmodified non-composing slash reopened search.",
+    "rootCause": "Not uniquely established. Original test waited only for search-dialog.open=false, not the documented focused, visible, non-editing shortcut preconditions."
+  },
+  "followup": "Keep product behavior unchanged. Await the existing shortcut preconditions without forced focus, extra keypress or increased timeout; log bounded synthetic focus/key state if it fails again. The original CI failure is retained."
+}

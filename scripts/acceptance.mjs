@@ -5,9 +5,9 @@ const currentSha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim
 const currentDirty=execFileSync('git',['status','--porcelain','--untracked-files=normal'],{encoding:'utf8'}).trim().length>0;
 if(build.sha!==currentSha||build.dirty!==currentDirty)throw Error('Stale build fingerprint; rebuild before aggregating acceptance.');
 const specification = await readFile('docs/free-v1/06-ACCEPTANCE.md', 'utf8');
-const U='unit-validation', B='browser-validation', I='import-recovery-validation', P='privacy-boundaries-validation', F='storage-faults-validation', V='ui-validation', R='review-validation';
+const U='unit-validation', B='browser-validation', I='import-recovery-validation', P='privacy-boundaries-validation', N='source-recovery-validation', F='storage-faults-validation', V='ui-validation', R='review-validation';
 const evidence={};
-for(const name of [U,B,I,P,F,V,R,'privacy-audit','performance-validation']){
+for(const name of [U,B,I,P,N,F,V,R,'privacy-audit','performance-validation']){
   try{const result=JSON.parse(await readFile('artifacts/'+name+'.json','utf8'));if(result.buildSha===build.sha&&result.dirty===build.dirty)evidence[name]=result;}catch{/* Other-build or missing evidence never passes. */}
 }
 // Each full claim names actual predicates. File-level success alone is insufficient.
@@ -59,6 +59,9 @@ const gaps={
  U11:'Fallback action is implemented; another override extension or managed enterprise policy needs the actual device scenario.',
 };
 const related={
+ S03:{[N]:['SOURCE-B-project-SPA-delayed-hydration']},
+ S08:{[N]:['SOURCE-B-fixed-metadata-requests-only','SOURCE-B-zero-authority-and-activity']},
+ O01:{[N]:['SOURCE-B-Start-click-bound-document']},
  S07:{[U]:['S07/O13/D07 one of 500 candidates']},
  O04:{[B]:['B-synthetic-click-no-intent']},
  O12:{[U]:['O12/O14 invalid session'],[B]:['B-browser-restart-durable-directory','B-restart-no-old-intent-consumption']},
@@ -89,7 +92,7 @@ for(const line of specification.split('\n')){
   limitations:['Row PASS never implies Free V1 acceptance or real Mac/Edge compatibility.',...(id==='D10'?['Current v1 initial-schema recovery and same-version reopen; quota is injected into a real browser transaction, not physical disk exhaustion or a nonexistent legacy migration.']:[])]});
 }
 for(let n=1;n<=4;n++)records.push({id:'JOURNEY-'+n,status:'BLOCKED',buildSha:build.sha,browserVersion:null,environment:'Real Mac Chrome and Edge',steps:'Frozen continuous journey '+n,observed:'Live context/PROJECT/NONE/arrival sources are unproven.',artifactRefs:['M0_SOURCE_GATE.md'],limitations:['Synthetic browser tests do not replace this journey.']});
-const engineeringGates=[U,'privacy-audit',B,I,P,F,V,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
+const engineeringGates=[U,'privacy-audit',B,I,P,N,F,V,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
 const evidenceFailures=Object.entries(evidence).filter(([,r])=>r.status==='FAIL'||r.checks?.some(c=>typeof c==='object'&&c.status==='FAIL')).map(([name])=>name+'.json');
 const status=records.some(r=>r.status==='FAIL')||evidenceFailures.length?'FAIL':'SOURCE_GATE_BLOCKED';
 await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status,sourceGate:build.sourceGate,buildSha:build.sha,dirty:build.dirty,engineeringGates,evidenceFailures,records},null,2));

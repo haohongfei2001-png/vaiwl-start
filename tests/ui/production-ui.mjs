@@ -228,9 +228,26 @@ try {
   }, undated.key);
   check('UI-undated-search-open-remains-undated', undatedAfterOpen.record.activity === null && undatedAfterOpen.record.browserLastVisitAt === today && undatedAfterOpen.intents.some(intent => intent.targetRecordKey === undated.key && intent.evidence.gesture === 'keyboard') && !undatedAfterOpen.days.some(day => day.recordKey === undated.key), 'The undated entry is searchable and dispatches a persistent open intent; unverified arrival cannot turn history.lastVisitTime into an activity date.');
   await undatedTab.close(); await page.bringToFront(); await page.keyboard.press('Escape');
-  await page.waitForFunction(() => !document.getElementById('search-dialog').open);
-  await page.keyboard.press('/');
-  await page.locator('#search-input').fill('VAIWL较早方案');
+  // Closing a native dialog alone does not assert the documented '/' preconditions.
+  // Wait for them without forcing focus, retrying the key, or extending the timeout.
+  await page.evaluate(() => {
+    window.__searchReopenKeys = [];
+    window.__searchReopenListener = event => {
+      if (['/', 'Escape'].includes(event.key) && window.__searchReopenKeys.length < 4) window.__searchReopenKeys.push({ key: event.key, code: event.code, ctrl: event.ctrlKey, meta: event.metaKey, alt: event.altKey, shift: event.shiftKey, composing: event.isComposing, targetTag: event.target?.tagName || null, targetId: event.target?.id || null });
+    };
+    document.addEventListener('keydown', window.__searchReopenListener, true);
+  });
+  try {
+    await page.waitForFunction(() => document.hasFocus() && !document.hidden && !document.querySelector('dialog[open]') && !document.activeElement?.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]'));
+    await page.keyboard.press('/');
+    await page.locator('#search-input').fill('VAIWL较早方案');
+  } catch (error) {
+    const state = await page.evaluate(() => ({ activeTag: document.activeElement?.tagName || null, activeId: document.activeElement?.id || null, focused: document.hasFocus(), hidden: document.hidden, openDialogs: [...document.querySelectorAll('dialog[open]')].map(d => d.id), url: location.href, keys: window.__searchReopenKeys }));
+    console.error(JSON.stringify({ failure: 'search-reopen-after-background-open', buildSha: buildInfo.sha, state }));
+    throw error;
+  } finally {
+    await page.evaluate(() => { document.removeEventListener('keydown', window.__searchReopenListener, true); delete window.__searchReopenListener; delete window.__searchReopenKeys; });
+  }
   check('UI-cross-period-search', await page.locator('.search-result').count() === 1, 'Search finds a 70-day-old member across date segments.');
   await page.locator('#search-input').fill('设计讨论 1');
   await page.keyboard.press('ArrowDown');
