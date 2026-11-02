@@ -2,7 +2,7 @@ import { invalidateBindings, session } from './session.js';
 export const CONNECTION: chrome.permissions.Permissions = { permissions: ['scripting', 'webNavigation'], origins: ['https://chatgpt.com/*'] };
 export async function capabilities() {
   const [chatgpt, history] = await Promise.all([chrome.permissions.contains(CONNECTION), chrome.permissions.contains({ permissions: ['history'] })]);
-  return { chatgpt, history, sourceGate: 'SOURCE_GATE_BLOCKED', reasons: ['current-context-unverified', 'positive-none-unverified', 'current-conversation-arrival-unverified'] };
+  return { chatgpt, history, sourceGate: 'LOCAL_WORKSPACE_READY', localHistory: true, startNavigationActivity: chatgpt, localProjectCandidates: chatgpt, verifiedScope: false, nativeProjectMembership: false, nativeNone: false, reasons: ['current-context-unverified', 'native-project-membership-unverified', 'positive-none-unverified'] };
 }
 export async function synchronizePermissions(captureEnabled: boolean): Promise<void> {
   const connected = captureEnabled && await chrome.permissions.contains(CONNECTION);

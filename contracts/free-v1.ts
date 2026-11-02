@@ -1,4 +1,4 @@
-/** VAIWL-START-FREE/1.0 — Design contract, not production implementation. */
+/** VAIWL-START-FREE/1.0, amendment 2026-11-02-local-first (user approved). */
 export type ISOInstant = string;
 export type LocalDate = string; // YYYY-MM-DD, validated Gregorian date
 export type IANATimeZone = string;
@@ -59,10 +59,19 @@ export type Membership = ConfirmedMembership | {
   lastConfirmed?: ConfirmedMembership; // historical evidence only; not current grouping
 };
 export interface ActivitySummary {
+  // A deliberate Start opening confirmed by browser navigation; never a reading receipt.
   firstConfirmedOpenAt: ISOInstant;
   lastConfirmedOpenAt: ISOInstant;
   lastActiveDate: LocalDate;
   timeZone: IANATimeZone;
+}
+export interface LocalProjectCandidate {
+  key: string; // Profile + browser session + document binding + observation + Project ID; NOT an AccountScope
+  projectId: NativeProjectId;
+  nativeTitle: string;
+  canonicalUrl: NativeProjectURL;
+  observedAt: ISOInstant;
+  basis: 'local-project-observation';
 }
 export interface ConversationBase {
   key: RecordKey;
@@ -77,6 +86,8 @@ export interface ConversationBase {
   lastSeenAt: ISOInstant;
   browserLastVisitAt: ISOInstant | null; // NEVER used as confirmed active time
   activity: ActivitySummary | null;
+  // Only unassigned UNKNOWN records can expose a local candidate. No ownership assertion.
+  localProjectCandidate?: LocalProjectCandidate;
   stableRank: number;
   revision: Revision;
 }
@@ -128,6 +139,7 @@ export interface OpenIntent {
   issuedLocalDate: LocalDate; // frozen with issuedAt; never recomputed on arrival
   expiresAt: ISOInstant;
   state: 'issued' | 'navigation-dispatched' | 'arrived' | 'committed' | 'rejected' | 'expired';
+  confirmationBasis?: 'browser-navigation' | 'metadata-arrival';
   rejectionCode?: 'scope-mismatch' | 'target-mismatch' | 'stale-document' | 'ambiguous-arrival' | 'navigation-failed' | 'clock-anomaly';
 }
 export interface ConfirmedOpenDay {
@@ -206,6 +218,7 @@ export interface PortableCatalogV1 {
 }
 export type ProjectionActivity =
   | { basis: 'confirmed-open'; instant: ISOInstant; day: number; segment: number }
+  | { basis: 'browser-history'; instant: ISOInstant; day: number; segment: number }
   | { basis: 'undated'; instant: null; day: null; segment: null };
 export interface DomainMutation {
   protocol: 'vaiwl-start-internal/1';

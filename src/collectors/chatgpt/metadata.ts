@@ -3,6 +3,8 @@
 import { parseConversationUrl, parseProjectUrl } from '../../domain/ids.js';
 import { CHATGPT_METADATA_PROFILE } from './profile.js';
 import { createProbeAliaser } from './probe.js';
+import type { ProjectCandidate } from './project-candidate.js';
+export type { ProjectCandidate } from './project-candidate.js';
 
 const EXCLUDED = '[contenteditable],dialog,[data-thread-scroll-footer],[data-app-action-timeline-scroll],[data-va-owned],[data-vaiwl-owned]';
 function visible(document: Document, node: Element | null): node is Element {
@@ -28,14 +30,6 @@ function nativeURL(document: Document, href: string | null): string | null {
   const value = href.startsWith('/') ? 'https://chatgpt.com' + href : href;
   if (document.location.origin !== 'https://chatgpt.com') return null;
   try { return new URL(value).origin === 'https://chatgpt.com' ? value : null; } catch { return null; }
-}
-
-export interface ProjectCandidate {
-  state: 'candidate';
-  projectId: string;
-  nativeTitle: string;
-  canonicalUrl: string;
-  members: Array<{ conversationId: string; nativeTitle: string; canonicalUrl: string }>;
 }
 
 export const PROJECT_PROBE_CODES = Object.freeze([
@@ -127,10 +121,14 @@ function inspectProjectCandidate(document: Document): { candidate: ProjectCandid
       members.push({ conversationId: member.conversationId, nativeTitle: memberTitle, canonicalUrl: member.canonicalUrl });
     }
     summary.assertions.membersStructure = true;
-    if (!linked) return fail('project-container-unproven');
-    summary.assertions.containerLinked = true;
+    // A unique Project route, title, linked selected tab and member panel is
+    // sufficient for a local candidate. Plain /c/ links are common canonical
+    // member targets; requiring a redundant Project ID in a child URL used to
+    // discard this entire usable observation. An explicit different container
+    // is still rejected above. This never establishes account or membership.
+    summary.assertions.containerLinked = linked;
     summary.code = 'project-candidate-only';
-    return { candidate: { state: 'candidate', projectId: route.projectId, nativeTitle, canonicalUrl: route.canonicalUrl, members }, summary };
+    return { candidate: { state: 'candidate', relationBasis: 'linked-native-panel', projectId: route.projectId, nativeTitle, canonicalUrl: route.canonicalUrl, members }, summary };
   } catch { return fail('project-structure-unsupported'); }
 }
 

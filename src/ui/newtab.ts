@@ -1,13 +1,13 @@
 import type { ConversationRecord, ProjectRecord, WebsiteShortcut, OpenDisposition, ImportCheckpoint } from '../../contracts/free-v1.js';
 import type { CatalogSnapshot } from '../storage/repository.js';
-import { projectCatalog, searchCatalog } from '../domain/projection.js';
+import { projectCatalog, searchCatalog, type PendingDateGroup, type CandidateProjectCard } from '../domain/projection.js';
 import { createFreeViewSession, freeWindowFor, dayLabel } from '../domain/time.js';
 import { request, subscribeRevision } from '../shared/client.js';
 import { element as el, icon, byId, button, isEditing, allowedWebsiteUrl, dateTime } from './dom.js';
 import { readView, saveView, SafeRendering, preservePosition } from './view-state.js';
 
 interface UISnapshot extends CatalogSnapshot {
-  capabilities: { chatgpt: boolean; history: boolean; captureEnabled?: boolean; sourceGate: string; reasons?: string[]; sourceStatus?: { code: string; profileId: string } | null };
+  capabilities: { chatgpt: boolean; history: boolean; captureEnabled?: boolean; startNavigationActivity?: boolean; localProjectCandidates?: boolean; sourceGate: string; reasons?: string[]; sourceStatus?: { code: string; profileId: string } | null };
   build: { sha: string; version: string; sourceGate: string; adapterVersion: string };
 }
 type Filter = 'all' | 'project' | 'none' | 'unknown';
@@ -93,7 +93,7 @@ async function mutate(command: string, payload: Record<string, unknown>, after?:
 
 function title(record: ConversationRecord): string { return record.nativeTitle || '未命名会话'; }
 function membershipLabel(record: ConversationRecord): string {
-  if (record.owner.kind === 'unassigned') return '账号待确认';
+  if (record.owner.kind === 'unassigned') return '本地历史 · 账号未绑定／归属待确认';
   if (record.membership.state === 'NONE') return '无项目';
   if (record.membership.state === 'UNKNOWN') return '归属待确认';
   const scopeKey = record.owner.scopeKey;
@@ -129,6 +129,27 @@ function projectCard(card: Card): HTMLElement {
     el('header', { class: 'project-head' }, [el('span', { class: 'project-symbol' }, [icon('folder')]), el('h3', { id: `project-${project.key}`, title: projectTitle }, [projectTitle]), button('', { class: 'icon-button', 'data-project-menu': project.key, 'data-focus-key': `project-menu:${project.key}`, 'aria-label': `${projectTitle}项目操作` }, 'more')]), body]);
 }
 
+function candidateProjectCard(card: CandidateProjectCard): HTMLElement {
+  const project = card.candidate, key = `candidate:${project.key}`;
+  const expanded = view.older.includes(key), limit = view.limits[key] || 5;
+  const body = el('div', { class: 'project-body' }, [el('p', { class: 'project-note' }, ['本地候选项目／原生归属待确认'])]);
+  if (card.recent.length) {
+    const recent = el('div', { class: 'conversation-list' }, card.recent.slice(0, limit).map(conversationRow));
+    if (card.recent.length > limit) recent.append(button('显示更多', { class: 'more-rows', 'data-more': key, 'data-focus-key': `more:${key}` }));
+    body.append(recent);
+  }
+  if (card.older.length) {
+    body.append(button('较早会话', { class: 'history-disclosure', 'data-older': key, 'aria-expanded': String(expanded), 'aria-controls': `older-${key}`, 'data-focus-key': `older:${key}` }, 'chevron'));
+    const older = el('div', { class: 'old-list', id: `older-${key}` }, [el('div', { class: 'conversation-list' }, card.older.map(conversationRow))]);
+    older.hidden = !expanded; body.append(older);
+  }
+  if (card.undated.length) body.append(el('p', { class: 'project-undated-label' }, ['尚无可用日期']), el('div', { class: 'conversation-list' }, card.undated.map(conversationRow)));
+  return el('article', { class: 'project candidate-project', 'data-candidate-project': project.key, 'aria-labelledby': `candidate-project-${project.key}` }, [
+    el('header', { class: 'project-head' }, [el('span', { class: 'project-symbol' }, [icon('folder')]),
+      el('h3', { id: `candidate-project-${project.key}`, title: project.nativeTitle }, [project.nativeTitle]),
+      el('a', { class: 'icon-button', href: project.canonicalUrl, 'aria-label': `在 ChatGPT 中打开候选项目：${project.nativeTitle}`, title: '在 ChatGPT 中打开项目' }, [icon('external')])]), body]);
+}
+
 function dateLabel(date: string): string {
   if (!calendar) return date;
   if (date === dayLabel(calendar.T)) return '今天';
@@ -139,15 +160,26 @@ function dateLabel(date: string): string {
 
 function unknownSection(records: ConversationRecord[], force: boolean): HTMLElement {
   const expanded = force || view.unknownOpen;
-  const label = selectedScope === 'unassigned' ? '账号待确认' : '待确认归属';
+  const label = '归属待确认 · 日期未知';
   const header = force ? el('h2', { class: 'unknown-toggle' }, [icon('info', 'hint-icon'), label])
     : button(label, { class: 'unknown-toggle', id: 'unknown-toggle', 'aria-expanded': String(expanded), 'aria-controls': 'unknown-content' }, 'chevron');
-  const note = snapshot?.capabilities.sourceGate === 'SOURCE_GATE_BLOCKED'
-    ? '这些链接可以直接打开。当前版本尚未验证账号与项目来源，记录暂时保留在这里。'
-    : '这些会话可以正常打开。确认原生项目归属后，它们会出现在对应的位置。';
+  const note = '这些链接没有可用的浏览日期或主动打开日期，仍可直接打开和搜索。原生归属确认后，会进入对应位置。';
   const content = el('div', { class: 'unknown-content', id: 'unknown-content' }, [el('p', { class: 'unknown-note' }, [note]), el('div', { class: 'unknown-grid' }, records.map(conversationRow))]);
   content.hidden = !expanded;
   return el('section', { class: 'unknown-section', 'aria-label': label }, [header, content]);
+}
+
+function pendingDateSection(groups: PendingDateGroup[], basis: PendingDateGroup['basis']): HTMLElement {
+  const label = basis === 'confirmed-open' ? '主动打开／归属待确认' : '历史浏览／归属待确认';
+  return el('section', { class: 'date-section pending-dates', 'data-date-basis': basis, 'aria-label': label }, [
+    el('div', { class: 'section-heading' }, [el('h2', {}, [label])]),
+    el('div', { class: 'date-grid' }, groups.map(group => {
+      const key = `pending:${selectedScope}:${basis}:${group.date}`, limit = view.limits[key] || 5;
+      const list = el('div', { class: 'conversation-list' }, group.records.slice(0, limit).map(conversationRow));
+      if (group.records.length > limit) list.append(button('显示更多', { class: 'more-rows', 'data-more': key, 'data-focus-key': `more:${key}`, 'aria-label': `显示更多 ${group.date} 的待确认会话` }));
+      return el('article', { class: 'date-window', 'data-date': group.date }, [
+        el('h3', { 'aria-label': `${group.date} · ${basis === 'confirmed-open' ? '主动打开' : '浏览器最近访问'}` }, [icon('calendar'), dateLabel(group.date)]), list]);
+    }))]);
 }
 
 function workspaceHeading(): HTMLElement {
@@ -155,7 +187,7 @@ function workspaceHeading(): HTMLElement {
   if (snapshot && snapshot.scopes.length > 0) {
     const scopeSelect = el('select', { class: 'scope-selector', id: 'scope-selector', 'aria-label': '选择本地资料库' });
     for (const scope of snapshot.scopes) scopeSelect.append(el('option', { value: scope.key }, [scope.label || '已保存的资料库']));
-    scopeSelect.append(el('option', { value: 'unassigned' }, ['账号待确认的记录']));
+    scopeSelect.append(el('option', { value: 'unassigned' }, ['本地历史（账号未绑定）']));
     scopeSelect.value = selectedScope || 'unassigned'; heading.append(scopeSelect);
   }
   const filters = el('div', { class: 'segment', role: 'tablist', 'aria-label': '筛选会话' });
@@ -181,30 +213,37 @@ function renderWorkspace(): void {
   const projection = projectCatalog(snapshot, { ...calendar, k: view.k, selectedScope: selectedScope || 'unassigned' });
   content.replaceChildren(workspaceHeading());
   if (selectedScope === 'unassigned' && snapshot.conversations.length) {
-    content.append(el('div', { class: 'import-note' }, [icon('info'), el('div', {}, ['历史链接已保留', el('p', {}, ['仅凭浏览记录还不能确认账号和项目归属。这些记录不会增加今天的活跃度。'])]), button('导入更多', { class: 'text-button', id: 'import-more' })]));
+    content.append(el('div', { class: 'import-note' }, [icon('info'), el('div', {}, ['本地历史已按时间整理', el('p', {}, ['账号与原生归属尚待确认。浏览日期仅用于历史浏览，不计作主动活动。'])]), button('导入更多', { class: 'text-button', id: 'import-more' })]));
   }
   const showProjects = view.filter === 'all' || view.filter === 'project';
   const showNone = view.filter === 'all' || view.filter === 'none';
+  const showPending = view.filter === 'all' || view.filter === 'unknown';
+  const showCandidates = showProjects || showPending;
   if (showProjects && projection.projects.length) content.append(el('section', { 'aria-label': '原生项目' }, [el('div', { class: 'project-grid' }, projection.projects.map(projectCard))]));
+  if (showCandidates && projection.candidateProjects.length) content.append(el('section', { 'aria-label': '本地候选项目／原生归属待确认' }, [el('div', { class: 'project-grid' }, projection.candidateProjects.map(candidateProjectCard))]));
   if (showNone && projection.dates.length) content.append(el('section', { class: 'date-section', 'aria-label': '无项目会话' }, [
     el('div', { class: 'section-heading' }, [el('h2', {}, ['无项目'])]), el('div', { class: 'date-grid' }, projection.dates.map(group => el('article', { class: 'date-window' }, [
       el('h3', { 'aria-label': group.date }, [icon('calendar'), dateLabel(group.date)]), el('div', { class: 'conversation-list' }, group.records.map(conversationRow))]))) ]));
+  if (showPending) for (const basis of ['confirmed-open', 'browser-history'] as const) {
+    const groups = projection.pendingDates.filter(group => group.basis === basis);
+    if (groups.length) content.append(pendingDateSection(groups, basis));
+  }
   if (showProjects && projection.undatedProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无主动打开记录的项目' }, [
     el('h2', {}, ['项目 · 尚无主动打开记录']), el('div', { class: 'project-grid' }, projection.undatedProjects.map(projectCard))]));
+  if (showCandidates && projection.undatedCandidateProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无日期的本地候选项目' }, [
+    el('h2', {}, ['本地候选项目 · 尚无可用日期']), el('div', { class: 'project-grid' }, projection.undatedCandidateProjects.map(candidateProjectCard))]));
   if (showNone && projection.undatedNone.length) content.append(el('section', { class: 'undated-section' }, [el('h2', {}, ['无项目 · 尚无主动打开记录']), el('div', { class: 'unknown-grid' }, projection.undatedNone.map(conversationRow))]));
-  const hasDisplayed = (showProjects && projection.projects.length) || (showNone && projection.dates.length);
-  if (!hasDisplayed && view.filter !== 'unknown' && !(view.filter === 'all' && selectedScope === 'unassigned' && projection.unknown.length)) {
+  const hasDisplayed = (showProjects && (projection.projects.length || projection.undatedProjects.length)) || (showCandidates && (projection.candidateProjects.length || projection.undatedCandidateProjects.length)) || (showNone && (projection.dates.length || projection.undatedNone.length)) || (showPending && (projection.pendingDates.length || projection.unknown.length));
+  if (!hasDisplayed) {
     content.append(el('section', { class: 'period-empty' }, [el('h2', {}, ['这一段没有记录']), el('p', {}, [view.filter === 'project' ? '还没有已确认项目归属的会话，也可以继续查看相邻 30 天。' : view.filter === 'none' ? '这一段没有已确认无项目的会话。' : '可以继续向前翻，也可以搜索全部本地会话。']), button('搜索全部已知', { class: 'text-button', id: 'empty-search' }, 'search')]));
   }
-  if ((view.filter === 'all' || view.filter === 'unknown') && projection.unknown.length) content.append(unknownSection(projection.unknown, view.filter === 'unknown' || selectedScope === 'unassigned'));
-  else if (view.filter === 'unknown') content.append(el('p', { class: 'section-empty' }, ['这个资料库没有待确认的会话。']));
+  if (showPending && projection.unknown.length) content.append(unknownSection(projection.unknown, view.filter === 'unknown' || selectedScope === 'unassigned'));
   renderRail();
 }
 
 function renderRail(): void {
   if (!calendar) return;
-  const rail = byId('history-rail'); rail.replaceChildren(); rail.hidden = view.filter === 'unknown' || (selectedScope === 'unassigned' && !snapshot?.conversations.some(record => record.activity));
-  if (rail.hidden) return;
+  const rail = byId('history-rail'); rail.replaceChildren(); rail.hidden = false;
   const rangeLabel = (k: number) => { const range = freeWindowFor(k, calendar!); return `${range.start}—${dayLabel(calendar!.T - 30 * k)}`; };
   if (view.k > 0) rail.append(button('', { id: 'period-newer', 'aria-label': `更新的 30 天，${rangeLabel(view.k - 1)}`, title: `更新的 30 天 · ${rangeLabel(view.k - 1)}` }, 'up'));
   rail.append(button('', { id: 'period-older', 'aria-label': `更早的 30 天，${rangeLabel(view.k + 1)}`, title: `更早的 30 天 · ${rangeLabel(view.k + 1)}` }, 'down'));
@@ -249,7 +288,7 @@ function renderSearch(): void {
   const conditions = JSON.stringify([selectedScope, query, searchFilter, searchProjectId]);
   if (conditions !== searchConditions) { searchVisibleLimit = SEARCH_PAGE_SIZE; searchConditions = conditions; }
   const results = searchCatalog(snapshot, query, selectedScope || 'unassigned').filter(result =>
-    (!searchProjectId || result.project?.projectId === searchProjectId) && (searchFilter === 'all' || (searchFilter === 'project' ? result.record.membership.state === 'PROJECT' : searchFilter === 'none' ? result.record.membership.state === 'NONE' : result.record.membership.state === 'UNKNOWN')));
+    (!searchProjectId || result.project?.projectId === searchProjectId) && (searchFilter === 'all' || (searchFilter === 'project' ? result.record.membership.state === 'PROJECT' || result.candidateProject !== null : searchFilter === 'none' ? result.record.membership.state === 'NONE' : result.record.membership.state === 'UNKNOWN')));
   // An empty native project remains reachable even when it has no conversation rows.
   const foundProjectIds = new Set(results.map(result => result.project?.projectId));
   const emptyProjects = searchFilter === 'all' || searchFilter === 'project' ? snapshot.projects.filter(project =>
@@ -283,9 +322,14 @@ function renderSettings(): void {
   byId<HTMLInputElement>('capture-enabled').checked = snapshot.settings.captureEnabled;
   byId('revoke-history').hidden = !snapshot.capabilities.history;
   byId<HTMLInputElement>('time-zone').value = snapshot.settings.libraryTimeZone;
-  byId('source-description').textContent = snapshot.capabilities.sourceGate === 'SOURCE_GATE_BLOCKED'
-    ? '本地目录、历史导入和网站入口可用。账号、项目归属与主动打开来源尚未通过真实验证，当前保持待确认，不生成未经证实的活动。'
-    : '只记录可确认的主动打开。刷新、恢复标签和切回已有标签不计作活动。';
+  const capture = snapshot.capabilities.chatgpt && snapshot.settings.captureEnabled;
+  const activity = capture && snapshot.capabilities.startNavigationActivity === true
+    ? '从 Start 主动打开会话并完成目标导航后记录当天活动；刷新、恢复和后台加载不计入。'
+    : '连接 ChatGPT 并开启继续收录后，才会记录新的主动打开活动。';
+  const projects = capture && snapshot.capabilities.localProjectCandidates === true
+    ? '项目可随正常浏览收录为本地候选；账号与原生归属仍待确认。'
+    : '已有目录与候选项目继续保留，账号与原生归属仍待确认。';
+  byId('source-description').textContent = `本地历史可按日期浏览，浏览日期不计活跃。${activity}${projects}`;
   byId('source-details').textContent = [snapshot.capabilities.sourceGate, ...(snapshot.capabilities.reasons || []), snapshot.capabilities.sourceStatus?.code || '', `构建：${snapshot.build.sha}`, `版本：${snapshot.build.version}`, `适配器：${snapshot.build.adapterVersion}`].filter(Boolean).join('\n');
 }
 
@@ -368,7 +412,7 @@ async function connectChatGPT(event: Event, disconnect = false): Promise<void> {
   try {
     const accepted = await grant; await request('PERMISSIONS_SYNC', !disconnect && accepted ? { enableCapture: true } : {}); await refresh(true);
     if (byId<HTMLDialogElement>('settings-dialog').open) renderSettings();
-    toast(disconnect ? '已断开 ChatGPT，已有目录继续保留。' : accepted ? '已连接 ChatGPT。当前来源限制可在设置中查看。' : '未授予连接权限，网站与本地目录仍可使用。');
+    toast(disconnect ? '已断开 ChatGPT，已有目录继续保留。' : accepted ? '已连接 ChatGPT，可以继续收录并记录主动打开。' : '未授予连接权限，网站与本地目录仍可使用。');
   } catch (error) { fail(error); }
 }
 
@@ -380,7 +424,7 @@ async function startImport(event: Event): Promise<void> {
     await request('PERMISSIONS_SYNC', {});
     const result = await request('IMPORT_START', { range: byId<HTMLSelectElement>('import-range').value, includeSynced: byId<HTMLInputElement>('include-synced').checked }) as { jobId?: string; id?: string; job?: { id: string } };
     activeJobId = result?.jobId || result?.id || result?.job?.id || null;
-    selectedScope = 'unassigned'; view.filter = 'unknown'; view.unknownOpen = true;
+    selectedScope = 'unassigned'; view.k = 0; view.filter = 'unknown'; view.unknownOpen = true;
     await refresh(true); renderImport(); void pumpImport();
   } catch (error) { fail(error); }
 }

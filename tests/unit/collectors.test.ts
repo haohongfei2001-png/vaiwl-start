@@ -128,7 +128,6 @@ test('Project parser rejects stale/hidden/ambiguous panels, wrong containers and
     document => document.querySelector('[role="tabpanel"]')!.setAttribute('aria-hidden', 'true'),
     document => document.querySelector('[role="tab"]')!.setAttribute('aria-selected', 'false'),
     document => document.querySelector('ol a')!.setAttribute('href', `/g/${Q}/c/${C}`),
-    document => document.querySelector('ol a')!.setAttribute('href', `/c/${C}`),
     document => { document.querySelector('ol a > div > div')!.textContent = ''; },
     document => { document.querySelector('ol a > div > div')!.innerHTML = '<span>changed title structure</span>'; },
     document => document.querySelector('h1 button')!.append(document.createElement('svg')),
@@ -142,7 +141,7 @@ test('Project parser rejects stale/hidden/ambiguous panels, wrong containers and
   }
 });
 
-test('a plain conversation, missing project badge or unlinked member never asserts NONE or PROJECT', () => {
+test('a plain conversation or missing project panel never asserts NONE or PROJECT', () => {
   const dom = fixture(); dom.reconfigure({ url: `${ORIGIN}/c/${C}` });
   assert.equal(observeProjectCandidate(dom.window.document), null);
   dom.reconfigure({ url: 'https://example.invalid/' });

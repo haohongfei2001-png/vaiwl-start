@@ -20,7 +20,7 @@ async function openOnce(repository: Repository, sender: chrome.runtime.MessageSe
   const previous = await repository.getIntent(operationId);
   if (previous) {
     if (previous.browserSessionId !== state.id || previous.sourceTabId !== sender.tab!.id || previous.targetRecordKey !== payload.recordKey || previous.disposition !== payload.disposition || previous.evidence.kind !== 'start-gesture' || previous.evidence.sourceDocumentId !== sender.documentId || previous.evidence.gesture !== payload.gesture) throw new Error('INVALID_MESSAGE');
-    return { intentId: previous.id, state: previous.state, activity: 'blocked-source' };
+    return { intentId: previous.id, state: previous.state, activity: previous.state === 'committed' ? 'confirmed-open' : previous.expectedScopeKey ? 'account-confirmation-required' : 'navigation-pending' };
   }
   const intent = await repository.issueIntent({ id: operationId, browserSessionId: state.id, targetRecordKey: payload.recordKey,
     evidence: { kind: 'start-gesture', sourceDocumentId: sender.documentId!, gesture: payload.gesture }, disposition: payload.disposition,
@@ -42,7 +42,7 @@ async function openOnce(repository: Repository, sender: chrome.runtime.MessageSe
       await repository.dispatchIntent(intent.id, state.id, { targetTabId: tab.id });
       await chrome.tabs.update(tab.id, { url: intent.targetUrl });
     }
-    return { intentId: intent.id, state: 'navigation-dispatched', activity: 'blocked-source' };
+    return { intentId: intent.id, state: 'navigation-dispatched', activity: intent.expectedScopeKey ? 'account-confirmation-required' : 'navigation-pending' };
   } catch {
     await repository.rejectIntent(intent.id, 'navigation-failed');
     throw new Error('NAVIGATION_FAILED');

@@ -1,8 +1,10 @@
-/** Packaged candidates only. A browser/page/config value cannot enable authority. */
+/** Local candidates are useful without full account/workspace certification.
+ * A browser/page/config value still cannot enable native membership authority. */
 export const CHATGPT_METADATA_PROFILE = Object.freeze({
-  id: 'start-chatgpt-metadata-candidate-20261102', revision: 2,
+  id: 'start-chatgpt-metadata-candidate-20261102', revision: 3,
   upstreamSha: '1903b00f774b4fd7f3d15b3669878c32e2c7a9c8',
   liveVerified: false,
+  localProjectCandidates: true,
   capabilities: Object.freeze({ currentContext: false, projectMembership: false, positiveNone: false, arrival: false, addressBar: false }),
   projectBoundary: 'main[data-app-shell-main-surface] [data-app-shell-main-content-layout] [role="main"]:has(h1 > button):has([role="tabpanel"])',
   projectMembers: '[role="tabpanel"]',

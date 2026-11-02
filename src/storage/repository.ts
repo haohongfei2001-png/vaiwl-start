@@ -1,5 +1,6 @@
 import type { AccountScope, CandidateResolution, ConfirmedOpenDay, ConversationRecord, EvidenceWitness, ImportCheckpoint, Membership, OpenDisposition, OpenIntent, OpenIntentEvidence, ProjectRecord, StartSettings, Tombstone, WebsiteShortcut } from '../../contracts/free-v1.js';
-import { conversationKey, parseConversationUrl, parseProjectUrl, projectKey, scopeKey, stagingKey, validateWebsiteUrl } from '../domain/ids.js';
+import { conversationKey, parseConversationUrl, parseProjectUrl, projectKey, scopeKey, stagingKey, tupleHash, validateWebsiteUrl } from '../domain/ids.js';
+import { parseLocalProjectCandidate } from '../collectors/chatgpt/project-candidate.js';
 import { activitySummary, upsertOpenDay } from '../domain/open-activity.js';
 import { reduceMembership, validateMembership } from '../domain/membership.js';
 import { dayLabel, instant, localDay, validateTimeZone } from '../domain/time.js';
@@ -16,7 +17,7 @@ interface StoredTombstone extends Tombstone { record?: StoredConversation }
 export interface IntentBinding { targetTabId: number; targetDocumentId: string; routeEpoch: number; scopeEpoch: number }
 interface StoredIntent extends OpenIntent { binding?: IntentBinding }
 export interface IssueIntentInput { id?: string; browserSessionId: string; targetRecordKey: string; evidence: OpenIntentEvidence; disposition: OpenDisposition; sourceTabId: number; sourceScopeEpoch: number }
-export interface ArrivalInput extends IntentBinding { intentId: string; browserSessionId: string; conversationId: string; canonicalUrl: string; scopeKey: string | null; evidenceId?: string; nativeTitle?: string | null; arrivalConfirmed: true }
+export interface ArrivalInput extends IntentBinding { intentId: string; browserSessionId: string; conversationId: string; canonicalUrl: string; scopeKey: string | null; evidenceId?: string; nativeTitle?: string | null; arrivalConfirmed: true; confirmationBasis?: 'browser-navigation' | 'metadata-arrival' }
 export interface ObservationInput { scope: AccountScope; witness: EvidenceWitness; documentId: string; routeEpoch: number; scopeEpoch: number; conversationUrl: string; nativeTitle: string | null; membership: Membership; project?: ProjectRecord }
 type MutationContext = { tx: IDBTransaction; revision: RevisionRow; settings: SettingsRow; changed: () => void; rank: () => number };
 
@@ -98,6 +99,7 @@ export class Repository {
         const fresh = newCandidate(p.key, ctx.settings.localProfileKey, p.identity, p.input, now, previous?.stableRank ?? ctx.rank(), ctx.revision.value + 1);
         if (previous) {
           fresh.firstSeenAt = previous.firstSeenAt; fresh.activity = previous.activity; fresh.availability = previous.availability;
+          if (previous.localProjectCandidate) fresh.localProjectCandidate = previous.localProjectCandidate;
           if (!fresh.nativeTitle || previous.titleBasis === 'native-label' && fresh.titleBasis !== 'native-label') { fresh.nativeTitle = previous.nativeTitle; fresh.titleBasis = previous.titleBasis; fresh.titleObservedAt = previous.titleObservedAt; }
           if (!fresh.browserLastVisitAt || previous.browserLastVisitAt && instant(previous.browserLastVisitAt)! > instant(fresh.browserLastVisitAt)!) fresh.browserLastVisitAt = previous.browserLastVisitAt;
         } else inserted++;
@@ -106,6 +108,32 @@ export class Repository {
       if (checkpoint) { await request(ctx.tx.objectStore('importJobs').put(checkpoint)); ctx.changed(); }
       return { accepted, inserted };
     }, expectedRevision);
+  }
+  /** A bounded Project observation stays in the local Profile library. It never
+   * grants ownership, creates AccountScope/Project assets, or writes activity. */
+  async observeLocalProjectCandidate(value: unknown, context: { browserSessionId: string; bindingId: string; observationId: string; sourceHref: string }): Promise<number> {
+    exactObject(context, ['browserSessionId', 'bindingId', 'observationId', 'sourceHref']);
+    boundedString(context.browserSessionId, 128); boundedString(context.bindingId, 128); boundedString(context.observationId, 128);
+    const candidate = parseLocalProjectCandidate(value, context.sourceHref);
+    const initial = await this.getSnapshot('unassigned');
+    const candidateKey = await tupleHash('local-project', initial.localProfileKey, context.browserSessionId, context.bindingId, context.observationId, candidate.projectId);
+    const prepared = await Promise.all(candidate.members.map(async member => ({ member, key: await stagingKey(initial.localProfileKey, member.conversationId) })));
+    const now = this.now();
+    return this.mutate(async ctx => {
+      if (!ctx.settings.captureEnabled || ctx.settings.localProfileKey !== initial.localProfileKey) throw Error('PERMISSION_REQUIRED');
+      const conversations = ctx.tx.objectStore('conversations'); let accepted = 0;
+      for (const { member, key } of prepared) {
+        if (await request(ctx.tx.objectStore('tombstones').get(key))) continue;
+        const old = await request<StoredConversation | undefined>(conversations.get(key));
+        if (old && (old.owner.kind !== 'unassigned' || old.owner.localProfileKey !== ctx.settings.localProfileKey || old.membership.state !== 'UNKNOWN')) continue;
+        const record = old ?? newCandidate(key, ctx.settings.localProfileKey, parseConversationUrl(member.canonicalUrl)!, { url: member.canonicalUrl, title: member.nativeTitle, titleBasis: 'native-label' }, now, ctx.rank(), ctx.revision.value + 1);
+        record.localProjectCandidate = { key: candidateKey, projectId: candidate.projectId, nativeTitle: candidate.nativeTitle, canonicalUrl: candidate.canonicalUrl, observedAt: now, basis: 'local-project-observation' };
+        record.nativeTitle = member.nativeTitle; record.titleBasis = 'native-label'; record.titleObservedAt = now;
+        record.lastSeenAt = now; record.revision = ctx.revision.value + 1;
+        await request(conversations.put(decorate(record, old?.browserSource))); accepted++; ctx.changed();
+      }
+      return accepted;
+    });
   }
   async saveImportJob(job: RuntimeImportJob, expectedRevision?: number): Promise<void> {
     validateImportJob(job);
@@ -221,8 +249,9 @@ export class Repository {
   }
   /** Only the verified background adapter can call this method. It is never an IPC command. */
   async commitArrival(input: ArrivalInput): Promise<{ state: OpenIntent['state']; recordKey: string | null }> {
-    exactObject(input, ['intentId', 'browserSessionId', 'targetTabId', 'targetDocumentId', 'routeEpoch', 'scopeEpoch', 'conversationId', 'canonicalUrl', 'scopeKey', 'arrivalConfirmed'], ['evidenceId', 'nativeTitle']);
+    exactObject(input, ['intentId', 'browserSessionId', 'targetTabId', 'targetDocumentId', 'routeEpoch', 'scopeEpoch', 'conversationId', 'canonicalUrl', 'scopeKey', 'arrivalConfirmed'], ['evidenceId', 'nativeTitle', 'confirmationBasis']);
     if (input.arrivalConfirmed !== true) throw Error('arrival-unconfirmed');
+    if (input.confirmationBasis !== undefined && !['browser-navigation', 'metadata-arrival'].includes(input.confirmationBasis)) throw Error('invalid-confirmation-basis');
     const parsed = parseConversationUrl(input.canonicalUrl);
     if (!parsed || parsed.conversationId !== input.conversationId) throw Error('invalid-arrival-target');
     nonnegative(input.targetTabId); nonnegative(input.routeEpoch); nonnegative(input.scopeEpoch); boundedString(input.targetDocumentId, 128); title(input.nativeTitle);
@@ -233,6 +262,7 @@ export class Repository {
       if (intent.state === 'committed') return { state: intent.state, recordKey: intent.committedRecordKey };
       if (['expired', 'rejected'].includes(intent.state)) return { state: intent.state, recordKey: null };
       const reject = async (code: NonNullable<OpenIntent['rejectionCode']>, expired = false) => { intent.state = expired ? 'expired' : 'rejected'; intent.rejectionCode = code; await request(store.put(intent)); ctx.changed(); return { state: intent.state, recordKey: null }; };
+      if (input.confirmationBasis === 'browser-navigation' && !ctx.settings.captureEnabled) return reject('stale-document');
       if (instant(now)! < instant(intent.issuedAt)! || instant(now)! > instant(intent.expiresAt)!) return reject('clock-anomaly', instant(now)! > instant(intent.expiresAt)!);
       if (intent.browserSessionId !== input.browserSessionId || intent.state !== 'navigation-dispatched' || !intent.binding || intent.targetTabId !== input.targetTabId || intent.binding.targetDocumentId !== input.targetDocumentId || intent.binding.routeEpoch !== input.routeEpoch || intent.binding.scopeEpoch !== input.scopeEpoch || intent.sourceScopeEpoch !== input.scopeEpoch) return reject('stale-document');
       if (intent.targetConversationId !== input.conversationId) return reject('target-mismatch');
@@ -247,16 +277,21 @@ export class Repository {
         const witness = input.evidenceId ? await request<EvidenceWitness | undefined>(ctx.tx.objectStore('witnesses').get(input.evidenceId)) : undefined;
         if (!scope || scope.state !== 'ready' || !witness || witness.revoked || witness.scopeKey !== scope.key || witness.documentId !== input.targetDocumentId || witness.routeEpoch !== input.routeEpoch || witness.scopeEpoch !== input.scopeEpoch) return reject('scope-mismatch');
         if (!record) record = decorate({ ...publicRecord(requested), key, owner: { kind: 'scoped', scopeKey: input.scopeKey }, membership: { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, activity: null, nativeTitle: title(input.nativeTitle), titleBasis: input.nativeTitle ? 'native-label' : 'unknown', titleObservedAt: input.nativeTitle ? now : null, browserLastVisitAt: null, firstSeenAt: now, lastSeenAt: now, stableRank: ctx.rank(), revision: ctx.revision.value + 1 });
+        delete record.localProjectCandidate; // A local observation never migrates into an account asset.
         if (requested.owner.kind === 'unassigned') await request(ctx.tx.objectStore('candidateLinks').put({ candidateRecordKey: requested.key, scopedRecordKey: key, evidenceId: witness.id, confirmedAt: now } satisfies CandidateResolution));
       }
       if (!record) return reject('target-mismatch');
       const days = ctx.tx.objectStore('openDays'), dayKey = [key, intent.issuedTimeZone, intent.issuedLocalDate];
       const previous = await request<ConfirmedOpenDay | undefined>(days.get(dayKey));
       await request(days.put(upsertOpenDay(previous, intent, key)));
-      record.activity = activitySummary(record.activity, intent); record.availability = 'reachable'; record.lastSeenAt = now; record.revision = ctx.revision.value + 1;
+      record.activity = activitySummary(record.activity, intent);
+      // HTTP/application-level errors may still complete browser navigation. Do
+      // not upgrade account/object availability from this weaker opening fact.
+      if (input.confirmationBasis !== 'browser-navigation') record.availability = 'reachable';
+      record.lastSeenAt = now; record.revision = ctx.revision.value + 1;
       if (input.nativeTitle) { record.nativeTitle = title(input.nativeTitle); record.titleBasis = 'native-label'; record.titleObservedAt = now; }
       await request(conversations.put(decorate(record, record.browserSource)));
-      intent.resolvedRecordKey = key; intent.committedRecordKey = key; intent.state = 'committed'; await request(store.put(intent)); ctx.changed();
+      intent.resolvedRecordKey = key; intent.committedRecordKey = key; intent.confirmationBasis = input.confirmationBasis ?? 'metadata-arrival'; intent.state = 'committed'; await request(store.put(intent)); ctx.changed();
       return { state: intent.state, recordKey: key };
     });
   }

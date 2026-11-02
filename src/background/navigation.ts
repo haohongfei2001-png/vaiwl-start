@@ -39,7 +39,7 @@ export async function requireCurrentBinding(sender: chrome.runtime.MessageSender
   return checked;
 }
 
-/** A bounded, read-only diagnostic. A navigation binding never proves ChatGPT loaded the object. */
+/** A bounded, read-only legacy diagnostic. A binding alone is not navigation completion. */
 export async function inspectStartOpenChain(repository: Repository, binding: DocumentBinding): Promise<{ state: 'no-matching-intent' | 'navigation-pending' | 'navigation-bound-arrival-unproven' | 'ambiguous-intent' | 'stale-binding'; intentId: string | null }> {
   const current = await session();
   if (binding.scopeEpoch !== current.scopeEpoch || !sameBinding(current.bindings[String(binding.tabId)], binding)) return { state: 'stale-binding', intentId: null };
@@ -61,7 +61,39 @@ export async function inspectStartOpenChain(repository: Repository, binding: Doc
 }
 
 export function registerNavigation(getRepository: () => Promise<Repository>, changed: () => Promise<void>) {
-  const process = async (details: NavigationEvent, kind: 'committed' | 'history') => {
+  const complete = async (details: NavigationEvent) => {
+    if (details.frameId !== 0 || !details.documentId || details.documentLifecycle !== 'active') return;
+    const target = parseConversationUrl(details.url);
+    if (!target || new URL(details.url).origin !== 'https://chatgpt.com' || !await chrome.permissions.contains(CONNECTION)) return;
+    const repository = await getRepository();
+    if (!(await repository.getSnapshot()).settings.captureEnabled) return;
+    const current = await session(), binding = current.bindings[String(details.tabId)];
+    if (!binding || binding.documentId !== details.documentId || binding.href !== details.url || binding.scopeEpoch !== current.scopeEpoch) return;
+    const matched = matchingIntents(await repository.listIntents(), { sessionId: current.id, tabId: details.tabId, conversationId: target.conversationId, scopeEpoch: current.scopeEpoch, now: Date.now() }).filter(i => i.evidence.kind === 'start-gesture');
+    if (matched.length !== 1) {
+      for (const intent of matched) await repository.rejectIntent(intent.id, 'ambiguous-arrival');
+      return;
+    }
+    const intent = matched[0]!;
+    const persisted = (intent as typeof intent & { binding?: IntentBinding }).binding;
+    if (!persisted || intent.targetDocumentId !== binding.documentId || persisted.targetDocumentId !== binding.documentId || persisted.routeEpoch !== binding.routeEpoch || persisted.scopeEpoch !== binding.scopeEpoch || persisted.targetTabId !== binding.tabId) return;
+    // Browser onCompleted proves this exact user-directed navigation completed. It
+    // does not prove account ownership, membership, body rendering or reading.
+    // A scoped record still requires a current account witness; unknown records
+    // commit only to their original, unassigned local library.
+    if (intent.expectedScopeKey !== null) return;
+    await requireCurrentBinding({ tab: { id: binding.tabId }, documentId: binding.documentId } as chrome.runtime.MessageSender, binding);
+    // Serialize final admission with scope/permission invalidation. Capture is
+    // also checked inside the IDB write transaction, not just before an await.
+    await changeSession(async latest => {
+      if (latest.id !== current.id || latest.scopeEpoch !== current.scopeEpoch || !sameBinding(latest.bindings[String(binding.tabId)], binding) || !await chrome.permissions.contains(CONNECTION)) return;
+      await liveDocument(binding.tabId, binding.documentId, binding.href);
+      await repository.commitArrival({ intentId: intent.id, browserSessionId: current.id, targetTabId: binding.tabId, targetDocumentId: binding.documentId, routeEpoch: binding.routeEpoch, scopeEpoch: binding.scopeEpoch, conversationId: target.conversationId, canonicalUrl: target.canonicalUrl, scopeKey: null, arrivalConfirmed: true, confirmationBasis: 'browser-navigation' });
+    });
+    await changed();
+  };
+  const process = async (details: NavigationEvent, kind: 'committed' | 'history' | 'completed') => {
+    if (kind === 'completed') return complete(details);
     if (details.frameId !== 0 || !details.documentId || details.documentLifecycle !== 'active') return;
     if (!await chrome.permissions.contains(CONNECTION)) return;
     const repository = await getRepository(), snapshot = await repository.getSnapshot();
@@ -134,18 +166,19 @@ export function registerNavigation(getRepository: () => Promise<Repository>, cha
         }
       }
     }
-    // No commitArrival here: route arrival is insufficient without the M0 source proof.
+    // onCommitted freezes the attempt; onCompleted confirms navigation without body reads.
     try { await chrome.tabs.sendMessage(details.tabId, { protocol: 'vaiwl-start-collector/1', command: 'ROUTE' }, { documentId: details.documentId }); } catch { /* content not yet injected */ }
     await changed();
   };
   const pending = new Map<number, Promise<void>>();
-  const enqueue = (details: NavigationEvent, kind: 'committed' | 'history') => {
+  const enqueue = (details: NavigationEvent, kind: 'committed' | 'history' | 'completed') => {
     const work = (pending.get(details.tabId) ?? Promise.resolve()).then(() => process(details, kind)).catch(() => {}).finally(() => { if (pending.get(details.tabId) === work) pending.delete(details.tabId); });
     pending.set(details.tabId, work);
     return work;
   };
   chrome.webNavigation?.onCommitted.addListener(details => enqueue(details, 'committed'));
   chrome.webNavigation?.onHistoryStateUpdated.addListener(details => enqueue(details, 'history'));
+  chrome.webNavigation?.onCompleted.addListener(details => enqueue(details, 'completed'));
   chrome.webNavigation?.onErrorOccurred.addListener(details => {
     if (details.frameId !== 0) return;
     return getRepository().then(async repository => {

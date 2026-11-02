@@ -48,7 +48,8 @@ try {
   check('B-install-production-manifest', initial.permissions.includes('storage') && !initial.permissions.includes('history') && initial.origins.length === 0, 'Unchanged production package needs no history or ChatGPT access at installation.');
   const unknown = await page.evaluate(() => chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: 'fake-authority', expectedRevision: 0, command: 'OBSERVATION', payload: { verified: true, scope: 'fake' } }));
   check('B-no-IPC-source-authority', unknown.ok === false && unknown.code === 'INVALID_MESSAGE', 'Packaged UI cannot submit an invented source admission command.');
-  check('B-empty-source-gate', (await command(page, 'SNAPSHOT')).capabilities.sourceGate === 'SOURCE_GATE_BLOCKED', 'Unverified source status remains explicit in the actual worker.');
+  const caps = (await command(page, 'SNAPSHOT')).capabilities;
+  check('B-empty-source-gate', caps.sourceGate === 'LOCAL_WORKSPACE_READY' && caps.localHistory && !caps.verifiedScope && !caps.nativeProjectMembership && !caps.nativeNone, 'Local directory works independently; unverified native account and attribution remain explicit.');
   await context.close(); context = null;
 
   // Isolated API harness: JS bytes are unchanged; only history is pre-declared to

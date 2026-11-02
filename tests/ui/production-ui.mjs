@@ -390,7 +390,8 @@ try {
   check('UI-ime-revision-safe-point', !!imeAfter.evidence.imeEnd && imeAfter.evidence.imeApplied >= imeAfter.evidence.imeEnd.at && imeAfter.evidence.imeApplied - imeAfter.evidence.imeEnd.at <= 1000 && imeAfter.focus === 'search-input' && imeAfter.query === '设计讨论' && Math.abs(imeAfter.offset - imeBefore.offset) <= 1, `Real Chromium CDP composition start is trusted; the browser-generated end has isTrusted=${imeAfter.evidence.imeEnd?.trusted}. Other-tab revision waits through composition and applies in ${Math.round(imeAfter.evidence.imeApplied - imeAfter.evidence.imeEnd.at)} ms, preserving the input buffer, focus and same record anchor. No DOM event is synthesized by the test.`);
   await ime.detach(); await page.keyboard.press('Escape');
   await page.getByRole('button', { name: '设置', exact: true }).click();
-  check('UI-source-limit-visible', (await page.locator('#source-description').textContent()).includes('尚未通过真实验证'), 'Settings disclose source gate as blocked.');
+  const sourceDescription = await page.locator('#source-description').textContent();
+  check('UI-source-limit-visible', sourceDescription.includes('本地历史可按日期浏览') && sourceDescription.includes('浏览日期不计活跃') && sourceDescription.includes('账号与原生归属仍待确认') && sourceDescription.includes('连接 ChatGPT 并开启继续收录后'), 'Settings disclose local capabilities and unverified account/native-membership boundaries; disconnected capture does not promise new activity.');
   await page.locator('#settings-dialog [data-close]').first().click();
   for (const width of [320, 400, 720, 1000, 1440, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
@@ -462,9 +463,87 @@ try {
   assert.notEqual(midnightDate, today.slice(0, 10));
   await publishCommand('RECORD_RESTORE', { recordKey: oldNone.key }); await historyPage.clock.runFor(100);
   check('UI-history-segment-tab-update-midnight', await historyPage.locator(`[data-record-key="${oldNone.key}"]`).count() === 1 && await historyPage.locator('#history-rail').textContent() === historicalRange && await historyPage.locator('#period-newer').count() === 1 && await historyPage.evaluate(() => JSON.parse(sessionStorage.getItem('vaiwl-start-view/1')).k) === 2, 'Actual commands from another Start page remove/restore a historical entry; each revision applies within 100 ms of controlled clock advancement. Crossing UTC midnight leaves the current k=2 segment and its frozen range unchanged.');
+
+  // Contract-correction fixtures: real production projection/UI over isolated
+  // IndexedDB. These 564 rows are synthetic, never the user's history or a source proof.
+  const localPage = await context.newPage(); localPage.on('pageerror', error => errors.push(error.message));
+  await localPage.goto(`chrome-extension://${id}/newtab.html`); await localPage.waitForSelector('html[data-start-ready="true"]');
+  const localSeed = await localPage.evaluate(async () => {
+    const req = indexedDB.open('vaiwl-start', 1); const db = await new Promise(resolve => { req.onsuccess = () => resolve(req.result); });
+    const tx = db.transaction(['settings', 'conversations', 'openDays', 'revisions'], 'readwrite');
+    const settings = tx.objectStore('settings').get('main'), beforeDays = tx.objectStore('openDays').count();
+    const at = new Date(); at.setUTCHours(8, 0, 0, 0); const now = at.toISOString();
+    settings.onsuccess = () => {
+      const profile = settings.result.localProfileKey;
+      for (let n = 0; n < 564; n++) {
+        const ordinal = 50000 + n, conversationId = `00000000-0000-4000-8000-${String(ordinal).padStart(12, '0')}`;
+        tx.objectStore('conversations').put({ key: `staging:ui-history-${n}`, provider: 'chatgpt', conversationId, canonicalUrl: `https://chatgpt.com/c/${conversationId}`,
+          nativeTitle: `合成历史 ${String(n + 1).padStart(5, '0')}`, titleBasis: 'browser-history', titleObservedAt: now, availability: 'unverified', firstSeenAt: now, lastSeenAt: now,
+          browserLastVisitAt: new Date(at.getTime() - (n % 94) * 86400000).toISOString(), activity: null, stableRank: ordinal, revision: 1,
+          owner: { kind: 'unassigned', localProfileKey: profile, accountKey: null }, ownerKey: `unassigned:${profile}`,
+          membership: { state: 'UNKNOWN', projectId: null, reason: 'scope-unverified' }, membershipState: 'UNKNOWN' });
+      }
+    };
+    const revision = tx.objectStore('revisions').get('main'); revision.onsuccess = () => tx.objectStore('revisions').put({ ...revision.result, value: revision.result.value + 1, nextRank: 50565 });
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); }); db.close();
+    return { beforeDays: beforeDays.result, now };
+  });
+  await localPage.reload(); await localPage.waitForSelector('html[data-start-ready="true"]');
+  await localPage.locator('#scope-selector').selectOption('unassigned');
+  const historySection = localPage.locator('[data-date-basis="browser-history"]');
+  await historySection.waitFor();
+  check('UI-local-564-history-date-windows', await historySection.locator('.date-window').count() === 30 && await localPage.locator('#period-older').isVisible()
+    && await localPage.getByRole('heading', { name: '历史浏览／归属待确认', exact: true }).isVisible()
+    && await localPage.locator('[data-date-basis="confirmed-open"]').count() === 0
+    && await localPage.locator('.unknown-section').count() === 0,
+  '564 synthetic local histories occupy their browser-visit calendar windows; the current window has 30 dates, no false active-date section or unstructured pending list.');
+  const firstHistoryDate = historySection.locator('.date-window').first();
+  assert.equal(await firstHistoryDate.locator('.conversation-row').count(), 5);
+  await firstHistoryDate.locator('[data-more]').click();
+  check('UI-history-date-show-more', await firstHistoryDate.locator('.conversation-row').count() === 6 && await firstHistoryDate.locator('[data-more]').count() === 0,
+    'Date windows use the existing bounded row expansion; all six same-day records are reachable without rendering the whole catalog.');
+  await localPage.locator('[data-filter="unknown"]').click(); await localPage.locator('#period-older').click();
+  check('UI-local-pending-30-day-navigation', await localPage.locator('#period-newer').isVisible() && await localPage.locator('[data-record-key="staging:ui-history-30"]').count() === 1
+    && await localPage.locator('[data-record-key="staging:ui-history-0"]').count() === 0, 'The pending filter retains adjacent 30-day navigation and shows only that window.');
+  await localPage.locator('#search-trigger').click(); await localPage.locator('#search-input').fill('合成历史');
+  assert.equal(await localPage.locator('#search-results').getAttribute('data-total-matches'), '564');
+  await localPage.locator('#search-input').fill('合成历史 00564');
+  check('UI-local-full-history-search', await localPage.locator('.search-result').count() === 1, 'An entry outside the displayed dates remains searchable from the full local catalog.');
+  await localPage.keyboard.press('Escape'); await localPage.locator('#period-newer').click();
+  await localPage.reload(); await localPage.waitForSelector('html[data-start-ready="true"]');
+  const localAfter = await localPage.evaluate(async () => {
+    const req = indexedDB.open('vaiwl-start', 1); const db = await new Promise(resolve => { req.onsuccess = () => resolve(req.result); });
+    const tx = db.transaction(['conversations', 'openDays'], 'readonly'), records = tx.objectStore('conversations').getAll(), days = tx.objectStore('openDays').count();
+    await new Promise(resolve => { tx.oncomplete = resolve; }); db.close();
+    return { count: records.result.filter(row => row.key.startsWith('staging:ui-history-')).length,
+      activity: records.result.filter(row => row.key.startsWith('staging:ui-history-') && row.activity).length, days: days.result };
+  });
+  check('UI-local-history-reload-no-passive-activity', localAfter.count === 564 && localAfter.activity === 0 && localAfter.days === localSeed.beforeDays,
+    'Date browsing, filtering, search and actual page reload preserve all 564 stable records and create no OpenDay or activity summary.');
+  await localPage.evaluate(async at => {
+    const req = indexedDB.open('vaiwl-start', 1); const db = await new Promise(resolve => { req.onsuccess = () => resolve(req.result); });
+    const tx = db.transaction(['conversations', 'revisions'], 'readwrite');
+    for (const n of [1, 65]) {
+      const record = tx.objectStore('conversations').get(`staging:ui-history-${n}`);
+      record.onsuccess = () => tx.objectStore('conversations').put({ ...record.result, localProjectCandidate: {
+        key: 'local-project:ui-synthetic', projectId: 'g-p-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', nativeTitle: '合成局部项目',
+        canonicalUrl: 'https://chatgpt.com/g/g-p-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/project', observedAt: at, basis: 'local-project-observation' } });
+    }
+    const revision = tx.objectStore('revisions').get('main'); revision.onsuccess = () => tx.objectStore('revisions').put({ ...revision.result, value: revision.result.value + 1 });
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); }); db.close();
+  }, localSeed.now);
+  await localPage.reload(); await localPage.waitForSelector('html[data-start-ready="true"]');
+  const candidateCard = localPage.locator('[data-candidate-project="local-project:ui-synthetic"]');
+  await candidateCard.waitFor(); await candidateCard.getByRole('button', { name: '较早会话', exact: true }).click();
+  check('UI-local-project-candidate-distinct', await candidateCard.getByText('本地候选项目／原生归属待确认', { exact: true }).isVisible()
+    && await localPage.locator('[data-record-key="staging:ui-history-1"]').count() === 1 && await candidateCard.locator('[data-record-key="staging:ui-history-65"]').isVisible()
+    && await localPage.locator('[data-project]').count() === 0,
+  'Candidate project metadata groups existing stable UNKNOWN rows once, keeps its older child reachable and never renders as an authenticated native project.');
+  await localPage.screenshot({ path: 'artifacts/ui-local-history.png', fullPage: true });
+  await localPage.close();
   check('UI-no-script-errors', errors.length === 0, JSON.stringify(errors));
   const status = checks.length > 0 && checks.every(item => item.status === 'PASS') && errors.length === 0 ? 'PASS' : 'FAIL';
   assert.equal(status, 'PASS', 'UI validation cannot pass with failed checks or page errors.');
-  await writeFile('artifacts/ui-validation.json', JSON.stringify({ status, buildSha: buildInfo.sha, dirty: buildInfo.dirty, browser: await context.browser()?.version(), environment: 'isolated-headless-Chromium-MV3-synthetic-only', sourceGate: 'SOURCE_GATE_BLOCKED', testFont: fontData ? 'Temporary Noto Sans CJK SC injected for test rendering; no font ships or downloads in production.' : 'System fonts', checks, limitations: ['Synthetic direct-IDB fixtures only; this is not ChatGPT metadata, true Edge, or Mac acceptance.', 'Chromium CDP native compositionstart/update/input are trusted; its browser-generated compositionend isTrusted is false. This exercises actual browser composition, not a Mac operating-system IME.'] }, null, 2));
+  await writeFile('artifacts/ui-validation.json', JSON.stringify({ status, buildSha: buildInfo.sha, dirty: buildInfo.dirty, browser: await context.browser()?.version(), environment: 'isolated-headless-Chromium-MV3-synthetic-only', sourceGate: buildInfo.sourceGate, testFont: fontData ? 'Temporary Noto Sans CJK SC injected for test rendering; no font ships or downloads in production.' : 'System fonts', checks, limitations: ['Synthetic direct-IDB fixtures only; this is not ChatGPT metadata, true Edge, or Mac acceptance.', 'Chromium CDP native compositionstart/update/input are trusted; its browser-generated compositionend isTrusted is false. This exercises actual browser composition, not a Mac operating-system IME.'] }, null, 2));
   console.log(JSON.stringify({ uiChecks: checks.length, status, errors }));
 } finally { await context.close(); }

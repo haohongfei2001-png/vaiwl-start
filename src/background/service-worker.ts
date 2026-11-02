@@ -2,11 +2,12 @@ import { createRepository, type Repository } from '../storage/repository.js';
 import { parseConversationUrl } from '../domain/ids.js';
 import { COLLECTOR_PROTOCOL, PROTOCOL, bounded, exact, parseEnvelope, publicError, trustedCollectorSender, trustedExtensionSender } from '../shared/protocol.js';
 import { CHATGPT_METADATA_PROFILE, SOURCE_FAILURE_CODES } from '../collectors/chatgpt/profile.js';
+import { parseLocalProjectCandidate } from '../collectors/chatgpt/project-candidate.js';
 import { capabilities, CONNECTION, synchronizePermissions } from './permissions.js';
 import { bindCurrentDocument, registerNavigation, requireCurrentBinding } from './navigation.js';
 import { sourceCheckCommand, stopSourceCheck } from './source-check.js';
 import { SOURCE_CHECK_PROTOCOL } from '../shared/source-check.js';
-import { session, invalidateBindings } from './session.js';
+import { session, invalidateBindings, changeSession } from './session.js';
 import { openFromStart } from './open-broker.js';
 import { createHistoryJob, stepHistoryImport, type HistoryJob } from './import-history.js';
 
@@ -105,7 +106,7 @@ async function collectorCommand(message: unknown, sender: chrome.runtime.Message
     if (parseConversationUrl(p.href)) { await repo.discoverCandidates([{ url: p.href, title: null, source: 'unknown', titleBasis: 'unknown' }]); await broadcast(); }
     return { id: binding.id, routeEpoch: binding.routeEpoch };
   }
-  if (message.command === 'OBSERVE') exact(p, ['bindingId', 'routeEpoch', 'candidates']);
+  if (message.command === 'OBSERVE') exact(p, ['bindingId', 'routeEpoch', 'candidates'], ['projectCandidate']);
   else if (message.command === 'SOURCE_STATUS') exact(p, ['bindingId', 'routeEpoch', 'code', 'profileId']);
   else throw new Error('INVALID_MESSAGE');
   bounded(p.bindingId, 80); integer(p.routeEpoch);
@@ -120,13 +121,23 @@ async function collectorCommand(message: unknown, sender: chrome.runtime.Message
   }
   if (!Array.isArray(p.candidates) || p.candidates.length > 200) throw new Error('INVALID_MESSAGE');
   for (const candidate of p.candidates) { exact(candidate, ['url', 'title']); bounded(candidate.url, 8192); bounded(candidate.title, 512); if (!parseConversationUrl(candidate.url)) throw new Error('INVALID_MESSAGE'); }
-  if (p.candidates.length) {
+  const projectCandidate = p.projectCandidate === undefined ? null : parseLocalProjectCandidate(p.projectCandidate, binding.href);
+  if (projectCandidate && (p.candidates.length !== projectCandidate.members.length || p.candidates.some((candidate: any, index: number) => candidate.url !== projectCandidate.members[index]!.canonicalUrl || candidate.title !== projectCandidate.members[index]!.nativeTitle))) throw new Error('INVALID_MESSAGE');
+  if (projectCandidate) {
+    await requireCurrentBinding(sender, binding);
+    await changeSession(async current => {
+      if (current.scopeEpoch !== binding.scopeEpoch || current.bindings[String(binding.tabId)]?.id !== binding.id || !await chrome.permissions.contains(CONNECTION)) throw new Error('STALE_DOCUMENT');
+      await requireCurrentBinding(sender, binding);
+      await repo.observeLocalProjectCandidate(projectCandidate, { browserSessionId: current.id, bindingId: binding.id, observationId: message.operationId, sourceHref: binding.href });
+    });
+    await broadcast();
+  } else if (p.candidates.length) {
     await requireCurrentBinding(sender, binding);
     if (!(await repo.getSnapshot()).settings.captureEnabled) throw new Error('PERMISSION_REQUIRED');
     await repo.discoverCandidates(p.candidates.map((c: any) => ({ ...c, source: 'unknown', titleBasis: 'native-label' })));
     await broadcast();
   }
-  return { accepted: true, membership: 'UNKNOWN', sourceGate: 'SOURCE_GATE_BLOCKED' };
+  return { accepted: true, membership: 'UNKNOWN', projectCandidate: !!projectCandidate, sourceGate: 'LOCAL_WORKSPACE_READY' };
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {

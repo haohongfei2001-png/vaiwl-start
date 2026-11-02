@@ -19,7 +19,7 @@ const summary = values => ({ count: values.length, minMs: Math.min(...values), p
 const report = {
   buildSha: build.sha, dirty: build.dirty, contract: build.contract,
   buildManifestSha256: createHash('sha256').update(await readFile('dist/build.json')).digest('hex'),
-  environment: 'isolated-headless-Chrome-MV3-synthetic-IDB', sourceGate: 'SOURCE_GATE_BLOCKED',
+  environment: 'isolated-headless-Chrome-MV3-synthetic-IDB', sourceGate: build.sourceGate,
   machine: { platform: platform(), release: release(), cpuModel: cpus()[0]?.model, logicalCpuCount: cpus().length, memoryBytes: totalmem() },
   dataset: { conversations: 2000, projects: 20, recordsPerProject: 100, scopes: 1, titleLengthCharacters: 17, activity: 'same test day; metadata only' },
   conditions: {

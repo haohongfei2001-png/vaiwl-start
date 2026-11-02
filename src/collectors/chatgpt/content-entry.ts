@@ -46,8 +46,11 @@ if (!runtime.__vaiwlStartCollector && location.origin === 'https://chatgpt.com' 
       const binding = response.data;
       const projectTask = knownProject(signal, current).then(async project => {
         if (!current()) return;
-        const candidates = project ? project.members.slice(0, 200).map(m => ({ url: m.canonicalUrl, title: m.nativeTitle })) : [];
-        await send('OBSERVE', { bindingId: binding.id, routeEpoch: binding.routeEpoch, candidates });
+        const projectCandidate = project ? { ...project, members: project.members.slice(0, 200) } : null;
+        const candidates = projectCandidate ? projectCandidate.members.map(m => ({ url: m.canonicalUrl, title: m.nativeTitle })) : [];
+        // Preserve the actual native panel relationship instead of flattening
+        // every observation to an unrelated list of UNKNOWN conversations.
+        await send('OBSERVE', { bindingId: binding.id, routeEpoch: binding.routeEpoch, candidates, ...(projectCandidate ? { projectCandidate } : {}) });
       });
       const statusTask = identity.readStatus(signal).then(async status => {
         if (current()) await send('SOURCE_STATUS', { bindingId: binding.id, routeEpoch: binding.routeEpoch, code: status.code, profileId: CHATGPT_METADATA_PROFILE.id });

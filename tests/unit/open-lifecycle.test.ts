@@ -14,7 +14,8 @@ const sender = { documentId: 'start-doc', tab: { id: 1 } } as chrome.runtime.Mes
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 
 async function harness() {
-  const repo = await createRepository({ indexedDB: new IDBFactory(), name: crypto.randomUUID(), timeZone: 'America/New_York' });
+  const factory = new IDBFactory(), name = crypto.randomUUID();
+  const repo = await createRepository({ indexedDB: factory, name, timeZone: 'America/New_York' });
   await repo.setSettings({ captureEnabled: true });
   await repo.discoverCandidates([{ url: target, title: 'Synthetic target' }]);
   const record = (await repo.getSnapshot()).conversations[0]!;
@@ -33,7 +34,7 @@ async function harness() {
     permissions: { contains: async () => connected },
     webNavigation: {
       getFrame: async () => { const sample = structuredClone(frame); if (frameGate) await frameGate(); return sample; },
-      onCommitted: event('committed'), onHistoryStateUpdated: event('history'), onErrorOccurred: event('error'),
+      onCommitted: event('committed'), onHistoryStateUpdated: event('history'), onCompleted: event('completed'), onErrorOccurred: event('error'),
     },
     tabs: { create: async () => ({ id: 8 }), update: async () => ({ id: 8 }), sendMessage: async (tabId: number, message: unknown, options: unknown) => { messages.push({ tabId, message, options }); }, onRemoved: event('removed') },
     windows: { create: async () => ({ tabs: [{ id: 8 }] }) },
@@ -45,14 +46,14 @@ async function harness() {
     await listeners[name]!(details);
   };
   const close = async () => { await changeSession(() => {}); repo.close(); (globalThis as any).chrome = previous; };
-  return { repo, record, issue, emit, close, listeners, saved, messages,
+  return { repo, factory, name, record, issue, emit, close, listeners, saved, messages,
     setFrame: (patch: Record<string, unknown>) => { frame = { ...frame, ...patch }; },
     setConnected: (value: boolean) => { connected = value; },
     setFrameGate: (value: (() => Promise<void>) | null) => { frameGate = value; },
   };
 }
 
-test('M0-D Start freezes one live target document but URL navigation alone writes no OpenDay', async () => {
+test('Local-first Start freezes one document; completed navigation writes one local OpenDay without body proof', async () => {
   const h = await harness();
   try {
     await h.issue('bind-once'); await h.emit('committed');
@@ -64,6 +65,70 @@ test('M0-D Start freezes one live target document but URL navigation alone write
     // A same-document replaceState to the same URL does not manufacture another event.
     await h.emit('history');
     assert.equal((await h.repo.getIntent(intent.id))!.state, 'navigation-dispatched');
+    assert.equal((await h.repo.getSnapshot()).conversations[0]!.activity, null);
+    await h.emit('completed');
+    const committed = (await h.repo.getIntent(intent.id))!;
+    assert.equal(committed.state, 'committed'); assert.equal(committed.confirmationBasis, 'browser-navigation');
+    const record = (await h.repo.getSnapshot()).conversations[0]!;
+    assert.equal(record.key, h.record.key); assert.equal(record.owner.kind, 'unassigned');
+    assert.equal(record.membership.state, 'UNKNOWN'); assert.equal(record.availability, 'unverified');
+    assert.equal(record.activity?.lastConfirmedOpenAt, intent.issuedAt);
+    await h.emit('completed'); await h.emit('history');
+    assert.deepEqual((await h.repo.getSnapshot()).conversations[0]!.activity, record.activity);
+  } finally { await h.close(); }
+});
+
+test('Local-first repeated Start opens deduplicate the day and persist after closing the tab and repository', async () => {
+  const h = await harness();
+  try {
+    await h.issue('first-day-open'); await h.emit('committed'); await h.emit('completed');
+    const first = (await h.repo.getSnapshot()).conversations[0]!;
+    h.setFrame({ documentId: 'second-target-doc' });
+    await h.issue('second-day-open'); await h.emit('committed'); await h.emit('completed');
+    const latest = (await h.repo.getSnapshot()).conversations[0]!;
+    assert.equal(latest.key, first.key); assert.equal(latest.activity?.firstConfirmedOpenAt, first.activity?.firstConfirmedOpenAt);
+    await h.emit('completed'); await h.emit('history');
+    h.setFrame({ documentId: 'reload-doc' }); await h.emit('committed', { transitionType: 'reload' }); await h.emit('completed');
+    assert.deepEqual((await h.repo.getSnapshot()).conversations[0]!.activity, latest.activity);
+    await h.listeners.removed!(8); h.repo.close();
+    const reopened = await createRepository({ indexedDB: h.factory, name: h.name });
+    try { assert.deepEqual((await reopened.getSnapshot()).conversations[0]!.activity, latest.activity); }
+    finally { reopened.close(); }
+    const db = await request(h.factory.open(h.name, 1));
+    try {
+      const days = await request<any[]>(db.transaction('openDays').objectStore('openDays').getAll());
+      assert.equal(days.length, 1); assert.equal(days[0].activityUnit, 1); assert.equal(days[0].recordKey, first.key);
+      assert.equal(days[0].lastIntentId, 'second-day-open');
+    } finally { db.close(); }
+  } finally { await h.close(); }
+});
+
+test('Local-first completion without a gesture, after failure, disabled capture, revoked permission or replaced session writes no day', async () => {
+  for (const scenario of ['passive', 'failure', 'disabled', 'revoked', 'session', 'wrong-document', 'scope-generation'] as const) {
+    const h = await harness();
+    try {
+      if (scenario !== 'passive') await h.issue(scenario);
+      await h.emit('committed');
+      if (scenario === 'failure') await h.emit('error');
+      if (scenario === 'disabled') await h.repo.setSettings({ captureEnabled: false });
+      if (scenario === 'revoked') h.setConnected(false);
+      if (scenario === 'session') delete h.saved.browserSession;
+      if (scenario === 'wrong-document') h.setFrame({ documentId: 'different-doc' });
+      if (scenario === 'scope-generation') await invalidateBindings();
+      await h.emit('completed');
+      assert.equal((await h.repo.getSnapshot()).conversations.find(c => c.key === h.record.key)!.activity, null, scenario);
+    } finally { await h.close(); }
+  }
+});
+
+test('Local-first capture disabled at the final transaction boundary cannot race an OpenDay write', async () => {
+  const h = await harness();
+  try {
+    await h.issue('capture-race'); await h.emit('committed');
+    const commit = h.repo.commitArrival.bind(h.repo);
+    h.repo.commitArrival = async input => { await h.repo.setSettings({ captureEnabled: false }); return commit(input); };
+    await h.emit('completed');
+    assert.equal((await h.repo.getIntent('capture-race'))?.state, 'rejected');
     assert.equal((await h.repo.getSnapshot()).conversations[0]!.activity, null);
   } finally { await h.close(); }
 });

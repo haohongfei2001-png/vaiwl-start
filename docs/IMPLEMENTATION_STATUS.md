@@ -1,3 +1,16 @@
+# 当前实施状态：本地工作空间纠偏已实现，正在同提交验证
+
+修订：`VAIWL-START-FREE/1.0 / 2026-11-02-local-first`。本轮用户明确批准替换旧整体 M0 前置门；旧来源结论继续适用于原生认证，不能阻断本地目录与主动打开。
+
+- UNKNOWN 历史按浏览日期进入独立30日窗口；活动日期与浏览日期明确分开。
+- Start真实点击经精确文档的浏览器onCompleted写本地未分配OpenDay；同日去重，不声明阅读或正文可用。
+- 局部原生Project面板保留为明确标记的候选，按Profile/session/document/单次观察隔离，不认证账号或原生归属。
+- 保留原IndexedDB版本和12个store；无数据清空、批量归户、AI或云服务。
+- 初步类型检查和95项单元测试通过。工作树阶段结果不是最终同SHA交付；安装后Chromium、完整UI、性能和最终CI正在运行。
+- 唯一正式分支 `codex/free-v1-implementation`，PR #1保持Draft，main和原VAIWL仓库未改。
+
+## 之前的实施记录（历史基线；其整体M0门已被本轮修订覆盖）
+
 # VAIWL Start Free V1 实施状态
 
 唯一实现线：`codex/free-v1-implementation`。合同：`VAIWL-START-FREE/1.0`。

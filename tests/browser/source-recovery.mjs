@@ -11,7 +11,7 @@ const checks = [], limitations = [
   'A temporary test manifest pre-grants scripting, webNavigation and the exact ChatGPT host; production JavaScript bytes are unchanged. Native permission-prompt acceptance is not tested.',
   'All HTTPS documents and both known session endpoints are intercepted synthetic fixtures. No real ChatGPT account, user browser, current workspace, positive NONE or loaded-conversation source is used.',
   'This is installed Linux Chromium integration evidence, not Mac Chrome, Edge, live source certification or complete Free V1 acceptance.',
-  'The structural picker selects one synthetic Project title using trusted pointer/keyboard input; it does not establish live ChatGPT semantics. Genuine BFCache restore is not exercised. Identity route refresh, Project hydration, Start document binding and rejection use actual browser events.',
+  'The structural picker selects one synthetic Project title using trusted pointer/keyboard input; it does not establish live ChatGPT semantics. Genuine BFCache restore is not exercised. Identity route refresh, Project hydration, Start opening/completion and same-day deduplication use actual browser events.',
 ];
 const check = (id, condition, observed) => { assert.ok(condition, `${id}: ${observed}`); checks.push({ id, status: 'PASS', observed }); };
 const ORIGIN = 'https://chatgpt.com', SESSION = `${ORIGIN}/api/auth/session`, ACCOUNTS = `${ORIGIN}/backend-api/accounts/check/v4-2023-04-27`;
@@ -128,6 +128,8 @@ try {
   }, 'Project SPA/hydration candidates were not collected');
   const projectDocument = await worker.evaluate(async tabId => (await chrome.webNavigation.getFrame({ tabId, frameId: 0 })).documentId, tab.id);
   check('SOURCE-B-project-SPA-delayed-hydration', initialDocument === projectDocument && projectCatalog.conversations.filter(c => [C, SECOND].includes(c.canonicalUrl)).length === 2 && !projectCatalog.conversations.some(c => c.canonicalUrl === UNRELATED), 'A real same-document pushState into the exact Project route collected two fixed-parser title leaves after 450 ms hydration; adjacent same-name history link was excluded.');
+  const localMembers = projectCatalog.conversations.filter(c => [C, SECOND].includes(c.canonicalUrl));
+  check('SOURCE-B-local-project-keeps-UNKNOWN', localMembers.every(c => c.owner.kind === 'unassigned' && c.membership.state === 'UNKNOWN' && c.localProjectCandidate?.projectId === PID && c.localProjectCandidate.nativeTitle === TITLE && c.localProjectCandidate.basis === 'local-project-observation') && localMembers[0].localProjectCandidate.key === localMembers[1].localProjectCandidate.key && projectCatalog.projects.length === 0 && projectCatalog.scopes.length === 0, 'One observed native panel creates a locally isolated candidate group with stable conversation records. It does not create a certified Project or account scope, infer NONE, or import the adjacent history link.');
   check('SOURCE-B-route-identity-rechecked', sessionRequests > beforeRoute, 'The same-document Project transition triggered a fresh request to the known session reader before any diagnostic recapture; a previous status was not reused as current identity.');
   const project = await capture(checker, 'B-project', tab.id);
   check('SOURCE-B-project-probe-shares-parser', project.state === 'captured' && project.sample.project.code === 'project-candidate-only' && project.sample.project.memberCount === 2 && Object.values(project.sample.project.assertions).every(Boolean), 'The dedicated probe and production observer use the same strict parser, preserving all six structural assertions while remaining candidate-only.');
@@ -147,20 +149,35 @@ try {
     return entry && entry.state !== 'running' ? entry : false;
   }, 'Trusted structural picker did not complete');
   check('SOURCE-B-trusted-structure-picker', picked.state === 'captured' && picked.sample.structure.state === 'observed' && picked.sample.structure.code === 'structure-observed' && picked.sample.structure.authority === false && picked.sample.structure.boundary === 'project' && await picker.count() === 0, 'An actual Capture click, trusted pointer hover on the synthetic Project title and Alt+Shift+M yielded bounded observed structure with authority=false; the temporary panel and selection session were removed. No live metadata semantics or second-Project comparison is claimed.');
+  const beforeStart = await uiCommand(start, 'SNAPSHOT');
+  check('SOURCE-B-passive-loading-no-activity', (await stores(start, ['openDays']))[0].length === 0 && beforeStart.conversations.every(c => c.activity === null), 'Ordinary browser navigation to a conversation, background collector requests, Project SPA navigation and source probes create no OpenDay without a Start user gesture.');
 
   const key = projectCatalog.conversations.find(c => c.canonicalUrl === C).key;
   await start.bringToFront(); await start.locator(`a[data-record-key="${key}"]`).first().waitFor();
   const beforeIntents = (await stores(start, ['openIntents']))[0].length;
   const newPage = context.waitForEvent('page'); await start.locator(`a[data-record-key="${key}"]`).first().click({ button: 'middle' });
   const destination = await newPage; await destination.waitForURL(C);
-  const issued = await waitUntil(async () => (await stores(start, ['openIntents']))[0].find(i => i.targetRecordKey === key && i.targetDocumentId !== null && i.state === 'navigation-dispatched'), 'Start target document was not bound');
+  const issued = await waitUntil(async () => (await stores(start, ['openIntents']))[0].find(i => i.targetRecordKey === key && i.targetDocumentId !== null && i.state === 'committed'), 'Start completed navigation did not commit local activity');
   const freshTab = await worker.evaluate(async url => (await chrome.tabs.query({ url }))[0], C);
   const firstOpen = await capture(checker, 'D-start', freshTab.id);
-  check('SOURCE-B-Start-click-bound-document', (await stores(start, ['openIntents']))[0].length === beforeIntents + 1 && issued.binding.targetDocumentId === issued.targetDocumentId && firstOpen.state === 'captured' && firstOpen.openChain.state === 'navigation-bound-arrival-unproven' && firstOpen.openChain.hasIntent, 'A trusted middle click in unchanged Start UI created one intent and one actual target document binding; diagnostic output explicitly keeps arrival unproven.');
+  const openedCatalog = await uiCommand(start, 'SNAPSHOT');
+  const openedRecord = openedCatalog.conversations.find(c => c.key === key);
+  const daysAfterClick = (await stores(start, ['openDays']))[0];
+  check('SOURCE-B-Start-click-bound-document', (await stores(start, ['openIntents']))[0].length === beforeIntents + 1 && issued.binding.targetDocumentId === issued.targetDocumentId && issued.confirmationBasis === 'browser-navigation' && issued.committedRecordKey === key && openedRecord.owner.kind === 'unassigned' && openedRecord.membership.state === 'UNKNOWN' && openedRecord.activity?.lastConfirmedOpenAt === issued.issuedAt && daysAfterClick.length === 1 && daysAfterClick[0].recordKey === key && firstOpen.state === 'captured' && firstOpen.openChain.state === 'no-matching-intent' && !firstOpen.openChain.hasIntent, 'A trusted middle click and the exact browser navigation completion atomically consumed one intent into one local OpenDay. The stable record remains unassigned/UNKNOWN; no conversation body or loaded-object source was required. The consumed intent cannot be reused.');
   await destination.reload();
-  await waitUntil(async () => (await stores(start, ['openIntents']))[0].find(i => i.id === issued.id)?.state === 'rejected', 'Refresh did not reject original intent');
   const afterRefresh = await capture(checker, 'D-refresh', freshTab.id);
-  check('SOURCE-B-refresh-cannot-reuse-gesture', afterRefresh.state === 'captured' && afterRefresh.openChain.state === 'no-matching-intent' && !afterRefresh.openChain.hasIntent, 'A real browser reload replaced the target document, rejected its pending intent and could not reuse the earlier Start gesture.');
+  const refreshedRecord = (await uiCommand(start, 'SNAPSHOT')).conversations.find(c => c.key === key);
+  check('SOURCE-B-refresh-cannot-reuse-gesture', afterRefresh.state === 'captured' && afterRefresh.openChain.state === 'no-matching-intent' && !afterRefresh.openChain.hasIntent && (await stores(start, ['openIntents']))[0].find(i => i.id === issued.id)?.state === 'committed' && JSON.stringify((await stores(start, ['openDays']))[0]) === JSON.stringify(daysAfterClick) && JSON.stringify(refreshedRecord.activity) === JSON.stringify(openedRecord.activity), 'A real browser reload replaces the target document without adding an OpenDay, updating activity time or recycling the consumed gesture.');
+
+  await start.bringToFront();
+  const secondPageEvent = context.waitForEvent('page'); await start.locator(`a[data-record-key="${key}"]`).first().click({ button: 'middle' });
+  const secondDestination = await secondPageEvent; await secondDestination.waitForURL(C);
+  const repeated = await waitUntil(async () => (await stores(start, ['openIntents']))[0].find(i => i.id !== issued.id && i.targetRecordKey === key && i.state === 'committed'), 'Second Start opening did not commit');
+  const daysAfterSecond = (await stores(start, ['openDays']))[0];
+  check('SOURCE-B-same-day-reopen-one-day', repeated.issuedLocalDate === issued.issuedLocalDate && repeated.confirmationBasis === 'browser-navigation' && daysAfterSecond.length === 1 && daysAfterSecond[0].activityUnit === 1 && daysAfterSecond[0].firstIntentId === issued.id && daysAfterSecond[0].lastIntentId === repeated.id && daysAfterSecond[0].firstOpenedAt === issued.issuedAt && daysAfterSecond[0].lastOpenedAt === repeated.issuedAt, 'A second trusted Start click produces a new consumed intent and updates the same record/day row; it does not increment active-day count or create a duplicate conversation.');
+  await secondDestination.close();
+  const afterClose = (await uiCommand(start, 'SNAPSHOT')).conversations.find(c => c.key === key);
+  check('SOURCE-B-close-keeps-local-record', afterClose?.localProjectCandidate?.projectId === PID && afterClose.activity?.lastConfirmedOpenAt === repeated.issuedAt && (await stores(start, ['openDays']))[0].length === 1, 'Closing a target tab preserves the stable local catalog entry, candidate metadata and committed activity.');
 
   const malformed = await checkCommand(checker, 'CAPTURE', { step: 'C-none', tabId: freshTab.id, pickStructure: false, verified: true });
   const reused = await checkCommand(checker, 'CAPTURE', { step: 'B-project', tabId: tab.id, pickStructure: false });
@@ -177,7 +194,7 @@ try {
   const final = await uiCommand(start, 'SNAPSHOT');
   const [days, projects, scopes] = await stores(start, ['openDays', 'projects', 'scopes']);
   const persistent = JSON.stringify(await stores(start, ['conversations', 'projects', 'scopes', 'witnesses', 'openDays', 'openIntents']));
-  check('SOURCE-B-zero-authority-and-activity', days.length === 0 && projects.length === 0 && scopes.length === 0 && final.conversations.every(c => c.owner.kind === 'unassigned' && c.membership.state === 'UNKNOWN' && c.activity === null) && Object.values(report.sourceStates).every(s => s === 'BLOCKED') && report.authority === false && !persistent.includes(TOKEN) && !persistent.includes(EMAIL) && !persistent.includes(PREVIEW), 'Production persisted only unassigned UNKNOWN metadata candidates; no source gate, Project fact, NONE, scope or OpenDay was forged, and forbidden source values are absent from persistent business stores.');
+  check('SOURCE-B-local-activity-without-native-authority', days.length === 1 && days[0].recordKey === key && projects.length === 0 && scopes.length === 0 && final.conversations.every(c => c.owner.kind === 'unassigned' && c.membership.state === 'UNKNOWN' && (c.key === key ? c.activity !== null : c.activity === null)) && final.conversations.filter(c => [C, SECOND].includes(c.canonicalUrl)).every(c => c.localProjectCandidate?.projectId === PID) && report.authority === false && !persistent.includes(TOKEN) && !persistent.includes(EMAIL) && !persistent.includes(PREVIEW), 'Only the explicitly opened record has one local OpenDay. Local Project candidates stay UNKNOWN and no certified Project, NONE or account scope is manufactured. Tokens, email and message previews remain absent from persistent business stores.');
   check('SOURCE-B-fixed-metadata-requests-only', metadataRequests.length > 0 && metadataRequests.every(url => url === SESSION || url === ACCOUNTS), 'All observed metadata fetch/XHR requests used the existing two fixed session-only URLs; no conversation detail or new endpoint was requested.');
   await checker.locator('#end').click();
   await waitUntil(async () => (await checkCommand(checker, 'STATUS')).data?.report?.ended, 'Explicit End did not terminate bounded run');

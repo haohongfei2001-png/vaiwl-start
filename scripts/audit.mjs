@@ -29,8 +29,9 @@ assert.ok(content.includes('/api/auth/session') && content.includes('/backend-ap
 assert.ok(!content.includes('indexedDB') && !content.includes('chrome.history'));
 const fingerprint = JSON.parse(await readFile('dist/build.json', 'utf8'));
 for (const [path, hash] of Object.entries(fingerprint.files)) assert.equal(createHash('sha256').update(await readFile('dist/' + path)).digest('hex'), hash);
-assert.equal(fingerprint.sourceGate, 'SOURCE_GATE_BLOCKED');
+assert.equal(fingerprint.sourceGate, 'LOCAL_WORKSPACE_READY');
+assert.equal(fingerprint.nativeAttribution, 'UNVERIFIED');
 assert.ok((await readdir('dist')).every(name => !/fixture|demo|\.map$/.test(name)));
-const result = { status: 'PASS', buildSha: fingerprint.sha, dirty: fingerprint.dirty, checks: ['minimal-permissions', 'strict-CSP-no-inline-script', 'no-content-endpoint-or-body-read', 'no-runtime-dependencies', 'content-no-db-or-history', 'no-production-fixtures', 'package-hashes', 'source-gate-explicitly-blocked'] };
+const result = { status: 'PASS', buildSha: fingerprint.sha, dirty: fingerprint.dirty, checks: ['minimal-permissions', 'strict-CSP-no-inline-script', 'no-content-endpoint-or-body-read', 'no-runtime-dependencies', 'content-no-db-or-history', 'no-production-fixtures', 'package-hashes', 'local-capability-and-unverified-native-attribution-separated'] };
 await writeFile('artifacts/privacy-audit.json', JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result));
