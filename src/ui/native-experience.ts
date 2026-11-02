@@ -93,6 +93,7 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
     const sequence = ++epoch;
     try {
       const allowed = await chrome.permissions.contains({ permissions: ['bookmarks'] });
+      if (allowed) listen(); // Observe mutations before the initial tree read resolves.
       const tree = allowed ? await chrome.bookmarks.getTree() : [];
       if (sequence !== epoch) return;
       granted = allowed; bars = allowed ? bookmarkBars(tree) : []; bookmarkError = ''; if (allowed) listen();
@@ -145,8 +146,8 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
     }
     if (target.id === 'bookmark-migrate' && event.isTrusted && confirm('将旧快捷网站加入所选原生书签栏？已有网址会跳过；原有书签和旧快捷项都不会删除。')) run(migrate());
   });
-  chrome.permissions.onAdded.addListener(() => { run(refreshBookmarks()); });
-  chrome.permissions.onRemoved.addListener(() => { ++epoch; bars = []; granted = false; render(); run(refreshBookmarks()); });
+  chrome.permissions.onAdded.addListener(change => { if (change.permissions?.includes('bookmarks')) run(refreshBookmarks()); });
+  chrome.permissions.onRemoved.addListener(change => { if (!change.permissions?.includes('bookmarks')) return; ++epoch; bars = []; granted = false; render(); run(refreshBookmarks()); });
   chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && NATIVE_KEYS.some(key => key in changes)) run(chrome.storage.local.get([...NATIVE_KEYS]).then(data => { values = data; options.preserve(render); })); });
   window.addEventListener('focus', () => { run(refreshBookmarks()); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) run(refreshBookmarks()); });

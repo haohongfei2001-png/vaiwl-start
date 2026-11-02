@@ -1,3 +1,4 @@
+import { waitForAsync } from './wait-async.mjs';
 import { chromium } from 'playwright';
 import { mkdtemp, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -74,7 +75,7 @@ try {
   await worker.evaluate(async urls => { for (const url of urls) await chrome.history.addUrl({ url }); }, urls);
   // onVisited is genuine production discovery. Wait for it to finish, then clear
   // only extension data so the following records must come from the import job.
-  await page.waitForFunction(async count => {
+  await waitForAsync(page, async count => {
     const response = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} });
     return response.ok && response.data.conversations.length === count;
   }, COUNT, { timeout: 30000 });
@@ -98,7 +99,7 @@ try {
   await page.goto(`chrome-extension://${extensionId}/newtab.html`);
   await page.waitForSelector('html[data-start-ready="true"]');
   // The unmodified production UI notices the persisted running job and resumes it.
-  await page.waitForFunction(async jobId => {
+  await waitForAsync(page, async jobId => {
     const response = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} });
     return response.ok && response.data.importJobs.find(job => job.id === jobId)?.state === 'complete';
   }, started.jobId, { timeout: 30000 });
@@ -111,8 +112,9 @@ try {
   const resumedWorker = context.serviceWorkers().find(candidate => candidate.url() === worker.url()) || worker;
   const workerAfter = await resumedWorker.evaluate(async () => ({ session: (await chrome.storage.session.get('browserSession')).browserSession.id, timeOrigin: performance.timeOrigin }));
   check('IMPORT-B-worker-session-retained', workerAfter.session === workerBefore.session && Number.isFinite(workerAfter.timeOrigin) && workerAfter.timeOrigin > workerBefore.timeOrigin, 'A fresh worker global resumes within the same browser session; the UI and worker were not kept alive to finish the import.');
+  const recoveryCounts = { jobs: final.importJobs.length, state: job?.state, accepted: job?.acceptedCandidates, processed: job?.processedUniqueUrls, pending: job?.pendingCandidates?.length, intervals: job?.pendingIntervals?.length, snapshot: snapshot.conversations.length, raw: final.conversations.length, expected: COUNT };
   check('IMPORT-B-checkpoint-resumed-completely', final.importJobs.length === 1 && job?.state === 'complete' && job.acceptedCandidates === COUNT && job.processedUniqueUrls === COUNT && job.pendingCandidates.length === 0 && job.pendingIntervals.length === 0 && snapshot.conversations.length === COUNT,
-    'The same persisted job completes all 257 candidates after reopening, with no pending intervals or batches.');
+    `The same persisted job completes all 257 candidates after reopening: ${JSON.stringify(recoveryCounts)}`);
   check('IMPORT-B-deduplicated-source-safe', new Set(final.conversations.map(record => record.conversationId)).size === COUNT && final.conversations.length === COUNT && final.conversations.every(record => record.owner.kind === 'unassigned' && record.membership.state === 'UNKNOWN' && record.activity === null) && final.openDays.length === 0 && final.openIntents.length === 0,
     'All 257 identities occur once, remain unassigned/UNKNOWN, and create neither an intent nor an OpenDay.');
   const receipt = { status: 'PASS', buildSha: fingerprint.sha, dirty: fingerprint.dirty, browserVersion, environment: 'isolated Linux Chromium MV3; real chrome.history API; synthetic records only; explicit required-history test manifest', checks,

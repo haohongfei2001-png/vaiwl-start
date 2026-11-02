@@ -45,3 +45,13 @@
 这些实机项未记录时不能标PASS；不需要新增诊断器、发送消息或重新导入全部历史。原生Project/NONE认证与Edge设备兼容继续独立验收。
 
 旧669f基线测试和来源诊断已保留在Git历史中，仅作为旧合同记录，不再是本地工作空间的整体开关。
+
+## a054508阶段回执
+
+新增扩展Reload测试在Mac和CI均失败，原因是测试先等待Playwright第二次serviceworker事件，再打开扩展页；MV3惰性唤醒且Worker包装对象可复用，因此等待条件不成立。直接唤醒扩展页也曾遇到重载期间ERR_BLOCKED_BY_CLIENT。最终改用用户实际使用的chrome://extensions原生“重新加载”按钮，等待该扩展LOADED/ENABLED事件，再验证worker timeOrigin改变、页面就绪及设置保留。保持Reload检查和15秒等待上限。Edge额外套件保留完整浏览器重启检查，未声称完成Edge原生管理页Reload。失败日志保存在docs/evidence/native-reload-test-a054508.txt。
+
+同SHA本地导入恢复检查曾有一次计数断言失败（当次未输出各分项，不能声称已定位根因）；增加诊断重放后观察到job=1、accepted=257、processed=257、pending=0、intervals=0、snapshot=257、raw=257并通过。该首次失败保持记录，不据一次重放宣称根治。最终CI及后续重复结果以PR回执为准。
+
+后续已定位上述导入回执的测试根因：固定版本运行器中`page.waitForFunction(async () => false)`仅19ms就返回false，而没有等待超时。原测试因此在末尾区间仍running时放行；失败时实际已保存257/257条、只剩1个空区间，未发生会话丢失。用显式await后轮询已解析真值的有界helper替换导入、隐私及新偏好测试共4处异步条件，保留原30秒限制和完整终态断言；该修复没有修改生产导入逻辑。
+
+修复等待逻辑后的3次独立导入恢复重放均通过8项检查，均为257条完整终态；不再把首次失败归因于目录损失或导入算法。最终干净SHA仍重新执行全部流水线。

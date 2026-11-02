@@ -1,0 +1,22 @@
+{
+  "baseline": "a0545080f18dd37938b54a4677389572470b63f0",
+  "runner": "Playwright 1.64.1; Chromium 156.0.8078.4; macOS isolated profile",
+  "falsePredicateProbe": {
+    "expression": "page.waitForFunction(async () => false, null, {timeout:500})",
+    "resolvedValue": false,
+    "elapsedMs": 19,
+    "timedOut": false
+  },
+  "prematureImportRead": {
+    "jobs": 1,
+    "state": "running",
+    "accepted": 257,
+    "processed": 257,
+    "pending": 0,
+    "intervals": 1,
+    "snapshot": 257,
+    "raw": 257,
+    "expected": 257
+  },
+  "fix": "Await predicate result in test-side bounded poll; do not change production importer or expected counts."
+}

@@ -1,3 +1,4 @@
+import { waitForAsync } from './wait-async.mjs';
 import { chromium } from 'playwright';
 import { mkdtemp, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -18,7 +19,7 @@ async function command(page,name,payload={}) {return page.evaluate(async({name,p
  const send=(command,payload,expectedRevision)=>chrome.runtime.sendMessage({protocol:'vaiwl-start-internal/1',operationId:crypto.randomUUID(),expectedRevision,command,payload});
  const current=await send('SNAPSHOT',{},0);if(!current.ok)throw Error(current.code);const reply=await send(name,payload,current.data.revision);if(!reply.ok)throw Error(reply.code);return reply.data;
 },{name,payload});}
-async function pref(page,value) {await page.locator('#bookmark-preference').selectOption(value);await page.waitForFunction(value=>document.querySelector('#bookmark-preference').value===value,value);await page.waitForFunction(async value=>(await chrome.storage.local.get('native.bookmarks'))['native.bookmarks']===value,value);}
+async function pref(page,value) {await page.locator('#bookmark-preference').selectOption(value);await page.waitForFunction(value=>document.querySelector('#bookmark-preference').value===value,value);await waitForAsync(page, async value=>(await chrome.storage.local.get('native.bookmarks'))['native.bookmarks']===value,value);}
 async function raw(page) {return page.evaluate(async()=>{
  const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('vaiwl-start');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
  const names=[...db.objectStoreNames],tx=db.transaction(names),result={};await Promise.all(names.map(name=>new Promise((resolve,reject)=>{const r=tx.objectStore(name).getAll();r.onsuccess=()=>{result[name]=r.result;resolve()};r.onerror=()=>reject(r.error)})));db.close();return result;
@@ -58,11 +59,23 @@ try {
  check('N-reload-persistence',await page.title()==='Home'&&(await page.locator('#tab-favicon').getAttribute('href'))===uploaded,'Reload retains both independent settings.');
  await context.close();context=await launch(productionProfile,resolve('dist'));({worker,page,id}=await ready(context));
  check('N-restart-persistence',await page.title()==='Home'&&(await page.locator('#tab-favicon').getAttribute('href'))===uploaded,'Full isolated browser restart retains settings.');
- const reloadedWorker=context.waitForEvent('serviceworker',{timeout:15000});
- await page.evaluate(()=>{setTimeout(()=>chrome.runtime.reload(),0)});
- await reloadedWorker;
- ({worker,page,id}=await ready(context));
- check('N-extension-reload-persistence',await page.title()==='Home'&&(await page.locator('#tab-favicon').getAttribute('href'))===uploaded,'Actual chrome.runtime.reload retains independent local settings.');
+ if(expectedFamily==='chrome') {
+  const beforeReloadOrigin=await worker.evaluate(()=>performance.timeOrigin);
+  // Exercise the native developer Reload control used for unpacked upgrades.
+  // This privileged UI instrumentation exists only in the isolated test profile.
+  const manager=await context.newPage();await manager.goto('chrome://extensions');
+  await manager.locator('extensions-item').first().waitFor();await manager.locator('#devMode').click();
+  await manager.evaluate(()=>{window.__reloadEvents=[];chrome.developerPrivate.onItemStateChanged.addListener(event=>window.__reloadEvents.push({event:event.event_type,id:event.item_id,state:event.extensionInfo?.state}));});
+  await manager.locator('#dev-reload-button').click();
+  await manager.waitForFunction(id=>window.__reloadEvents.some(event=>event.event==='LOADED'&&event.id===id&&event.state==='ENABLED'),id,{timeout:15000});
+  page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
+  await page.goto(`chrome-extension://${id}/newtab.html`);
+  await page.waitForSelector('html[data-start-ready="true"][data-native-ready="true"]');
+  worker=context.serviceWorkers().find(candidate=>new URL(candidate.url()).host===id)||worker;
+  const afterReloadOrigin=await worker.evaluate(()=>performance.timeOrigin);
+  check('N-extension-reload-persistence',afterReloadOrigin>beforeReloadOrigin&&await page.title()==='Home'&&(await page.locator('#tab-favicon').getAttribute('href'))===uploaded,'Native chrome://extensions Reload emits LOADED, starts a fresh worker global and retains title/icon settings.');
+  await manager.close();
+ }
  await page.locator('#settings-trigger').click();await page.locator('#tab-identity-reset').click();await page.waitForFunction(()=>document.title!=='Home');
  check('N-restore-default',(await page.locator('#tab-favicon').getAttribute('href')).endsWith(`tab-${expectedFamily}.svg`),'One action restores default title and icon without changing bookmark preference.');
  await context.close();context=null;
@@ -156,4 +169,4 @@ try {
  check('N-no-page-errors',errors.length===0,JSON.stringify(errors));
  status='PASS';
 } catch(error) {checks.push({id:'N-unhandled-failure',status:'FAIL',observed:String(error.stack||error)});throw error;}
-finally {if(context)await context.close();await mkdir('artifacts',{recursive:true});await writeFile(`artifacts/${reportName}.json`,JSON.stringify({status,buildSha:build.sha,dirty:build.dirty,environment:version,checks,limitations:['Synthetic catalog and isolated profiles only; never reads the user browser profile.','Native consent-dialog acceptance/denial is not claimed. Refusal is injected; bookmark CRUD/revocation use real extension APIs.','Default favicons approximate browser style rather than internal assets.']},null,2));console.log(JSON.stringify({status,checks:checks.length,buildSha:build.sha}));}
+finally {if(context)await context.close();await mkdir('artifacts',{recursive:true});await writeFile(`artifacts/${reportName}.json`,JSON.stringify({status,buildSha:build.sha,dirty:build.dirty,environment:version,checks,limitations:['Synthetic catalog and isolated profiles only; never reads the user browser profile.','Native consent-dialog acceptance/denial is not claimed. Refusal is injected; bookmark CRUD/revocation use real extension APIs.','Default favicons approximate browser style rather than internal assets.',...(expectedFamily==='edge'?['Native Edge extension-manager Reload was not exercised; full isolated browser restart was.']:[])]},null,2));console.log(JSON.stringify({status,checks:checks.length,buildSha:build.sha}));}

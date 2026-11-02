@@ -1,0 +1,17 @@
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	﻿2026-11-02T19:01:29.4377670Z ##[group]Run node tests/browser/native-experience.mjs
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:29.4378084Z ^[[36;1mnode tests/browser/native-experience.mjs^[[0m
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:29.4390975Z shell: /usr/bin/bash -e {0}
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:29.4391272Z ##[endgroup]
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1148132Z {"status":"FAIL","checks":18,"buildSha":"a0545080f18dd37938b54a4677389572470b63f0"}
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1150168Z node:internal/modules/run_main:107
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1150705Z     triggerUncaughtException(
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1151394Z     ^
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1151562Z 
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1152212Z browserContext.waitForEvent: Timeout 15000ms exceeded while waiting for event "serviceworker"
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1153503Z     at /home/runner/work/vaiwl-start/vaiwl-start/tests/browser/native-experience.mjs:61:31 {
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1154267Z   log: [],
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1154603Z   name: 'TimeoutError'
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1154964Z }
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1155147Z 
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1155281Z Node.js v24.22.1
+Installed Chromium extension and UI	Run node tests/browser/native-experience.mjs	2026-11-02T19:01:47.1279448Z ##[error]Process completed with exit code 1.

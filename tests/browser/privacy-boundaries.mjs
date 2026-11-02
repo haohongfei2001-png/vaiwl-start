@@ -1,3 +1,4 @@
+import { waitForAsync } from './wait-async.mjs';
 import { chromium } from 'playwright';
 import { mkdtemp, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -79,7 +80,7 @@ try {
   const start = await context.newPage(); await start.goto(`chrome-extension://${extensionId}/newtab.html`); await start.waitForSelector('html[data-start-ready="true"]');
   await command(start, 'PERMISSIONS_SYNC', { enableCapture: true });
   const cachedPage = await context.newPage(); await cachedPage.goto(CACHED);
-  await start.waitForFunction(async url => {
+  await waitForAsync(start, async url => {
     const result = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} });
     return result.ok && result.data.settings.captureEnabled && result.data.conversations.some(record => record.canonicalUrl === url);
   }, CACHED, { timeout: 10000 });
