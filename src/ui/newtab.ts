@@ -119,7 +119,7 @@ function membershipLabel(record: ConversationRecord): string {
 function conversationRow(record: ConversationRecord): HTMLElement {
   const link = el('a', { class: 'conversation-open', href: record.canonicalUrl, 'data-record-key': record.key,
     'data-focus-key': `record:${record.key}`, 'aria-label': `在 ChatGPT 中打开：${title(record)}`, title: title(record) },
-  [icon('chat', 'chat-icon'), el('span', { class: 'conversation-title' }, [title(record)]), icon('arrow', 'enter-icon')]);
+  [el('span', { class: 'conversation-title' }, [title(record)])]);
   const menu = button('', { class: 'icon-button record-menu', 'data-record-menu': record.key, 'data-focus-key': `details:${record.key}`, 'aria-label': `${title(record)}的详情与移除` }, 'more');
   return el('div', { class: 'conversation-row' }, [link, menu]);
 }
