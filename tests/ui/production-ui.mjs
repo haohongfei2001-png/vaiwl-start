@@ -435,7 +435,9 @@ try {
   });
   await page.reload(); await page.waitForSelector('html[data-start-ready="true"]');
   await page.locator('#settings-trigger').click(); await page.locator('#settings-nav-workspace').click(); await page.locator('#settings-import').click();
-  check('UI-resume-persisted-batch', await page.locator('[data-import-resume="synthetic-pending-batch"]').isVisible(), 'A paused checkpoint remains resumable when its last interval is exhausted but persisted candidates remain.');
+  const historyAllowed = await page.evaluate(() => chrome.permissions.contains({ permissions: ['history'] }));
+  const recoveryAttribute = historyAllowed ? 'data-import-resume' : 'data-import-authorize-resume';
+  check('UI-resume-persisted-batch', await page.locator(`[${recoveryAttribute}="synthetic-pending-batch"]`).isVisible() && await page.locator('#confirm-import').isHidden(), 'A paused checkpoint remains resumable under its original ID when only persisted candidates remain; missing actual history permission selects authorization before Resume, without offering a competing new job.');
   await page.locator('#import-dialog [data-close]').first().click();
   await page.locator('#settings-dialog [data-close]').first().click();
   // A new tab starts with independent 5-row view limits, while reading the same real IDB.
