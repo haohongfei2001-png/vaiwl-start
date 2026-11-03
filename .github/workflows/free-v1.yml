@@ -42,9 +42,25 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Install native-window test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth xdotool imagemagick
       - run: npm test
       - run: npm run build
         id: extension_build
+      - run: node tests/browser/layout-responsive.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
+      - run: xvfb-run -a -s '-screen 0 2048x1152x24' node tests/browser/layout-native-ui.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vaiwl-start-layout-chrome-${{ github.sha }}
+          path: |
+            artifacts/layout-responsive/chrome/
+            artifacts/layout-native-ui/chrome/
+          if-no-files-found: error
       - run: npm run test:browser
         if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/import-recovery.mjs
@@ -95,6 +111,8 @@ jobs:
             artifacts/native-project-grouping.png
             artifacts/home-workspace-validation.json
             artifacts/home-workspace/chrome/
+            artifacts/layout-responsive/chrome/
+            artifacts/layout-native-ui/chrome/
             artifacts/storage-faults-validation.json
             artifacts/native-experience-validation.json
             artifacts/life-bookmarks-validation.json
@@ -125,8 +143,30 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps msedge
+      - name: Install native-window test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth xdotool imagemagick
       - run: npm run build
         id: extension_build
+      - run: node tests/browser/layout-responsive.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
+        env:
+          VAIWL_BROWSER_CHANNEL: msedge
+          VAIWL_TEST_BROWSER_FAMILY: edge
+      - run: xvfb-run -a -s '-screen 0 2048x1152x24' node tests/browser/layout-native-ui.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
+        env:
+          VAIWL_BROWSER_CHANNEL: msedge
+          VAIWL_TEST_BROWSER_FAMILY: edge
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vaiwl-start-layout-edge-${{ github.sha }}
+          path: |
+            artifacts/layout-responsive/edge/
+            artifacts/layout-native-ui/edge/
+          if-no-files-found: error
       - run: node tests/browser/life-bookmarks.mjs
         if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
         env:
@@ -146,4 +186,6 @@ jobs:
             artifacts/life-bookmarks/edge/
             artifacts/edge-home-workspace-validation.json
             artifacts/home-workspace/edge/
+            artifacts/layout-responsive/edge/
+            artifacts/layout-native-ui/edge/
           if-no-files-found: error
