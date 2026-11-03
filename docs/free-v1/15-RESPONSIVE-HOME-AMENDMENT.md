@@ -23,6 +23,6 @@
 
 ## 验证与证据
 
-`tests/browser/layout-responsive.mjs`在隔离Profile安装生产构建，明确合成夹具，旧基线固定为1c2aee3。输出同视口同数据新旧截图、实际CSS视口/DPR/容器/列宽/标题可读宽度、缩放与操作回执。不得把content viewport、设备像素、CSS zoom和浏览器真实缩放混称；原生浏览器界面另行验证。最终结果与未验证项以原Draft PR #1及同SHA Actions制品为准。
+`tests/browser/layout-responsive.mjs`在隔离Profile安装生产构建，明确合成夹具，旧基线固定为1c2aee3。输出同视口同数据新旧截图、实际CSS视口/DPR/容器/列宽/标题可读宽度、缩放与操作回执。不得把content viewport、设备像素、CSS zoom和浏览器真实缩放混称；原生浏览器界面另行验证。`layout-native-ui.mjs`另行安装未改manifest的完整生产扩展，以X11实际窗口截图、原生快捷键和CSS视口/zoom联合验证Chrome普通标签栏、Edge垂直标签和125%/150%。书签布局专项只在测试manifest中预授予原有可选bookmarks，运行时字节保持构建一致；原生窗口专项使用原封不动的manifest。最终结果与未验证项以原Draft PR #1及同SHA Actions制品为准。
 
 本轮保持Draft，不合并、不发布商店，不操作用户个人Profile或数据库。

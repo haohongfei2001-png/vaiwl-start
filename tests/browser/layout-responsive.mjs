@@ -31,7 +31,9 @@ const viewports = [
   { name: 'desktop-1440', width: 1440, height: 900, columns: 4 },
   { name: 'desktop-1280', width: 1280, height: 800, columns: 4 },
   { name: 'desktop-1024', width: 1024, height: 768, columns: 3 },
+  { name: 'boundary-900', width: 900, height: 900, columns: 2 },
   { name: 'split-800', width: 800, height: 900, columns: 2 },
+  { name: 'boundary-600', width: 600, height: 800, columns: 1 },
   { name: 'narrow-540', width: 540, height: 800, columns: 1 },
   { name: 'narrow-390', width: 390, height: 844, columns: 1 },
   { name: 'minimum-320', width: 320, height: 740, columns: 1 },
@@ -56,7 +58,7 @@ async function raw(target) {
 }
 async function seed(target, state) {
   const receipt = await seedLayoutCatalog(target, state, anchorIso);
-  await target.reload(); await ready(target); return receipt;
+  await target.reload(); await ready(target); await target.evaluate(() => scrollTo(0, 0)); return receipt;
 }
 
 async function layout(target) {
@@ -81,7 +83,7 @@ async function layout(target) {
     const visibleBookmarks = all('#bookmark-root-list > [data-bookmark-id]');
     return {
       cssViewport: { width: innerWidth, height: innerHeight, clientWidth: document.documentElement.clientWidth, clientHeight: document.documentElement.clientHeight },
-      devicePixelRatio, visualViewport: window.visualViewport ? { width: visualViewport.width, height: visualViewport.height, scale: visualViewport.scale } : null,
+      devicePixelRatio, pointer: { coarse: matchMedia('(pointer:coarse)').matches, fine: matchMedia('(pointer:fine)').matches, hover: matchMedia('(hover:hover)').matches, maxTouchPoints: navigator.maxTouchPoints }, visualViewport: window.visualViewport ? { width: visualViewport.width, height: visualViewport.height, scale: visualViewport.scale } : null,
       documentWidth: document.documentElement.scrollWidth, main: rect(main), topbar: rect(topbar), topbarContent: { left: topbar.getBoundingClientRect().left + parseFloat(topStyle.paddingLeft), right: topbar.getBoundingClientRect().right - parseFloat(topStyle.paddingRight) },
       brand: rect(document.querySelector('#home')), search: rect(document.querySelector('#search-trigger')), settings: rect(document.querySelector('#settings-trigger')), heading: rect(document.querySelector('.board-heading')),
       projectGrid: grid('#workspace-content > section[aria-label="项目"] > .project-grid'), dateGrid: grid('.date-grid'), cards, dates, rail: shown(rail) ? rect(rail) : null,
@@ -135,7 +137,7 @@ async function launch(version, dist, { hasTouch = false } = {}) {
   await writeFile(join(extension, 'manifest.json'), JSON.stringify(manifest));
   context = await chromium.launchPersistentContext(profile, {
     ...(process.env.VAIWL_CHROMIUM_EXECUTABLE ? { executablePath: process.env.VAIWL_CHROMIUM_EXECUTABLE } : { channel }),
-    headless: process.env.VAIWL_HEADLESS !== 'false', viewport: { width: 1440, height: 900 }, timezoneId: 'UTC', hasTouch,
+    headless: process.env.VAIWL_HEADLESS !== 'false', viewport: { width: 1440, height: 900 }, timezoneId: 'UTC', hasTouch, isMobile: hasTouch,
     args: ['--no-sandbox', '--no-first-run', `--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
   });
   context.on('page', p => p.on('pageerror', error => errors.push({ version, message: String(error) })));
@@ -296,9 +298,17 @@ try {
   }
   await launch('touch', resolve('dist'), { hasTouch: true });
   await seed(page, 'typical'); await page.setViewportSize({ width: 320, height: 740 }); await ready(page);
+  // Extension process/navigation swaps may not retain the input override. Apply
+  // the same genuine touch emulation used by DevTools to this final test target.
+  const touchSession = await context.newCDPSession(page);
+  await touchSession.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  await touchSession.send('Emulation.setEmitTouchEventsForMouse', { enabled: true, configuration: 'mobile' });
+  await ready(page);
   const coarse = await capture('coarse-320', 'after');
-  check('LAYOUT-touch-coarse-active', await page.evaluate(() => matchMedia('(pointer:coarse)').matches), 'A real hasTouch browser context activates coarse-pointer CSS.');
+  check('LAYOUT-touch-coarse-active', coarse.pointer.coarse && coarse.pointer.maxTouchPoints > 0, { method: 'Chromium mobile metrics + actual DevTools touch input emulation, not a physical device or CSS media override', observed: coarse.pointer });
   assertGeometry('coarse-320', coarse, 1);
+  await page.tap('#mode-toggle'); await page.waitForSelector('html[data-home-mode="life"]');
+  check('LAYOUT-touch-tap-mode-control', await page.locator('#life-content').isVisible(), 'An actual emulated touch tap activates the mode control at 320px.');
   await context.close(); context = null;
   check('LAYOUT-no-page-errors', errors.length === 0, errors);
   status = checks.some(c => c.status === 'FAIL') ? 'FAIL' : 'PASS';
@@ -309,7 +319,7 @@ try {
   if (context) await context.close().catch(() => {});
   if (baselineRoot) execFileSync('git', ['worktree', 'remove', '--force', baselineRoot], { stdio: 'pipe' });
   const report = { status, family, browserVersion, candidate: candidateBuild.sha, candidateDirty: candidateBuild.dirty, baseline: baselineSha, fixtureHash, anchorIso, fixtures, checks, screenshots, measurements, errors,
-    limitations: [...limitations, 'All screenshot sizes are content viewports, not monitor dimensions. devicePixelRatio and chrome.tabs.getZoom are recorded separately.', 'Bookmarked fixture sites use the real Chromium _favicon mechanism; uncached synthetic hosts show the normal browser fallback.', 'Test-only manifest pre-grants existing optional bookmarks; no production permission expansion and no personal Profile.', 'Screenshots do not claim user Mac installation, browser-owned footer, original user screenshot pixels, or original private catalog.'] };
+    limitations: [...limitations, 'All screenshot sizes are content viewports, not monitor dimensions. devicePixelRatio and chrome.tabs.getZoom are recorded separately.', 'Bookmarked fixture sites use the real Chromium _favicon mechanism; uncached synthetic hosts show the normal browser fallback.', 'Test-only manifest pre-grants existing optional bookmarks; no production permission expansion and no personal Profile.', 'Coarse-pointer coverage uses Chromium mobile metrics and genuine DevTools touch input emulation; no CSS media override or physical touchscreen is claimed.', 'Screenshots do not claim user Mac installation, browser-owned footer, original user screenshot pixels, or original private catalog.'] };
   await writeFile(join(out, 'validation.json'), JSON.stringify(report, null, 2));
   await writeFile(resolve('artifacts', `${family === 'edge' ? 'edge-' : ''}layout-responsive-validation.json`), JSON.stringify(report, null, 2));
   console.log(JSON.stringify({ status, family, candidate: candidateBuild.sha, baseline: baselineSha, checks: checks.reduce((a, c) => ({ ...a, [c.status]: (a[c.status] || 0) + 1 }), {}), screenshots: screenshots.length, errors, output: out }, null, 2));
