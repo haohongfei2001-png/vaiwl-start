@@ -2,6 +2,18 @@
 
 合同：`VAIWL-START-FREE/1.0 / 2026-11-03-native-experience`。唯一分支：`codex/free-v1-implementation`，Draft PR #1。
 
+## 原生 Project 收口裁决（2026-11-03）
+
+**正式原生归属：`PROJECT_BLOCKED`。已完成可独立修复的候选增量采集，不把候选工程通过写成正式 Project 通过。**
+
+当前生产链路只有 `HELLO → OBSERVE/SOURCE_STATUS → localProjectCandidate`；`currentContext/projectMembership/positiveNone` 仍未认证，`confirmObservation()` 没有生产调用。缺少当前文档的 active principal + active workspace 稳定来源、当前真实 Project 元数据结构，以及把两者绑定后提交正式归属的生产接线。不是打开能力常量即可修复，也没有证据认定现有严格 DOM 解析器错误。
+
+本轮修复正常浏览的持续观察：页面晚于旧 2.22 秒窗口加载、首次空列表后出现成员、改名/新增/局部重绘均可增量收录。去重只用允许的元数据，纯重排/预览变化不反复写库；DOM 变化不重复请求 session。SPA 复用已知旧 panel 时，仅改标题或部分成员链接不能把旧成员归到新项目。过期路由、STOP、停采、撤权仍由现有文档绑定及事务边界拒绝。既有目录不因成员暂不可见而删除。
+
+空 Project 能提取空候选，但现有候选按会话存储，尚无独立持久空项目卡；不同观察继续隔离，不合并为正式归属。当前受支持列表仍有原有 256 个 DOM 成员上限和 200 条 IPC 上限，不宣称完整项目清单。
+
+测试和独立审查范围见 [Project 专项工程记录](evidence/project-observation-20261103/REPORT.md)。本轮继承用户提供的最新 Mac 状态：D1 PASS、历史/活动/书签 PASS、D2 NOT_REPRODUCED；不重新验收。真实 Project 来源无法在本次环境取得，保持 BLOCKED，不要求用户反复执行诊断。
+
 ## Edge 原生新标签页 favicon 专项结论（2026-11-03）
 
 **当前仍为 FAIL / BROWSER_NATIVE_NTP_TABSTRIP_LIMITATION_IN_TESTED_VERSION。** 在 macOS Edge 156.0.4314.58 的全新隔离 Profile 中，同一自定义 PNG 在直接扩展入口显示正常，在原生新标签页入口 DOM / favIconUrl 正确而真实标签栏仍为默认图标。两组共18个最小夹具场景排除了静态/动态资源、manifest fallback 与链接更新等原因。普通扩展页跳转能恢复图标，但地址栏显示扩展 URL，未采纳为正式修复。结论限定于被测版本，不宣称 Edge 永久不支持。
@@ -35,11 +47,11 @@
 
 回归测试新增于 tests/unit/storage.test.ts：通用标题/空值保护、同等级有效标题更新、原生标题优先级、URL alias 去重、原题搜索、重复访问与历史导入交错、Project 成员标题保护、事务中断及重试。当前本地 TypeScript 检查通过，110 项单元测试通过。
 
-本修复尚需同 SHA CI、正式开发包哈希核验和 PR 更新；在这些结果完成前不标记为正式交付。真实 Mac 原位回归尚未执行，原有 IndexedDB 未被修改。
+上述为 D1 开发阶段记录。当前按用户本轮提供的最新结论继承真实 Mac D1 PASS；本轮未重跑该验收，未修改标题裁决或用户 IndexedDB。
 
-## D2 会话跳回 ChatGPT 首页（独立 BLOCKED）
+## D2 会话跳回 ChatGPT 首页（当前 NOT_REPRODUCED）
 
-实机证据仅证明 Start 首次发出的目标 URL 与原会话身份匹配，之后页面跳回 ChatGPT 根页面；没有保存该次导航的完整逐事件 URL/redirect 链、Chrome error/commit/completed 事件序列或目标文档内容。因此无法区分 ChatGPT 登录/应用路由重定向、服务端响应、浏览器导航替换或其他运行时因素。本轮只读核对 open-broker.ts 和 navigation.ts：Start 使用已存 intent.targetUrl 调用 chrome.tabs.update；后续仅对活动顶层 ChatGPT 会话 URL 做身份绑定。现有证据不足以确定跳转根因，本轮没有修改导航行为，D2 保持 BLOCKED。
+用户本轮给出的最新对照为 NOT_REPRODUCED，覆盖之前缺少导航链时的 BLOCKED 状态；本轮按要求继承，不重开诊断、不改导航。NOT_REPRODUCED 不是已定位并修复根因，也不作为当前可复现的交付阻断。之前不完整导航证据留在 Git 历史中。
 
 ## 能力限制
 

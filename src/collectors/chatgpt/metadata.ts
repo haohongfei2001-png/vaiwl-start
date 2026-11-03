@@ -68,9 +68,9 @@ export function readProjectMemberTitle(document: Document, anchor: Element, pane
 }
 
 /** One strict parser supplies both production candidates and diagnostic assertions. */
-function inspectProjectCandidate(document: Document): { candidate: ProjectCandidate | null; summary: ProjectProbeSummary } {
+function inspectProjectCandidate(document: Document): { candidate: ProjectCandidate | null; summary: ProjectProbeSummary; panel: Element | null; allMembersContainerLinked: boolean } {
   const summary = emptyProbe();
-  const fail = (code: ProjectProbeCode) => { summary.code = code; return { candidate: null, summary }; };
+  const fail = (code: ProjectProbeCode) => { summary.code = code; return { candidate: null, summary, panel: null, allMembersContainerLinked: false }; };
   try {
     if (document.location.origin !== 'https://chatgpt.com') { summary.routeKind = 'foreign'; return fail('source-origin-rejected'); }
     const route = parseProjectUrl(document.location.href);
@@ -105,7 +105,7 @@ function inspectProjectCandidate(document: Document): { candidate: ProjectCandid
     const section = panel.firstElementChild, ol = section?.firstElementChild;
     if (panel.children.length !== 1 || section?.tagName !== 'SECTION' || section.children.length !== 1 || ol?.tagName !== 'OL' || ol.children.length > 256) return fail('project-members-unproven');
     summary.memberCount = ol.children.length;
-    let linked = false;
+    let linked = false, containerLinks = 0;
     const members: ProjectCandidate['members'] = [];
     const ids = new Set<string>();
     for (const li of ol.children) {
@@ -117,7 +117,7 @@ function inspectProjectCandidate(document: Document): { candidate: ProjectCandid
       const memberTitle = member ? readProjectMemberTitle(document, anchor, panel) : null;
       if (!member || !memberTitle || ids.has(member.conversationId)) return fail('project-members-unproven');
       ids.add(member.conversationId);
-      if (member.containerHint !== null) { if (member.containerHint !== route.projectId) return fail('project-container-unproven'); linked = true; }
+      if (member.containerHint !== null) { if (member.containerHint !== route.projectId) return fail('project-container-unproven'); linked = true; containerLinks++; }
       members.push({ conversationId: member.conversationId, nativeTitle: memberTitle, canonicalUrl: member.canonicalUrl });
     }
     summary.assertions.membersStructure = true;
@@ -128,13 +128,21 @@ function inspectProjectCandidate(document: Document): { candidate: ProjectCandid
     // is still rejected above. This never establishes account or membership.
     summary.assertions.containerLinked = linked;
     summary.code = 'project-candidate-only';
-    return { candidate: { state: 'candidate', relationBasis: 'linked-native-panel', projectId: route.projectId, nativeTitle, canonicalUrl: route.canonicalUrl, members }, summary };
+    return { candidate: { state: 'candidate', relationBasis: 'linked-native-panel', projectId: route.projectId, nativeTitle, canonicalUrl: route.canonicalUrl, members }, summary, panel, allMembersContainerLinked: members.length > 0 && containerLinks === members.length };
   } catch { return fail('project-structure-unsupported'); }
 }
 
 /** A matching proposal is still not a verified native fact or arrival proof. */
 export function observeProjectCandidate(document: Document): ProjectCandidate | null {
   return inspectProjectCandidate(document).candidate;
+}
+
+/** The proven panel reference stays in the isolated collector. It lets the
+ * incremental observer reject a known old panel inherited by a new SPA route;
+ * it is neither a stored identity nor an additional source of authority. */
+export function observeProjectSnapshot(document: Document): { candidate: ProjectCandidate; panel: Element; allMembersContainerLinked: boolean } | null {
+  const { candidate, panel, allMembersContainerLinked } = inspectProjectCandidate(document);
+  return candidate && panel ? { candidate, panel, allMembersContainerLinked } : null;
 }
 
 /** Only this fixed, pseudonymized summary may leave the controlled probe. */

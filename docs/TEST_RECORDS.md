@@ -2,6 +2,16 @@
 
 当前合同修订：`2026-11-03-native-experience`。本文件说明验证范围；交付包的 `build.json`、`verification/*.json` 及对应GitHub Actions是实际SHA和最终结果依据，不能引用另一提交的绿色结果。
 
+## Project 候选增量采集专项（2026-11-03）
+
+正式原生 Project 裁决仍为 **PROJECT_BLOCKED**；本轮修复可证实的有限采样缺口，不放宽账号/成员来源要求。完整原因和覆盖矩阵见 [专项记录](evidence/project-observation-20261103/REPORT.md)。
+
+新增 `tests/unit/project-observer.test.ts` 的 11 组时序/隐私测试，以及 `tests/browser/project-observation.mjs` 的真实扩展构建隔离 Chromium 流程。后者接入既有 CI；同 SHA 回执为 `project-observation-validation.json`，打包校验并收录该回执。所有网页及 session 响应明确为合成数据，真实原生来源不得由这些测试填成 PASS。
+
+本地环境没有 Chromium executable；官方下载返回非 ZIP，未执行成功浏览器基线，因此没有宣称 baseline RED。针对旧代码的迟到/后续更新反例已有明确源码依据；本轮最终浏览器结论必须读取同 SHA CI 新脚本的实际结果。
+
+D1、原目录/活动/书签 PASS 与 D2 NOT_REPRODUCED 按用户本轮最新状态继承；下方更早的“待实机/D2 BLOCKED”描述仅是开发历史，不覆盖本条当前状态。没有重跑用户真实资料库或重新导入历史。
+
 ## Edge 标签栏专项：真实 FAIL，不由页面层 PASS 替代（2026-11-03）
 
 基线7372bd17 clean build，Mac Edge 156.0.4314.58，全新独立 Profile。生产同一紫色PNG：直接入口真实标签栏256逻辑像素，原生入口0；页面图标两者均正确。两组最小夹具共18场景保留完整整窗截图、DOM/tabs元数据、地址栏值与哈希，证据见 [专项报告](evidence/edge-favicon-20261103/REPORT.md)。

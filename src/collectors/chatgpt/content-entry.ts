@@ -1,5 +1,6 @@
 import { createSessionStatusReader } from './identity.js';
 import { observeProjectCandidate, readProjectProbe } from './metadata.js';
+import { startProjectObservation, type ProjectObservationMemory } from './project-observer.js';
 import { inspectMetadataStructure, type MetadataStructureSummary } from './structure-probe.js';
 import { CHATGPT_METADATA_PROFILE } from './profile.js';
 import { parseProjectUrl } from '../../domain/ids.js';
@@ -14,6 +15,7 @@ if (!runtime.__vaiwlStartCollector && location.origin === 'https://chatgpt.com' 
   let pending: Promise<unknown> = Promise.resolve();
   let activeProbe: string | null = null;
   const identity = createSessionStatusReader();
+  const projectMemory: ProjectObservationMemory = {};
   const send = (command: string, payload: unknown) => chrome.runtime.sendMessage({ protocol: COLLECTOR_PROTOCOL, operationId: crypto.randomUUID(), command, payload });
   function invalidate() { sequence++; controller?.abort(); controller = null; }
   function enqueue<T>(work: (signal: AbortSignal, current: () => boolean) => Promise<T>): Promise<T> {
@@ -44,18 +46,20 @@ if (!runtime.__vaiwlStartCollector && location.origin === 'https://chatgpt.com' 
     return enqueue(async (signal, current) => {
       const response = await send('HELLO', { href: location.href }); if (!response?.ok || !current()) return;
       const binding = response.data;
-      const projectTask = knownProject(signal, current).then(async project => {
-        if (!current()) return;
-        const projectCandidate = project ? { ...project, members: project.members.slice(0, 200) } : null;
-        const candidates = projectCandidate ? projectCandidate.members.map(m => ({ url: m.canonicalUrl, title: m.nativeTitle })) : [];
-        // Preserve the actual native panel relationship instead of flattening
-        // every observation to an unrelated list of UNKNOWN conversations.
-        await send('OBSERVE', { bindingId: binding.id, routeEpoch: binding.routeEpoch, candidates, ...(projectCandidate ? { projectCandidate } : {}) });
-      });
+      if (parseProjectUrl(location.href)) {
+        startProjectObservation(document, { signal, current, memory: projectMemory, deliver: async projectCandidate => {
+          if (!current()) return false;
+          const candidates = projectCandidate.members.map(m => ({ url: m.canonicalUrl, title: m.nativeTitle }));
+          const result = await send('OBSERVE', { bindingId: binding.id, routeEpoch: binding.routeEpoch, candidates, projectCandidate });
+          return result?.ok === true && current();
+        } });
+      } else {
+        await send('OBSERVE', { bindingId: binding.id, routeEpoch: binding.routeEpoch, candidates: [] });
+      }
       const statusTask = identity.readStatus(signal).then(async status => {
         if (current()) await send('SOURCE_STATUS', { bindingId: binding.id, routeEpoch: binding.routeEpoch, code: status.code, profileId: CHATGPT_METADATA_PROFILE.id });
       });
-      await Promise.allSettled([projectTask, statusTask]);
+      await Promise.allSettled([statusTask]);
     });
   }
   function pickStructure(signal: AbortSignal, current: () => boolean): Promise<MetadataStructureSummary> {
@@ -105,19 +109,33 @@ if (!runtime.__vaiwlStartCollector && location.origin === 'https://chatgpt.com' 
   const listener = (message: any, sender: chrome.runtime.MessageSender, respond: (value: unknown) => void) => {
     if (sender.id !== chrome.runtime.id || sender.tab || message?.protocol !== COLLECTOR_PROTOCOL) return;
     if (message.command === 'STOP') stop();
-    if (message.command === 'CANCEL_PROBE' && message.captureId === activeProbe) { activeProbe = null; invalidate(); }
-    if (message.command === 'ROUTE' && !stopped && !suspended) void observe().catch(() => {});
+    if (message.command === 'CANCEL_PROBE' && activeProbe !== null && message.captureId === activeProbe) { activeProbe = null; invalidate(); if (!stopped && !suspended) void observe().catch(() => {}); }
+    if (message.command === 'ROUTE' && !stopped && !suspended) { activeProbe = null; void observe().catch(() => {}); }
     if (message.command === 'PROBE' && !stopped && !suspended) {
       const captureId = message.payload?.captureId;
-      void Promise.resolve().then(() => { correlation(captureId); activeProbe = captureId; return probe(message.payload); })
+      let ownsCollector = false;
+      void Promise.resolve().then(() => {
+        correlation(captureId);
+        // probe validates the full schema synchronously before enqueue can
+        // suspend normal observation. Malformed requests own no lifecycle and
+        // must not restart collection or trigger extra identity requests.
+        const task = probe(message.payload); activeProbe = captureId; ownsCollector = true; return task;
+      })
         .then(data => respond({ ok: true, data })).catch(() => respond({ ok: false, code: 'PROBE_CANCELLED' }))
-        .finally(() => { if (activeProbe === captureId) activeProbe = null; }); return true;
+        .finally(() => {
+          if (ownsCollector && activeProbe === captureId) {
+            activeProbe = null;
+            // A bounded diagnostic temporarily owns the collector. Return to
+            // normal observation afterwards without requiring another route.
+            if (!stopped && !suspended) void observe().catch(() => {});
+          }
+        }); return true;
     }
   };
-  function hide(event: PageTransitionEvent) { suspended = true; invalidate(); if (!event.persisted) stop(); }
+  function hide(event: PageTransitionEvent) { suspended = true; activeProbe = null; invalidate(); if (!event.persisted) stop(); }
   function show(event: PageTransitionEvent) { if (event.persisted && !stopped) { suspended = false; void observe().catch(() => {}); } }
   function stop() {
-    if (stopped) return; stopped = true; invalidate();
+    if (stopped) return; stopped = true; activeProbe = null; invalidate(); delete projectMemory.last;
     chrome.runtime.onMessage.removeListener(listener); window.removeEventListener('pagehide', hide); window.removeEventListener('pageshow', show); runtime.__vaiwlStartCollector = undefined;
   }
   runtime.__vaiwlStartCollector = { stop };
