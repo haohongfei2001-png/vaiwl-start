@@ -97,7 +97,7 @@ function fail(error: unknown, target?: string): void {
   } else toast(message);
 }
 
-async function refresh(immediate = false): Promise<void> {
+async function refresh(immediate = false): Promise<UISnapshot | undefined> {
   if (!workspaceAccessAllowed() || stopped) return;
   const sequence = ++refreshSequence;
   const requestedModeEpoch = modeEpoch;
@@ -116,6 +116,7 @@ async function refresh(immediate = false): Promise<void> {
   };
   // A life page can explicitly visit workspace settings without constructing its home.
   if (homeMode === 'life') apply(); else safe.render(apply, immediate || !snapshot);
+  return received;
 }
 
 async function mutate(command: string, payload: Record<string, unknown>, after?: () => void): Promise<boolean> {
@@ -547,17 +548,28 @@ async function resumeImportPermission(event: Event, jobId: string): Promise<void
 async function pumpImport(): Promise<void> {
   if (!workspaceAccessAllowed() || importPumping || stopped || document.hidden) return;
   importPumping = true;
+  const requestedModeEpoch = modeEpoch;
+  let stepJobId: string | undefined;
   try {
     let job = latestJob();
     // Let an already-started transaction finish, but do not start another batch
     // in life mode. The persisted job/capture settings are left untouched.
     while (workspaceAccessAllowed() && !stopped && !document.hidden && job?.state === 'running') {
+      stepJobId = job.id;
       const response = await request('IMPORT_STEP', { jobId: job.id }) as { job: ImportCheckpoint };
       job = response.job;
       await refresh();
       await new Promise<void>(resolve => setTimeout(resolve, 50));
     }
-  } catch (error) { if (workspaceAccessAllowed()) fail(error); await refresh().catch(() => {}); }
+  } catch (error) {
+    let received: UISnapshot | undefined; let refreshFailed = false;
+    try { received = await refresh(); } catch { refreshFailed = true; }
+    const current = received?.importJobs.find(item => item.id === stepJobId);
+    // Pause/cancel/revocation can legitimately reject an older in-flight batch.
+    // Report a failure only for the same still-running task, or an unreadable state.
+    if (workspaceAccessAllowed() && requestedModeEpoch === modeEpoch && (activeJobId || latestJob()?.id) === stepJobId
+      && (refreshFailed || current?.state === 'running')) fail(error);
+  }
   finally { importPumping = false; }
 }
 

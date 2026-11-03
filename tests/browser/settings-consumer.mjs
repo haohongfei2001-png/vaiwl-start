@@ -396,9 +396,31 @@ try {
   await waitForAsync(page, async () => { const r = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} }); return r.ok && r.data.importJobs.length === 2 && r.data.importJobs.every(j => j.state === 'complete'); });
   check('SC-import-resume-deduplicates', (await command('SNAPSHOT')).conversations.length === 6, 'Resume completes the same saved import without duplicating previously imported conversations.');
   await worker.evaluate(() => { globalThis.__settingsHeldSearches = []; chrome.history.search = async query => { const result = await globalThis.__settingsHistorySearch(query); return new Promise(resolve => globalThis.__settingsHeldSearches.push(() => resolve(result))); }; });
-  await page.locator('#confirm-import').click(); await page.locator('[data-import-cancel]').waitFor(); await page.locator('[data-import-cancel]').click();
+  await page.evaluate(() => {
+    window.__settingsBeforeLateBatchProbe = chrome.runtime.sendMessage.bind(chrome.runtime);
+    window.__settingsCancelProbeJob = null; window.__settingsLateStepReply = null; window.__settingsPostStepSnapshot = null;
+    chrome.runtime.sendMessage = async (...args) => {
+      const message = args[0], startsAfterLateStep = message?.command === 'SNAPSHOT' && !!window.__settingsLateStepReply;
+      const reply = await window.__settingsBeforeLateBatchProbe(...args);
+      if (message?.command === 'IMPORT_STEP' && message.payload.jobId === window.__settingsCancelProbeJob) window.__settingsLateStepReply = { jobId: message.payload.jobId, ok: reply?.ok, code: reply?.code };
+      if (startsAfterLateStep) window.__settingsPostStepSnapshot = { ok: reply?.ok, jobId: window.__settingsCancelProbeJob, state: reply?.data?.importJobs?.find(job => job.id === window.__settingsCancelProbeJob)?.state };
+      return reply;
+    };
+  });
+  await page.locator('#confirm-import').click(); await page.locator('[data-import-cancel]').waitFor();
+  const cancelledInFlightId = await page.locator('[data-import-cancel]').getAttribute('data-import-cancel');
+  await page.evaluate(id => { window.__settingsCancelProbeJob = id; }, cancelledInFlightId);
+  await waitForAsync(worker, () => globalThis.__settingsHeldSearches.length > 0);
+  await page.locator('[data-import-cancel]').click();
   await waitForAsync(page, async () => { const r = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} }); return r.ok && r.data.importJobs.some(j => j.state === 'cancelled'); });
   await worker.evaluate(() => { chrome.history.search = globalThis.__settingsHistorySearch; for (const release of globalThis.__settingsHeldSearches.splice(0)) release(); });
+  // No test SNAPSHOT calls occur after release until the production error/recovery
+  // chain has returned a fresh snapshot; two animation frames also pass its paint boundary.
+  await page.waitForFunction(() => window.__settingsLateStepReply && window.__settingsPostStepSnapshot?.ok && window.__settingsPostStepSnapshot.state === 'cancelled');
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const lateBatchEvidence = await page.evaluate(() => ({ step: window.__settingsLateStepReply, snapshot: window.__settingsPostStepSnapshot, status: document.querySelector('#import-status').textContent, error: document.querySelector('#import-status').dataset.error }));
+  check('SC-cancelled-import-ignores-stale-batch-error', lateBatchEvidence.step.ok === false && /revision|conflict/i.test(lateBatchEvidence.step.code || '') && lateBatchEvidence.snapshot.jobId === cancelledInFlightId && lateBatchEvidence.error !== 'true' && !/另一标签页|请重试|没有完成|失败/.test(lateBatchEvidence.status), { description: 'The genuinely delayed IMPORT_STEP is rejected by the revision fence after Cancel. Its subsequent production SNAPSHOT confirms the same cancelled task; after the render boundary the UI reports no stale batch error.', ...lateBatchEvidence });
+  await page.evaluate(() => { chrome.runtime.sendMessage = window.__settingsBeforeLateBatchProbe; });
   check('SC-import-cancel-retains-completed-results', (await command('SNAPSHOT')).conversations.length === 6, 'Cancel terminates the new checkpoint while preserving already retained local results.');
   await page.locator('#confirm-import').waitFor({ state: 'visible' });
   check('SC-terminal-import-restores-retained-new-task-options', completedOptionsRestored && await page.locator('#import-range').isVisible() && await page.locator('#include-synced').isVisible() && await page.locator('#import-range').inputValue() === safeImportOptions.range && await page.locator('#include-synced').isChecked() === safeImportOptions.synced && (await page.locator('[data-import-resume]').textContent()).includes('继续上次导入'), 'Completed and cancelled imports restore the new-import entry and the original safe range/synced choices. A cancelled checkpoint clearly labels its separate action as continuing the previous import.');
