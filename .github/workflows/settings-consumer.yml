@@ -47,6 +47,8 @@ jobs:
         id: build
       - run: node tests/browser/settings-consumer.mjs
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      - run: xvfb-run -a -s '-screen 0 2048x1152x24' node tests/browser/settings-native-window.mjs
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
       - run: node tests/browser/layout-responsive.mjs
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
       - name: Existing installed extension, privacy and UI regressions
@@ -87,6 +89,8 @@ jobs:
       - run: npm run build
         id: build
       - run: node tests/browser/settings-consumer.mjs
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      - run: xvfb-run -a -s '-screen 0 2048x1152x24' node tests/browser/settings-native-window.mjs
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
       - run: node tests/browser/layout-responsive.mjs
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
