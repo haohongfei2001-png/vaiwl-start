@@ -2,10 +2,11 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light">
-<title>New Tab</title><link id="tab-favicon" rel="icon" href="tab-chrome.svg" type="image/svg+xml"><link rel="stylesheet" href="newtab.css"><script type="module" src="newtab.js"></script>
+<title>New Tab</title><link id="tab-favicon" rel="icon" href="tab-chrome.svg" type="image/svg+xml"><link rel="stylesheet" href="newtab.css"><link rel="stylesheet" href="bookmarks.css"><link rel="stylesheet" href="life.css"><script type="module" src="newtab.js"></script>
 </head>
 <body>
 <svg aria-hidden="true" width="0" height="0" class="icon-definitions"><defs>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5"/></symbol>
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.7" cy="10.7" r="6.7"/><path d="m16 16 4.5 4.5"/></symbol>
 <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
 <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
@@ -38,11 +39,20 @@
  <button class="brand" id="home" aria-label="回到工作区首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>VAIWL <em>Start</em></span></button>
  <div class="top-spacer"></div>
  <button class="search-trigger" id="search-trigger" aria-label="搜索所有本地会话，页面非编辑状态按斜杠键"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="search-label">搜索会话与项目</span><kbd>/</kbd></button>
+ <button class="mode-toggle" id="mode-toggle" type="button" aria-label="切换到生活" aria-busy="false" disabled><svg aria-hidden="true"><use href="#i-sun"/></svg><span>生活</span></button>
  <button class="icon-button" id="settings-trigger" aria-label="设置" title="设置"><svg aria-hidden="true"><use href="#i-settings"/></svg></button>
 </header>
 <main class="workspace" id="main">
+ <div class="mode-notice"><span id="mode-status" role="status" aria-live="polite"></span><button id="mode-save-retry" class="text-button" hidden>重新保存</button><button id="mode-load-retry" class="text-button" hidden>重新读取偏好</button></div>
  <section id="bookmarks-home" class="site-section" aria-label="浏览器书签" hidden></section>
- <div id="workspace-content" aria-busy="true"><section class="first-use"><div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div><h1>让对话留在手边。</h1><p>正在打开本地记录…</p></section></div>
+ <section id="life-content" class="life-content" aria-label="生活首页" hidden>
+  <h1 class="sr">生活</h1><time id="life-clock" class="life-clock" aria-label="当前时间"></time><p id="life-date" class="life-date"></p>
+  <form id="life-search-form" class="life-search" role="search" aria-label="搜索网页"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="life-search-input" type="search" placeholder="搜索网页，随心浏览" autocomplete="off" aria-label="使用浏览器默认引擎搜索网页" maxlength="2048"><button type="submit" aria-label="搜索网页"><svg aria-hidden="true"><use href="#i-arrow"/></svg></button></form>
+  <p class="life-search-hint">沿用你的默认搜索引擎</p><p id="life-search-status" class="life-search-status" role="status"></p>
+  <div class="life-signature" aria-hidden="true">日常，由你开始</div>
+ </section>
+ <div id="mode-loading" class="mode-loading" role="status">正在打开首页…</div>
+ <div id="workspace-content" aria-busy="true" hidden><section class="first-use"><div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div><h1>让对话留在手边。</h1><p>正在打开本地记录…</p></section></div>
  <nav class="history-rail" id="history-rail" aria-label="30 天区间导航" hidden></nav>
 </main>
 <div id="toast" class="toast" role="status" hidden></div><div id="live" class="sr" aria-live="polite" aria-atomic="true"></div>
@@ -74,9 +84,11 @@
   <section class="native-settings" aria-labelledby="bookmark-heading"><h3 id="bookmark-heading">浏览器书签</h3>
    <label class="field-label" for="bookmark-preference">你的书签栏显示习惯</label><select id="bookmark-preference" class="field-input"><option value="ask">选择一次显示方式</option><option value="always">所有网页常驻书签栏 — Start 不重复显示</option><option value="newtab">仅新标签页需要书签 — 在 Start 显示</option><option value="hidden">我隐藏书签栏 — Start 也不显示</option></select>
    <p class="field-help">扩展不能可靠读取原生书签栏显示模式，由你选择并记住。若浏览器仍显示原生书签栏，请选择不重复显示。</p><button id="bookmark-connect" class="secondary">授权读取浏览器书签</button>
-   <p class="field-help" id="legacy-count"></p><select id="bookmark-destination" class="field-input" aria-label="旧快捷项迁入的书签栏" hidden></select><button id="bookmark-migrate" class="secondary" disabled>将旧快捷网站加入原生书签</button><button id="legacy-sites" class="text-button">查看旧快捷网站</button>
+   <div data-workspace-only><p class="field-help" id="legacy-count"></p><select id="bookmark-destination" class="field-input" aria-label="旧快捷项迁入的书签栏" hidden></select><button id="bookmark-migrate" class="secondary" disabled>将旧快捷网站加入原生书签</button><button id="legacy-sites" class="text-button">查看旧快捷网站</button></div>
   </section>
   <p id="native-status" class="field-help" role="status" aria-live="polite"></p>
+  <section class="native-settings"><h3>生活与工作空间</h3><p class="field-help">切换后，新打开的标签页会沿用所选模式。已打开的其他标签页保持原样。</p><p class="field-help">生活首页由 VAIWL Start 提供，保留书签与浏览器默认搜索；不是浏览器内置的新标签页。</p></section>
+  <div data-workspace-only id="workspace-settings">
   <div class="setting-row"><div><strong>ChatGPT 连接</strong><small id="connection-label">仅在连接后申请观察 ChatGPT 会话导航的权限。</small></div><button class="secondary" id="connect-chatgpt">连接</button></div>
   <div class="setting-row"><div><label for="capture-enabled"><strong>继续收录会话链接</strong></label><small>只收录允许的链接与标题；不读取聊天正文。关闭后保留已有目录。</small></div><input id="capture-enabled" type="checkbox" aria-label="继续收录会话链接"></div>
   <div class="setting-row"><div><strong>浏览器历史</strong><small>导入浏览器当前可读取的 ChatGPT 记录。历史时间不计作主动打开。</small></div><button class="secondary" id="settings-import">导入</button><button class="text-button" id="revoke-history" hidden>撤销权限</button></div>
@@ -84,8 +96,9 @@
   <form id="timezone-form"><label class="field-label" for="time-zone">资料库时区</label><input class="field-input" id="time-zone" required placeholder="Asia/Shanghai"><p class="field-help">旅行不会自动改变时区。修改只重算显示位置，已有每日活动记录保留原时区。</p><div class="dialog-foot"><button class="secondary" type="submit">保存时区</button></div></form>
   <div class="setting-row"><div><strong>本地副本</strong><small>关闭标签、退出 ChatGPT 或清除浏览历史都不会删除这里的目录。卸载扩展可能丢失本机数据。</small></div></div>
   <div class="setting-row"><div><strong>当前能力</strong><small id="source-description">正在读取状态…</small><details class="technical-details"><summary>查看来源状态与构建</summary><pre id="source-details"></pre><a href="source-check.html" target="_blank" rel="noopener">受控来源核验</a></details></div></div>
+  </div>
   <div class="setting-row"><div><strong>新标签页入口</strong><small>如浏览器策略或其他扩展占用新标签页，可点击扩展图标打开 Start。在浏览器扩展管理中选择新标签页提供者。</small></div></div>
-  <div class="dialog-foot"><button class="text-button" id="show-removed">恢复收录</button><button class="text-button danger" id="clear-local">清除本地数据</button><button class="primary" data-close="settings-dialog">完成</button></div>
+  <div class="dialog-foot"><button class="text-button" data-workspace-only id="show-removed">恢复收录</button><button class="text-button danger" data-workspace-only id="clear-local">清除本地数据</button><button class="primary" data-close="settings-dialog">完成</button></div>
  </div>
 </dialog>
 <dialog id="project-dialog" aria-labelledby="project-title"><div class="dialog-head"><h2 id="project-title">项目</h2><button class="icon-button" data-close="project-dialog" aria-label="关闭项目操作"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p>打开原生项目后，继续使用 ChatGPT 自己的项目功能。</p><div class="context-links"><a id="project-native"><svg aria-hidden="true"><use href="#i-external"/></svg>在 ChatGPT 中打开项目</a><a id="project-new"><svg aria-hidden="true"><use href="#i-plus"/></svg>打开项目以新建对话</a><button id="project-find"><svg aria-hidden="true"><use href="#i-search"/></svg>搜索这个项目的会话</button></div></div></dialog>

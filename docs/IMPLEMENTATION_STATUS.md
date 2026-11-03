@@ -2,6 +2,12 @@
 
 合同：`VAIWL-START-FREE/1.0 / 2026-11-03-native-experience`。唯一分支：`codex/free-v1-implementation`，Draft PR #1。
 
+## 书签与生活模式候选（2026-11-03）
+
+当前新增修订为 `2026-11-03-life-bookmarks`，见[合同](free-v1/12-LIFE-BOOKMARKS-AMENDMENT.md)。已实现官方favicon、按实际宽度默认单行/受限展开/分层文件夹、持久双模式、跨页不强制同步、生活零工作区投影及异步过期保护。新权限仅favicon/search，书签仍可选。
+
+本轮开始核对dd8d8051；工作期间远端推进至a8e54d01，已正常fast-forward继承全部Project增量观察源码和测试，没有覆盖远端成果。源码、边界单元及独立审查修正已集成；同SHA真实浏览器结论以新增life-bookmarks/edge-life-bookmarks回执及PR #1最终回执为准。当前构建文档不把尚未执行的CI或用户Mac验收写成PASS。完整实现、验证边界和审查见[专项记录](evidence/life-bookmarks-20261103/REPORT.md)。
+
 ## 原生 Project 收口裁决（2026-11-03）
 
 **正式原生归属：`PROJECT_BLOCKED`。已完成可独立修复的候选增量采集，不把候选工程通过写成正式 Project 通过。**

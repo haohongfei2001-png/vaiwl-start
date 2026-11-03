@@ -71,7 +71,11 @@ export function preservePosition(apply: () => void): void {
   const previousScroll = window.scrollY;
   apply();
   const restored = focusKey ? document.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(focusKey)}"]`) : focusId ? document.getElementById(focusId) : null;
-  if (restored && restored !== document.activeElement) restored.focus({ preventScroll: true });
+  if (restored && restored !== document.activeElement && !restored.closest('[hidden],[inert]')) restored.focus({ preventScroll: true });
+  else if (focusKey?.startsWith('bookmark:') && (!restored || restored.closest('[hidden],[inert]'))) {
+    const disclosure = document.getElementById('bookmark-toggle');
+    if (disclosure && !disclosure.closest('[hidden],[inert]')) disclosure.focus({ preventScroll: true });
+  }
   const newAnchor = anchorKey ? document.querySelector<HTMLElement>(`#workspace-content [data-record-key="${CSS.escape(anchorKey)}"]`) : null;
   if (newAnchor && anchorOffset !== undefined) window.scrollBy(0, newAnchor.getBoundingClientRect().top - anchorOffset);
   else if (previousScroll !== window.scrollY) window.scrollTo(0, previousScroll);

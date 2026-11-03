@@ -1,4 +1,5 @@
 import { initNativeExperience } from './native-experience.js';
+import { HOME_MODE_KEY, homeMode as normalizeHomeMode, type HomeMode } from '../domain/home-mode.js';
 import type { ConversationRecord, ProjectRecord, WebsiteShortcut, OpenDisposition, ImportCheckpoint } from '../../contracts/free-v1.js';
 import type { CatalogSnapshot } from '../storage/repository.js';
 import { projectCatalog, searchCatalog, type PendingDateGroup, type CandidateProjectCard } from '../domain/projection.js';
@@ -16,6 +17,14 @@ type Card = ReturnType<typeof projectCatalog>['projects'][number];
 const view = readView();
 const initialScrollY = view.scrollY;
 const safe = new SafeRendering();
+let homeMode: HomeMode | null = null;
+let modeEpoch = 0;
+let modeSaveSequence = 0;
+let modeLoading = false;
+let modeSaveQueue = Promise.resolve();
+let unsubscribeWorkspace: (() => void) | null = null;
+let workspaceScrollY = initialScrollY;
+let clockTimer: ReturnType<typeof setTimeout> | undefined;
 let snapshot: UISnapshot | null = null;
 let calendar: ReturnType<typeof createFreeViewSession> | null = null;
 let selectedScope = view.selectedScope;
@@ -39,7 +48,11 @@ let activeJobId: string | null = null;
 const openingRecords = new Set<string>();
 const filterLabels: Record<Filter, string> = { all: '全部', project: '项目', none: '无项目', unknown: '待确认' };
 
-function persistView(): void { view.selectedScope = selectedScope; view.scrollY = window.scrollY; saveView(view); }
+function persistView(): void {
+  if (homeMode !== 'workspace' || modeLoading) return;
+  view.selectedScope = selectedScope; view.scrollY = window.scrollY;
+  workspaceScrollY = view.scrollY; saveView(view);
+}
 function announce(message: string): void { byId('live').textContent = message; }
 function toast(message: string, action?: { label: string; run: () => void }): void {
   const node = byId('toast');
@@ -56,6 +69,7 @@ function showDialog(id: string): void {
 }
 function closeDialog(id: string): void { byId<HTMLDialogElement>(id).close(); }
 function fail(error: unknown): void {
+  if (homeMode !== 'workspace') return;
   const code = error instanceof Error ? error.message : String(error);
   const message = /REVISION|revision|CONFLICT/i.test(code) ? '记录已被另一标签页更新，请重试这次操作。'
     : /PERMISSION|permission/i.test(code) ? '还没有对应权限。可以在设置中重新连接。'
@@ -66,12 +80,14 @@ function fail(error: unknown): void {
 }
 
 async function refresh(immediate = false): Promise<void> {
+  if (homeMode !== 'workspace' || stopped) return;
   const sequence = ++refreshSequence;
+  const requestedModeEpoch = modeEpoch;
   const requestedScope = selectedScope;
   const received = await request('SNAPSHOT', selectedScope ? { selectedScope } : {}) as UISnapshot;
-  if ((!immediate && sequence !== refreshSequence) || stopped || requestedScope !== selectedScope) return;
+  if (sequence !== refreshSequence || stopped || requestedScope !== selectedScope || homeMode !== 'workspace' || requestedModeEpoch !== modeEpoch) return;
   const apply = () => {
-    if (requestedScope !== selectedScope || snapshot && received.revision < snapshot.revision) return;
+    if (homeMode !== 'workspace' || requestedModeEpoch !== modeEpoch || sequence !== refreshSequence || requestedScope !== selectedScope || snapshot && received.revision < snapshot.revision) return;
     snapshot = received;
     if (!selectedScope || (selectedScope !== 'unassigned' && !received.scopes.some(scope => scope.key === selectedScope))) selectedScope = received.settings.selectedScope || 'unassigned';
     view.selectedScope = selectedScope;
@@ -87,7 +103,7 @@ async function mutate(command: string, payload: Record<string, unknown>, after?:
   try {
     await request(command, { ...payload, expectedRevision: snapshot.revision });
     await refresh(true);
-    after?.();
+    if (homeMode === 'workspace') after?.();
   } catch (error) { fail(error); await refresh().catch(() => {}); }
   finally { mutationRunning = false; }
 }
@@ -206,7 +222,7 @@ function firstUse(): HTMLElement {
 }
 
 function renderWorkspace(): void {
-  if (!snapshot || !calendar) return;
+  if (homeMode !== 'workspace' || !snapshot || !calendar) return;
   const content = byId('workspace-content'); content.setAttribute('aria-busy', 'false');
   if (!snapshot.conversations.length && !snapshot.projects.length && !snapshot.importJobs.length && !snapshot.scopes.length) {
     content.replaceChildren(firstUse()); byId('history-rail').hidden = true; return;
@@ -243,7 +259,7 @@ function renderWorkspace(): void {
 }
 
 function renderRail(): void {
-  if (!calendar) return;
+  if (homeMode !== 'workspace' || !calendar) return;
   const rail = byId('history-rail'); rail.replaceChildren(); rail.hidden = false;
   const rangeLabel = (k: number) => { const range = freeWindowFor(k, calendar!); return `${range.start}—${dayLabel(calendar!.T - 30 * k)}`; };
   if (view.k > 0) rail.append(button('', { id: 'period-newer', 'aria-label': `更新的 30 天，${rangeLabel(view.k - 1)}`, title: `更新的 30 天 · ${rangeLabel(view.k - 1)}` }, 'up'));
@@ -284,7 +300,7 @@ function renderEditor(): void {
 }
 
 function renderSearch(): void {
-  if (!snapshot) return;
+  if (homeMode !== 'workspace' || !snapshot) return;
   const query = byId<HTMLInputElement>('search-input').value.trim();
   const conditions = JSON.stringify([selectedScope, query, searchFilter, searchProjectId]);
   if (conditions !== searchConditions) { searchVisibleLimit = SEARCH_PAGE_SIZE; searchConditions = conditions; }
@@ -310,6 +326,8 @@ function renderSearch(): void {
 }
 
 function openSearch(project?: ProjectRecord): void {
+  if (homeMode === 'life') { byId('life-search-input').focus(); return; }
+  if (homeMode !== 'workspace') return;
   searchProjectId = project?.projectId || null; searchFilter = project ? 'project' : 'all';
   searchConditions = '';
   byId<HTMLInputElement>('search-input').value = '';
@@ -317,7 +335,7 @@ function openSearch(project?: ProjectRecord): void {
 }
 
 function renderSettings(): void {
-  if (!snapshot) return;
+  if (homeMode !== 'workspace' || !snapshot) return;
   byId('connection-label').textContent = snapshot.capabilities.chatgpt ? '已授予 ChatGPT 观察权限。可撤销连接，已有目录继续保留。' : '只在你点击连接后申请 ChatGPT 观察权限。';
   byId('connect-chatgpt').textContent = snapshot.capabilities.chatgpt ? '断开' : '连接';
   byId<HTMLInputElement>('capture-enabled').checked = snapshot.settings.captureEnabled;
@@ -363,6 +381,7 @@ function renderRemoved(): void {
 }
 
 function render(): void {
+  if (homeMode !== 'workspace') return;
   renderSites(); nativeExperience.refresh(); renderWorkspace();
   if (byId<HTMLDialogElement>('sites-dialog').open) renderEditor();
   if (byId<HTMLDialogElement>('search-dialog').open) renderSearch();
@@ -407,41 +426,46 @@ async function dispatchOpen(recordKey: string, disposition: OpenDisposition, ges
 
 async function connectChatGPT(event: Event, disconnect = false): Promise<void> {
   if (!event.isTrusted) return;
+  const requestedModeEpoch = modeEpoch;
   // Call request/remove synchronously in the actual user gesture, before any await.
   const permission: chrome.permissions.Permissions = { permissions: ['scripting', 'webNavigation'], origins: ['https://chatgpt.com/*'] };
   const grant = disconnect ? chrome.permissions.remove(permission) : chrome.permissions.request(permission);
   try {
     const accepted = await grant; await request('PERMISSIONS_SYNC', !disconnect && accepted ? { enableCapture: true } : {}); await refresh(true);
     if (byId<HTMLDialogElement>('settings-dialog').open) renderSettings();
-    toast(disconnect ? '已断开 ChatGPT，已有目录继续保留。' : accepted ? '已连接 ChatGPT，可以继续收录并记录主动打开。' : '未授予连接权限，网站与本地目录仍可使用。');
+    if (homeMode === 'workspace' && requestedModeEpoch === modeEpoch) toast(disconnect ? '已断开 ChatGPT，已有目录继续保留。' : accepted ? '已连接 ChatGPT，可以继续收录并记录主动打开。' : '未授予连接权限，网站与本地目录仍可使用。');
   } catch (error) { fail(error); }
 }
 
 async function startImport(event: Event): Promise<void> {
   if (!event.isTrusted) return;
+  const requestedModeEpoch = modeEpoch;
   const grant = chrome.permissions.request({ permissions: ['history'] });
   try {
-    if (!await grant) { toast('未授予历史权限，已有目录和网站仍可使用。'); return; }
+    if (!await grant) { if (homeMode === 'workspace' && requestedModeEpoch === modeEpoch) toast('未授予历史权限，已有目录和网站仍可使用。'); return; }
     await request('PERMISSIONS_SYNC', {});
     const result = await request('IMPORT_START', { range: byId<HTMLSelectElement>('import-range').value, includeSynced: byId<HTMLInputElement>('include-synced').checked }) as { jobId?: string; id?: string; job?: { id: string } };
     activeJobId = result?.jobId || result?.id || result?.job?.id || null;
+    if (homeMode !== 'workspace' || requestedModeEpoch !== modeEpoch) return;
     selectedScope = 'unassigned'; view.k = 0; view.filter = 'unknown'; view.unknownOpen = true;
     await refresh(true); renderImport(); void pumpImport();
   } catch (error) { fail(error); }
 }
 
 async function pumpImport(): Promise<void> {
-  if (importPumping || stopped || document.hidden) return;
+  if (homeMode !== 'workspace' || importPumping || stopped || document.hidden) return;
   importPumping = true;
   try {
     let job = latestJob();
-    while (!stopped && !document.hidden && job?.state === 'running') {
+    // Let an already-started transaction finish, but do not start another batch
+    // in life mode. The persisted job/capture settings are left untouched.
+    while (homeMode === 'workspace' && !stopped && !document.hidden && job?.state === 'running') {
       const response = await request('IMPORT_STEP', { jobId: job.id }) as { job: ImportCheckpoint };
       job = response.job;
       await refresh();
       await new Promise<void>(resolve => setTimeout(resolve, 50));
     }
-  } catch (error) { fail(error); await refresh().catch(() => {}); }
+  } catch (error) { if (homeMode === 'workspace') fail(error); await refresh().catch(() => {}); }
   finally { importPumping = false; }
 }
 
@@ -492,7 +516,7 @@ document.addEventListener('click', event => {
     if (control.dataset[attribute]) { void request(command, { jobId: control.dataset[attribute] }).then(() => refresh(true)).then(() => { renderImport(); void pumpImport(); }).catch(fail); return; }
   }
   switch (control.id) {
-    case 'home': view.k = 0; view.filter = 'all'; renderWorkspace(); window.scrollTo(0, 0); persistView(); break;
+    case 'home': if (homeMode === 'workspace') { view.k = 0; view.filter = 'all'; renderWorkspace(); } window.scrollTo(0, 0); persistView(); break;
     case 'search-trigger': case 'empty-search': openSearch(); break;
     case 'clear-search': searchProjectId = null; searchFilter = 'all'; byId<HTMLInputElement>('search-input').value = ''; renderSearch(); byId('search-input').focus(); break;
     case 'search-more': {
@@ -580,20 +604,140 @@ byId('site-editor').addEventListener('drop', event => {
 });
 byId('site-editor').addEventListener('dragend', () => { siteDragId = null; for (const row of document.querySelectorAll('.drag-over')) row.classList.remove('drag-over'); });
 
-window.addEventListener('pagehide', () => { stopped = true; persistView(); });
-window.addEventListener('pageshow', event => { stopped = false; if (event.persisted) void refresh().then(() => pumpImport()).catch(fail); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { void refresh().then(() => pumpImport()).catch(fail); } });
-window.addEventListener('resize', () => { if (snapshot) renderSites(); });
-subscribeRevision(() => { void refresh().catch(fail); });
+window.addEventListener('pagehide', () => { stopped = true; persistView(); clearTimeout(clockTimer); });
+window.addEventListener('pageshow', event => { stopped = false; if (event.persisted) { if (homeMode === 'life') updateClock(); else void refresh().then(() => pumpImport()).catch(fail); } });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { clearTimeout(clockTimer); return; }
+  if (homeMode === 'life') updateClock();
+  else if (homeMode === 'workspace') void refresh().then(() => pumpImport()).catch(fail);
+});
+window.addEventListener('resize', () => { if (homeMode === 'workspace' && snapshot) renderSites(); });
 
 const nativeExperience = initNativeExperience({ shortcuts: () => snapshot?.shortcuts ?? [], openSettings: () => { renderSettings(); showDialog('settings-dialog'); }, preserve: preservePosition });
 
-void refresh(true).then(() => {
-  window.scrollTo(0, initialScrollY);
-  document.documentElement.dataset.startReady = 'true';
-  const job = latestJob(); if (job?.state === 'running') { activeJobId = job.id; void pumpImport(); }
-}).catch(() => {
-  byId('workspace-content').setAttribute('aria-busy', 'false');
-  const retry = button('重新读取本地目录', { class: 'secondary' }); retry.addEventListener('click', () => { void refresh(true).catch(fail); });
-  byId('workspace-content').replaceChildren(el('section', { class: 'loading-error' }, [el('h1', {}, ['暂时无法打开本地目录']), el('p', {}, ['已有数据没有被清除。可重试读取，或在扩展管理页重新加载。']), retry]));
+function updateClock(): void {
+  clearTimeout(clockTimer);
+  if (homeMode !== 'life' || document.hidden || stopped) return;
+  const now = new Date();
+  const clock = byId<HTMLTimeElement>('life-clock');
+  clock.textContent = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
+  clock.dateTime = now.toISOString();
+  byId('life-date').textContent = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(now);
+  // One visible-page update per minute; no timer runs for a hidden life page.
+  clockTimer = setTimeout(updateClock, 60_000 - (Date.now() % 60_000));
+}
+
+function clearWorkspaceSurface(): void {
+  byId('workspace-content').replaceChildren();
+  byId('history-rail').replaceChildren(); byId('history-rail').hidden = true;
+  for (const id of ['search-results', 'record-details', 'removed-list', 'import-progress', 'site-strip', 'site-editor', 'source-details']) byId(id).replaceChildren();
+  byId<HTMLInputElement>('search-input').value = '';
+  for (const id of ['project-native', 'project-new']) byId(id).removeAttribute('href');
+  byId('record-title').textContent = '会话详情'; byId('project-title').textContent = '项目';
+  currentProject = null; currentRecord = null; snapshot = null;
+  byId('toast').hidden = true; byId('live').textContent = '';
+  clearTimeout(toastTimer);
+}
+
+async function loadWorkspace(epoch: number, scrollY: number): Promise<void> {
+  try {
+    await refresh(true);
+    if (homeMode !== 'workspace' || modeEpoch !== epoch) return;
+    modeLoading = false; window.scrollTo(0, scrollY); persistView();
+    document.documentElement.dataset.startReady = 'true';
+    const job = latestJob(); if (job?.state === 'running') { activeJobId = job.id; void pumpImport(); }
+  } catch {
+    if (homeMode !== 'workspace' || modeEpoch !== epoch) return;
+    modeLoading = false;
+    byId('workspace-content').setAttribute('aria-busy', 'false');
+    const retry = button('重新读取本地目录', { class: 'secondary' });
+    retry.addEventListener('click', () => { void loadWorkspace(modeEpoch, workspaceScrollY); });
+    byId('workspace-content').replaceChildren(el('section', { class: 'loading-error' }, [el('h1', {}, ['暂时无法打开本地目录']), el('p', {}, ['已有数据没有被清除。可以重试，也可以继续使用生活首页。']), retry]));
+    document.documentElement.dataset.startReady = 'true';
+  }
+}
+
+function applyHomeMode(next: HomeMode): void {
+  persistView();
+  ++refreshSequence; // Invalidate responses and queued SafeRendering callbacks.
+  unsubscribeWorkspace?.(); unsubscribeWorkspace = null;
+  for (const dialog of document.querySelectorAll<HTMLDialogElement>('dialog[open]')) dialog.close();
+  byId('workspace-content').hidden = true;
+  byId('life-content').hidden = true;
+  clearWorkspaceSurface(); clearTimeout(clockTimer);
+  homeMode = next; modeLoading = next === 'workspace';
+  document.documentElement.dataset.homeMode = next;
+  document.documentElement.dataset.startReady = next === 'life' ? 'true' : 'false';
+  byId('mode-loading').hidden = true;
+  const target = next === 'workspace' ? '生活' : '工作空间';
+  const control = byId<HTMLButtonElement>('mode-toggle');
+  control.replaceChildren(icon(next === 'workspace' ? 'sun' : 'grid'), el('span', {}, [target]));
+  control.setAttribute('aria-label', `切换到${target}`); control.title = `切换到${target}，新标签页将沿用此模式`;
+  control.disabled = false;
+  byId('home').setAttribute('aria-label', next === 'life' ? '回到生活首页' : '回到工作区首页');
+  const search = byId('search-trigger');
+  search.setAttribute('aria-label', next === 'life' ? '搜索网页，页面非编辑状态按斜杠键' : '搜索所有本地会话，页面非编辑状态按斜杠键');
+  search.querySelector('.search-label')!.textContent = next === 'life' ? '搜索网页' : '搜索会话与项目';
+  byId('mode-status').textContent = ''; byId('mode-save-retry').hidden = true; byId('mode-load-retry').hidden = true;
+  nativeExperience.refresh();
+  window.scrollTo(0, 0);
+  if (next === 'life') { byId('life-content').hidden = false; updateClock(); }
+  else {
+    const content = byId('workspace-content'); content.hidden = false; content.setAttribute('aria-busy', 'true');
+    content.replaceChildren(el('section', { class: 'mode-loading', role: 'status' }, ['正在打开本地记录…']));
+    unsubscribeWorkspace = subscribeRevision(() => { void refresh().catch(fail); });
+    void loadWorkspace(modeEpoch, workspaceScrollY);
+  }
+}
+
+async function chooseHomeMode(next: HomeMode): Promise<void> {
+  const saveSequence = ++modeSaveSequence;
+  if (homeMode !== next) { ++modeEpoch; applyHomeMode(next); }
+  const control = byId('mode-toggle'); control.setAttribute('aria-busy', 'true');
+  byId('mode-status').textContent = ''; byId('mode-save-retry').hidden = true;
+  // Serialize this page's rapid clicks; never write a catalog/settings snapshot.
+  const save = modeSaveQueue.then(() => chrome.storage.local.set({ [HOME_MODE_KEY]: next }));
+  modeSaveQueue = save.catch(() => {});
+  try { await save; }
+  catch {
+    if (saveSequence === modeSaveSequence) {
+      byId('mode-status').textContent = '当前页面已切换，但默认模式未能保存。';
+      byId('mode-save-retry').hidden = false;
+    }
+  } finally { if (saveSequence === modeSaveSequence) control.setAttribute('aria-busy', 'false'); }
+}
+
+async function restoreHomeMode(): Promise<void> {
+  const epoch = ++modeEpoch;
+  byId('mode-load-retry').hidden = true; byId('mode-status').textContent = '';
+  try {
+    const stored = await chrome.storage.local.get(HOME_MODE_KEY);
+    if (epoch !== modeEpoch || stopped) return;
+    applyHomeMode(normalizeHomeMode(stored[HOME_MODE_KEY]));
+  } catch {
+    if (epoch !== modeEpoch || stopped) return;
+    // A failed read is not a missing key. Never reveal a private workspace speculatively.
+    byId('mode-loading').hidden = true;
+    byId('mode-status').textContent = '暂时无法读取首页偏好。可以重新读取，或点击“生活”继续浏览。';
+    byId('mode-load-retry').hidden = false;
+    byId<HTMLButtonElement>('mode-toggle').disabled = false;
+    document.documentElement.dataset.startReady = 'true';
+  }
+}
+
+byId('mode-toggle').addEventListener('click', () => { void chooseHomeMode(homeMode === 'life' ? 'workspace' : 'life'); });
+byId('mode-save-retry').addEventListener('click', () => { if (homeMode) void chooseHomeMode(homeMode); });
+byId('mode-load-retry').addEventListener('click', () => { void restoreHomeMode(); });
+byId('life-search-form').addEventListener('submit', event => {
+  event.preventDefault();
+  if (!event.isTrusted || homeMode !== 'life') return;
+  const text = byId<HTMLInputElement>('life-search-input').value.trim(); if (!text) return;
+  byId('life-search-status').textContent = '';
+  if (!chrome.search?.query) { byId('life-search-status').textContent = '当前浏览器暂不可用页面搜索，请使用地址栏。'; return; }
+  void chrome.search.query({ text, disposition: 'CURRENT_TAB' }).catch(() => {
+    byId('life-search-status').textContent = '搜索暂未打开，输入已保留。请重试或使用地址栏。';
+  });
 });
+
+// No storage.onChanged subscription for HOME_MODE_KEY: an open tab owns its mode.
+void restoreHomeMode();

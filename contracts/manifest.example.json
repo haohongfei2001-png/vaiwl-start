@@ -6,7 +6,9 @@
   "description": "A local new tab workspace for ChatGPT conversations and projects.",
   "incognito": "not_allowed",
   "permissions": [
-    "storage"
+    "storage",
+    "favicon",
+    "search"
   ],
   "optional_permissions": [
     "history",
@@ -25,9 +27,9 @@
     "newtab": "newtab.html"
   },
   "action": {
-    "default_title": "打开 VAIWL Start"
+    "default_title": "\u6253\u5f00 VAIWL Start"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; connect-src 'self' https://chatgpt.com"
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; connect-src 'self' https://chatgpt.com; img-src 'self' data:"
   }
 }

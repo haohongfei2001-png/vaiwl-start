@@ -1,6 +1,7 @@
 import type { WebsiteShortcut } from '../../contracts/free-v1.js';
 import { NATIVE_KEYS, browserFamily, defaultTabTitle, validTitle, normalizeTitle, normalizeIcon, bookmarkPreference, safeBookmarkUrl, bookmarkBars, imageDimensions, type BookmarkNode } from '../domain/native-experience.js';
-import { element as el, byId, button, icon } from './dom.js';
+import { element as el, byId, button } from './dom.js';
+import { createBookmarkShelf, type BookmarkShelfState } from './bookmark-shelf.js';
 
 export async function sanitizeIcon(file: File): Promise<string> {
   if (file.size > 1_048_576) throw Error('图片须小于或等于 1 MB。');
@@ -24,6 +25,9 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
   const language = chrome.i18n.getUILanguage();
   let values: Record<string, unknown> = {}, bars: BookmarkNode[] = [], granted = false, epoch = 0, linked = false;
   let bookmarkError = '', pendingSave = Promise.resolve(), iconEpoch = 0;
+  let shelf: ReturnType<typeof createBookmarkShelf> | undefined;
+  let shelfState: BookmarkShelfState = { expanded: false, path: [] };
+  let bookmarkRevision = 0, bookmarkRenderKey = '';
   const message = (text: string) => { byId('native-status').textContent = text; };
   const save = (patch: Record<string, unknown>): Promise<void> => {
     // Serialize this page's edits; independent keys avoid cross-tab title/icon clobbering.
@@ -45,14 +49,6 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
     const mode = byId<HTMLSelectElement>('tab-icon'); if (document.activeElement !== mode) mode.value = chosen.kind;
     byId('tab-identity-mode').textContent = !normalizeTitle(values['native.title']) && chosen.kind === 'browser' ? '遵从浏览器新标签页风格' : '自定义标签页身份';
   }
-  function bookmarkEntry(node: BookmarkNode): HTMLElement {
-    if (node.url !== undefined) {
-      const url = safeBookmarkUrl(node.url);
-      return url ? el('a', { href: url, class: 'site-link native-bookmark', title: url, 'data-bookmark-id': node.id }, [icon('globe'), el('span', {}, [node.title || url])])
-        : el('span', { class: 'native-bookmark-disabled', title: '请在浏览器原生书签栏中打开此类网址', 'data-bookmark-id': node.id }, [node.title || '不支持的网址']);
-    }
-    return el('details', { class: 'bookmark-folder', 'data-bookmark-id': node.id }, [el('summary', {}, [icon('folder'), node.title || '未命名文件夹']), el('div', { class: 'bookmark-folder-items' }, (node.children?.length ? node.children.map(bookmarkEntry) : [el('span', { class: 'field-help' }, ['空文件夹'])]))]);
-  }
   function render(): void {
     identity();
     const pref = bookmarkPreference(values['native.bookmarks']);
@@ -65,24 +61,31 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
     if ([...destination.options].some(option => option.value === selected)) destination.value = selected;
     destination.hidden = destination.options.length < 2;
     const home = byId('bookmarks-home');
+    const key = JSON.stringify([pref, granted, bookmarkError, bookmarkRevision]);
+    // Catalog refreshes and identity edits must not rebuild a settled bookmark row.
+    if (bookmarkRenderKey === key) return;
+    bookmarkRenderKey = key;
+    const focused = home.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+    const focusId = focused?.id, focusBookmark = focused?.dataset.bookmarkId;
+    shelf?.destroy(); shelf = undefined;
     home.hidden = pref === 'always' || pref === 'hidden';
     if (home.hidden) { home.replaceChildren(); return; }
-    const openFolders = new Set([...home.querySelectorAll<HTMLDetailsElement>('details[open]')].map(node => node.dataset.bookmarkId));
-    const collapsed = values['native.bookmarksCollapsed'] === true;
     if (pref === 'ask') {
       home.replaceChildren(el('div', { class: 'bookmark-prompt' }, [el('span', {}, ['按你的书签栏习惯显示，不重复放置入口。']), button('选择显示方式', { id: 'bookmark-choose', class: 'text-button' })]));
     } else {
-      const content = el('div', { id: 'native-bookmark-content', class: 'native-bookmark-content' }); content.hidden = collapsed;
-      if (!granted) content.append(el('p', { class: 'field-help' }, ['尚未授权读取书签。工作空间和旧快捷项不受影响。']), button('连接浏览器书签', { id: 'bookmark-home-connect', class: 'secondary' }));
+      let content = el('div', { id: 'native-bookmark-content', class: 'native-bookmark-content' });
+      if (!granted) content.append(el('p', { class: 'field-help' }, ['连接书签后，在这里打开常去的网站。']), button('连接浏览器书签', { id: 'bookmark-home-connect', class: 'secondary' }));
       else if (bookmarkError) content.append(el('p', { role: 'status', class: 'field-help' }, [bookmarkError]), button('重新读取', { id: 'bookmark-retry', class: 'text-button' }));
       else if (!bars.length) content.append(el('p', { class: 'field-help' }, ['未找到可读取的原生书签栏。可在浏览器书签管理器中检查。']));
-      else for (const bar of bars) {
-        if (bars.length > 1) content.append(el('small', { class: 'field-help' }, [bar.title || '书签栏']));
-        content.append(el('div', { class: 'native-bookmark-list' }, bar.children?.length ? bar.children.map(bookmarkEntry) : [el('p', { class: 'field-help' }, ['书签栏为空。你在浏览器中添加的书签会自动出现在这里。'])]));
+      else {
+        shelf = createBookmarkShelf(bars, shelfState, state => { shelfState = state; });
+        content = shelf.element;
       }
-      home.replaceChildren(el('div', { class: 'section-line' }, [button('浏览器书签', { id: 'bookmark-toggle', class: 'site-toggle', 'aria-expanded': String(!collapsed), 'aria-controls': content.id }, collapsed ? 'chevron' : 'down'), button('显示设置', { id: 'bookmark-choose', class: 'text-button' })]), content);
-      for (const node of home.querySelectorAll<HTMLDetailsElement>('details')) if (openFolders.has(node.dataset.bookmarkId)) node.open = true;
+      home.replaceChildren(el('div', { class: 'section-line' }, [el('h2', { class: 'bookmark-section-label' }, ['浏览器书签']), button('显示设置', { id: 'bookmark-choose', class: 'text-button' })]), content);
+      shelf?.refreshLayout();
     }
+    const restore = focusId ? document.getElementById(focusId) : focusBookmark ? [...home.querySelectorAll<HTMLElement>('[data-bookmark-id]')].find(node => node.dataset.bookmarkId === focusBookmark && !node.hidden) : null;
+    if (restore && home.contains(restore) && !restore.hidden) restore.focus({ preventScroll: true });
   }
   function listen(): void {
     if (linked || !chrome.bookmarks) return;
@@ -96,8 +99,8 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
       if (allowed) listen(); // Observe mutations before the initial tree read resolves.
       const tree = allowed ? await chrome.bookmarks.getTree() : [];
       if (sequence !== epoch) return;
-      granted = allowed; bars = allowed ? bookmarkBars(tree) : []; bookmarkError = ''; if (allowed) listen();
-    } catch { if (sequence !== epoch) return; bars = []; granted = await chrome.permissions.contains({ permissions: ['bookmarks'] }).catch(() => false); bookmarkError = '书签暂时不可读取；原始书签未被改动。'; }
+      granted = allowed; bars = allowed ? bookmarkBars(tree) : []; bookmarkError = ''; bookmarkRevision++; if (allowed) listen();
+    } catch { if (sequence !== epoch) return; bars = []; granted = await chrome.permissions.contains({ permissions: ['bookmarks'] }).catch(() => false); bookmarkError = '书签暂时不可读取；原始书签未被改动。'; bookmarkRevision++; }
     if (sequence === epoch) options.preserve(render);
   }
   async function migrate(): Promise<void> {
@@ -136,7 +139,6 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
   document.addEventListener('click', event => {
     const target = (event.target as Element)?.closest('button'); if (!target) return;
     if (target.id === 'bookmark-choose') options.openSettings();
-    if (target.id === 'bookmark-toggle') run(save({ 'native.bookmarksCollapsed': values['native.bookmarksCollapsed'] !== true }));
     if (target.id === 'bookmark-retry') run(refreshBookmarks());
     if (target.id === 'bookmark-connect' || target.id === 'bookmark-home-connect') {
       if (!event.isTrusted) return;

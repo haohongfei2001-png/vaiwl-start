@@ -2,6 +2,12 @@
 
 当前合同修订：`2026-11-03-native-experience`。本文件说明验证范围；交付包的 `build.json`、`verification/*.json` 及对应GitHub Actions是实际SHA和最终结果依据，不能引用另一提交的绿色结果。
 
+## 书签与持久生活模式（2026-11-03）
+
+新增书签测宽/空名/层级/失败回退的单元测试，以及 `tests/browser/life-bookmarks.mjs` 实装专项；旧 native-experience 的全隐藏折叠断言按当前单行合同更新，CRUD/迁移/原树不变检查保留。测试通过与截图均绑定实际 `build.json` 的SHA。独立审查发现并修复：同模式保存重试废弃正在加载工作区、空标题书签被网址替代、书签重绘丢焦点、迟到连接提示出现在生活模式。记录在专项报告。
+
+当前执行环境无法连接用户本机浏览器，浏览器官方下载返回非ZIP，未宣称本地实装成功。正式CI继续原有全部回归，增加Chrome系专项和独立Microsoft Edge专项。最终结果以原PR #1同SHA回执为准，不以单元/DOM测试冒充实装、不以CI替代用户日常Profile验收。历史Edge原生标签栏favicon故障独立保留。
+
 ## Project 候选增量采集专项（2026-11-03）
 
 正式原生 Project 裁决仍为 **PROJECT_BLOCKED**；本轮修复可证实的有限采样缺口，不放宽账号/成员来源要求。完整原因和覆盖矩阵见 [专项记录](evidence/project-observation-20261103/REPORT.md)。

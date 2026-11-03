@@ -127,7 +127,7 @@ try {
   await page.reload(); await page.waitForSelector('html[data-start-ready="true"]');
   check('B-offline-catalog', (await command(page, 'SNAPSHOT')).conversations.length === 3 && await page.locator('a[data-record-key]').count() === 3, 'With the actual browser offline, a fresh extension document renders all saved candidates. Live slow-identity behavior remains a separate source gate.');
   const result = { status: 'PASS', buildSha: fingerprint.sha, dirty: fingerprint.dirty, browserVersion, environment: 'isolated Linux browser; synthetic records; production install plus explicit history-permission harness', checks,
-    limitations: ['No real account, ChatGPT source gate, Mac Chrome, Edge or native permission-prompt acceptance.', 'History harness adds history to required permissions only for API testing; production manifest remains storage-only.'] };
+    limitations: ['No real account, ChatGPT source gate, Mac Chrome, Edge or native permission-prompt acceptance.', 'History harness adds history to required permissions only for API testing; production manifest requires storage, favicon and search only.'] };
   await writeFile(join(output, 'browser-validation.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify({ status: result.status, checks: checks.length, browserVersion, buildSha: result.buildSha }));
 } catch (error) {

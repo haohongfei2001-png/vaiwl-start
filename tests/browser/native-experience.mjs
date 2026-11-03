@@ -97,8 +97,8 @@ try {
  },bar);
  await page.locator(`[data-bookmark-id="${ids.last}"]`).waitFor();
  check('N-native-create-and-order',JSON.stringify(await page.locator('.native-bookmark-list > [data-bookmark-id]').evaluateAll(nodes=>nodes.map(n=>n.dataset.bookmarkId)))===JSON.stringify([ids.first,ids.folder,ids.last]),'Real onCreated events preserve native sibling order.');
- await page.locator(`[data-bookmark-id="${ids.folder}"] summary`).click();
- check('N-native-folder-hierarchy',await page.locator(`[data-bookmark-id="${ids.folder}"] [data-bookmark-id="${ids.nested}"]`).isVisible(),'Folder relationships are preserved, not flattened.');
+ await page.locator(`.native-bookmark-list > [data-bookmark-id="${ids.folder}"]`).click();
+ check('N-native-folder-hierarchy',(await page.locator('#bookmark-folder-list').getAttribute('data-parent-id'))===ids.folder&&await page.locator(`#bookmark-folder-list > [data-bookmark-id="${ids.nested}"]`).isVisible(),'Opening the native folder shows its ordered child layer, not a flattened root list.');
  await worker.evaluate(async id=>chrome.bookmarks.update(id,{title:'Renamed bookmark',url:'https://renamed.example/'}),ids.first);
  await page.waitForFunction(id=>document.querySelector(`[data-bookmark-id="${id}"]`)?.textContent.includes('Renamed'),ids.first);
  check('N-native-rename-url',(await page.locator(`[data-bookmark-id="${ids.first}"]`).getAttribute('href'))==='https://renamed.example/','Actual onChanged updates both label and URL.');
@@ -106,15 +106,24 @@ try {
  await page.waitForFunction(id=>document.querySelector('.native-bookmark-list > [data-bookmark-id]')?.dataset.bookmarkId===id,ids.last);
  check('N-native-move-order',true,'Real native move reorders the Start bar.');
  await worker.evaluate(async({id,parentId})=>chrome.bookmarks.move(id,{parentId,index:0}),{id:ids.last,parentId:ids.folder});
- await page.waitForFunction(({f,l})=>!!document.querySelector(`[data-bookmark-id="${f}"] [data-bookmark-id="${l}"]`),{f:ids.folder,l:ids.last});
+ await page.waitForFunction(({f,l})=>document.querySelector('#bookmark-folder-list')?.dataset.parentId===f&&!!document.querySelector(`#bookmark-folder-list > [data-bookmark-id="${l}"]`),{f:ids.folder,l:ids.last});
  check('N-native-move-folder',true,'Moving a bookmark into a native folder updates its parent, not a local copy.');
  await worker.evaluate(id=>chrome.bookmarks.remove(id),ids.nested);await page.waitForFunction(id=>!document.querySelector(`[data-bookmark-id="${id}"]`),ids.nested);
  check('N-native-delete-event',true,'A browser-side deletion removes only its displayed entry.');
+ await page.locator('#bookmark-folder-close').click();
+ // Collapsing now keeps one complete measured row. Populate enough real native
+ // entries to exercise overflow; two short entries would correctly hide the control.
+ await worker.evaluate(async bar=>{for(let n=0;n<30;n++)await chrome.bookmarks.create({parentId:bar,title:`Native overflow bookmark ${n}`,url:`https://overflow.example/${n}`});},bar);
+ await page.waitForFunction(()=>document.querySelectorAll('.native-bookmark-list > [data-bookmark-id]').length===32);
  const treeBeforeUI=await worker.evaluate(()=>chrome.bookmarks.getTree());
- await page.locator('#bookmark-toggle').click();await page.waitForFunction(()=>document.querySelector('#native-bookmark-content').hidden);
+ await page.locator('#bookmark-toggle').click();await page.waitForFunction(()=>document.querySelector('#bookmark-toggle').getAttribute('aria-expanded')==='true');
+ assert.equal(await page.locator('.native-bookmark-list > [data-bookmark-id]:visible').count(),32);
+ await page.locator('#bookmark-toggle').click();await page.waitForFunction(()=>document.querySelector('#bookmark-toggle').getAttribute('aria-expanded')==='false');
  await page.reload();await page.waitForSelector('html[data-native-ready="true"]');
- check('N-bookmark-collapse-persists',await page.locator('#native-bookmark-content').isHidden(),'Collapse persists across reload.');
- assert.deepEqual(await worker.evaluate(()=>chrome.bookmarks.getTree()),treeBeforeUI);check('N-read-never-mutates-tree',true,'Reading, rendering, collapsing and reloading do not write bookmarks.');
+ await page.waitForFunction(()=>document.querySelector('#native-bookmark-content')?.dataset.ready==='true');
+ const collapsed=await page.locator('.native-bookmark-list').evaluate(list=>{const nodes=[...list.querySelectorAll(':scope > [data-bookmark-id]')],visible=nodes.filter(n=>!n.hidden);return{visible:visible.length,all:nodes.length,oneRow:visible.every(n=>Math.abs(n.getBoundingClientRect().top-visible[0].getBoundingClientRect().top)<1),hiddenInert:nodes.filter(n=>n.hidden).every(n=>n.inert)}});
+ check('N-bookmark-collapse-persists',await page.locator('#native-bookmark-content').isVisible()&&collapsed.visible>0&&collapsed.visible<collapsed.all&&collapsed.oneRow&&collapsed.hiddenInert,'Reload defaults to a complete measured bookmark row; overflow remains hidden and unfocusable until expanded.');
+ assert.deepEqual(await worker.evaluate(()=>chrome.bookmarks.getTree()),treeBeforeUI);check('N-read-never-mutates-tree',true,'Reading, folder navigation, expanding, collapsing and reloading do not write bookmarks.');
  await page.locator('#bookmark-toggle').click();
  await command(page,'SHORTCUT_UPSERT',{shortcut:{label:'Already exists',url:'https://renamed.example/'}});
  await command(page,'SHORTCUT_UPSERT',{shortcut:{label:'Legacy new',url:'https://legacy.example/'}});

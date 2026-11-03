@@ -28,11 +28,37 @@ export function safeBookmarkUrl(value: unknown): string | null {
   try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : null; } catch { return null; }
 }
 export interface BookmarkNode { id: string; title: string; url?: string; parentId?: string; index?: number; folderType?: string; unmodifiable?: string; children?: BookmarkNode[] }
+/** Keep native sibling order; malformed entries cannot stop the homepage. */
+export function orderedBookmarks(value: unknown): BookmarkNode[] {
+  return Array.isArray(value) ? value.filter((node): node is BookmarkNode => !!node && typeof node === 'object' && typeof node.id === 'string' && typeof node.title === 'string') : [];
+}
 export function bookmarkBars(tree: BookmarkNode[]): BookmarkNode[] {
-  const roots = tree.flatMap(root => root.children ?? []);
+  const roots = orderedBookmarks(tree).flatMap(root => orderedBookmarks(root.children));
   const typed = roots.filter(node => node.folderType === 'bookmarks-bar' && !node.url);
   // Chromium's legacy permanent bookmark-bar node. Never infer from localized names.
   return typed.length ? typed : roots.filter(node => node.id === '1' && !node.url && !node.folderType);
+}
+/** Pixel widths are measured from the actual chips, font, zoom and container. */
+export function visibleBookmarkCount(widths: number[], available: number, gap: number, toggleWidth: number): number {
+  if (!Number.isFinite(available) || available <= 0 || !widths.length) return 0;
+  const safeWidths = widths.map(width => Number.isFinite(width) ? Math.max(0, width) : available + 1);
+  const spacing = Number.isFinite(gap) ? Math.max(0, gap) : 0;
+  const total = safeWidths.reduce((sum, width) => sum + width, 0) + spacing * (widths.length - 1);
+  if (total <= available + 0.25) return widths.length;
+  const limit = Math.max(0, available - (toggleWidth > 0 ? toggleWidth + spacing : 0));
+  let used = 0, count = 0;
+  for (const width of safeWidths) {
+    const next = used + (count ? spacing : 0) + width;
+    if (next > limit + 0.25) break;
+    used = next; count++;
+  }
+  return count;
+}
+export function bookmarkFaviconUrl(value: unknown, extensionRoot: string): string | null {
+  const url = safeBookmarkUrl(value); if (!url) return null;
+  const favicon = new URL('_favicon/', extensionRoot);
+  favicon.searchParams.set('pageUrl', url); favicon.searchParams.set('size', '32');
+  return favicon.href;
 }
 /** Inspect size/header BEFORE image decode to limit decompression allocations. SVG/GIF rejected. */
 export function imageDimensions(bytes: Uint8Array, mime: string): { width: number; height: number } {

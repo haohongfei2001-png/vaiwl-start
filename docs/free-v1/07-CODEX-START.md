@@ -1,5 +1,8 @@
 # 给 Codex 的正式开发指令
 
+> **新增有效修订：2026-11-03-life-bookmarks。** [第12号合同](12-LIFE-BOOKMARKS-AMENDMENT.md)批准持久生活/工作空间双模式、官方favicon与单行原生书签架；本修订优先于下方历史UI/权限描述。
+
+
 > **当前有效修订：2026-11-02-local-first，用户已批准。** [统一修订合同](10-LOCAL-FIRST-AMENDMENT.md)覆盖原 M0 全局前置门：本地时间组织、Start 主动打开与局部候选项目可独立运行；账号隔离及正式原生归属证明仍保留。`LOCAL_WORKSPACE_READY` 不等于 `FREE_V1_ACCEPTED`。
 
 你接任 **VAIWL Start Free V1** 唯一实现负责人。本轮直接开发已经冻结的产品，不再重新讨论定位、另做UI方案或扩大为浏览器项目。
