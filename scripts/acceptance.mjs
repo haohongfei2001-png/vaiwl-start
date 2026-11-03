@@ -16,6 +16,20 @@ for(const name of [U,B,I,P,N,F,V,R,X,G,LP,HW,PS,LB,AH,'privacy-audit','performan
 // Each full claim names actual predicates. File-level success alone is insufficient.
 // Unit IDs are actual test names, matched by stable prefixes. Visual review is explicit.
 const full={
+ H01:{[U]:['active Project retains every undated member','historical Project stays whole'],[HW]:['HOME-active-all-members','HOME-historical-project-complete']},
+ H02:{[U]:['all-undated and empty real Projects remain reachable'],[HW]:['HOME-global-earlier-collapsed','HOME-all-undated-project-preserved','HOME-empty-project-search','HOME-history-recent-and-global-once']},
+ H03:{[U]:['UNKNOWN and NONE have natural','undated ungrouped stays out of homepage'],[HW]:['HOME-recent-history','HOME-undated-unaffiliated-search-only','HOME-undated-searchable']},
+ H04:{[HW]:['HOME-search-open-enters-recent','HOME-open-preserves-record-and-day']},
+ H05:{[U]:['verified chronological order plus a compatible two-day anchor','35-day lower anchor alone','browser visits and Start opens never masquerade'],[HW]:['HOME-real-relative-time-pipeline']},
+ H06:{[U]:['two compatible historical anchors','relative order with no usable date','multi-list intersections','relative interval respects exact 30-day']},
+ H07:{[U]:['pinning, manual order, partial lists','conflicting native time anchors','expired, revoked, missing-member','future or regressing native time'],[HW]:['HOME-pinned-invalidates-relative-placement','HOME-relative-source-recovers','HOME-partial-invalidates-not-membership']},
+ H08:{[U]:['stronger time or Project evidence relocates','an awaited mutation response cannot','a focused record leaving'],[HW]:['HOME-stronger-time-corrects-once','HOME-pointer-holds-background-render','HOME-pointer-flushes-after-end','HOME-composition-holds-background-render','HOME-composition-flushes-after-end','HOME-drag-holds-background-render','HOME-drag-flushes-after-end'],[V]:['UI-pointer-revision-safe-point','UI-ime-revision-safe-point']},
+ H09:{[HW]:['HOME-one-project-visual-component','HOME-no-technical-categories','HOME-no-banner-or-duplicate-settings'],[LB]:['B-single-settings-entry','L-unconfigured-bookmarks-no-banner'],[V]:['UI-no-confirmation-filter','UI-local-project-candidate-unified']},
+ H10:{[HW]:['HOME-first-use-import','HOME-footer-settings-only'],[I]:['IMPORT-B-checkpoint-resumed-completely'],[LB]:['L-browser-restart-retains-life','L-extension-reload-retains-life','B-real-chromium-favicon-pixels','B-resize-recomputes-count'],[X]:['N-independent-custom-title','N-independent-product-icon','N-native-folder-hierarchy','N-read-never-mutates-tree']},
+ H11:{[U]:['cross-profile, account and observed identity','native display facts survive history merge','new certified arrival creates its own activity'],[HW]:['HOME-same-title-identity-isolation','HOME-conflict-search-preserved']},
+ H12:{[HW]:['HOME-twelve-stores-read-only-projection','HOME-old-new-project-member-conservation','HOME-complete-member-key-inventory'],[G]:['UP-baseline-real-v1-12-populated-stores','UP-same-path-same-id','UP-all-12-stores-byte-equivalent','UP-visibility-preserves-resolution-and-tombstone','UP-restart-preserves-v1']},
+ H13:{[U]:['AH-W history revocation discards','AH-W pause then resume rejects','AH-W history revoke then regrant','AH-W connection revoke then reconnect','automatic history: revoke after a successful conversations write'],[AH]:['AUTO-HISTORY-baseline-regression-confirmed','AUTO-HISTORY-paused-blocks-new-and-existing','AUTO-HISTORY-explicit-import-while-paused','AUTO-HISTORY-paused-restart-no-replay','AUTO-HISTORY-disconnected-with-history-grant','AUTO-HISTORY-history-permission-revoked','AUTO-HISTORY-revocation-restart-no-write']},
+ H14:{[HW]:['HOME-footer-settings-only','HOME-no-banner-or-duplicate-settings'],[B]:['B-install-production-manifest']},
  P01:{[LP]:['LOCAL-P-empty-card-without-workspace','LOCAL-P-members-and-title-separation'],[U]:['native local Project survives repeated visits']},
  P02:{[LP]:['LOCAL-P-rename-keeps-identity','LOCAL-P-reload-stable-project','LOCAL-P-slug-is-not-identity','LOCAL-P-observation-after-restart-no-duplicate']},
  P03:{[LP]:['LOCAL-P-incremental-same-title-different-IDs','LOCAL-P-same-name-distinct-IDs']},
@@ -36,14 +50,14 @@ const full={
  L02:{[U]:['contract correction: 564 synthetic history','confirmed local opening replaces'],[V]:['UI-local-564-history-date-windows','UI-local-history-reload-no-passive-activity']},
  L04:{[U]:['Local-first repeated Start opens'],[N]:['SOURCE-B-same-day-reopen-one-day']},
  L05:{[U]:['Local-first completion without a gesture','M0-D reload, history traversal'],[N]:['SOURCE-B-passive-loading-no-activity','SOURCE-B-refresh-cannot-reuse-gesture']},
- L09:{[U]:['Local-first Project candidate groups','candidate keys separate observation','candidate metadata cannot take precedence'],[V]:['UI-local-project-candidate-distinct']},
+ L09:{[U]:['Local-first Project candidate groups','candidate keys separate observation','candidate metadata cannot take precedence'],[V]:['UI-local-project-candidate-unified']},
  L10:{[U]:['a verified membership update moves','confirmed local opening replaces'],[N]:['SOURCE-B-Start-click-bound-document']},
- L11:{[U]:['history windows retain local-calendar boundaries','history ordering uses visit time'],[V]:['UI-local-pending-30-day-navigation','UI-local-full-history-search','UI-empty-adjacent-segment','UI-pinning-preserves-order'],['performance-validation']:['PERF-newtab-2000-20','PERF-search-feedback']},
+ L11:{[U]:['history windows retain local-calendar boundaries','history ordering uses visit time'],[V]:['UI-local-recent-30-day-navigation','UI-local-full-history-search','UI-empty-adjacent-segment','UI-pinning-preserves-order'],['performance-validation']:['PERF-newtab-2000-20','PERF-search-feedback']},
  L12:{[U]:['Local-first capture disabled at the final transaction','Local-first completion without a gesture'],[P]:['PRIVACY-B-no-false-authority-or-activity']},
  S10:{[R]:['REVIEW-source-status-separation']},
  T01:{[U]:['T01 inherited calendar vectors']},
  T02:{[U]:['T02/T03/T04/T06 projects occupy one segment'],[V]:['UI-old-stays-in-parent','UI-empty-segment-to-known-and-back']},
- T04:{[U]:['T02/T03/T04/T06 projects occupy one segment'],[V]:['UI-undated-independent-entry','UI-undated-search-open-remains-undated']},
+ T04:{[U]:['T02/T03/T04/T06 projects occupy one segment'],[V]:['UI-undated-search-only','UI-undated-search-open-remains-undated']},
  T05:{[V]:['UI-no-top-arrow','UI-empty-adjacent-segment','UI-empty-segment-to-known-and-back']},
  T06:{[U]:['T06 ten equal-millisecond records']},
  T07:{[U]:['T07 a gesture starting after refresh scheduling'],[V]:['UI-pointer-revision-safe-point','UI-ime-revision-safe-point'],[R]:['REVIEW-gesture-stability']},
@@ -91,7 +105,7 @@ const related={
  L03:{[U]:['Local-first Start freezes one document'],[N]:['SOURCE-B-Start-click-bound-document']},
  L06:{[U]:['Local-first repeated Start opens'],[B]:['B-browser-restart-durable-directory'],[N]:['SOURCE-B-close-keeps-local-record']},
  L07:{[U]:['local history projection and search exclude','S07/O13/D07 one of 500 candidates'],[V]:['UI-search-scope-isolation']},
- L08:{[U]:['Local-first Project observation preserves'],[N]:['SOURCE-B-local-project-keeps-UNKNOWN'],[V]:['UI-local-project-candidate-distinct']},
+ L08:{[U]:['Local-first Project observation preserves'],[N]:['SOURCE-B-local-project-keeps-UNKNOWN'],[V]:['UI-local-project-candidate-unified']},
  S03:{[N]:['SOURCE-B-project-SPA-delayed-hydration']},
  S08:{[N]:['SOURCE-B-fixed-metadata-requests-only','SOURCE-B-local-activity-without-native-authority']},
  O01:{[N]:['SOURCE-B-Start-click-bound-document']},
@@ -111,7 +125,7 @@ function predicate(name,id){
 }
 const records=[];
 for(const line of specification.split('\n')){
- const cells=line.split('|').map(s=>s.trim());if(!/^[SOTDULXP]\d{2}$/.test(cells[1]||''))continue;
+ const cells=line.split('|').map(s=>s.trim());if(!/^[SOTDULXPH]\d{2}$/.test(cells[1]||''))continue;
  const [id,action,requirement,layer]=cells.slice(1,5);
  const predicates=Object.entries(full[id]||related[id]||{}).flatMap(([name,ids])=>ids.map(check=>predicate(name,check)));
  const blocked=layer.includes('L')||sourceDependent.has(id)||deviceDependent.has(id);

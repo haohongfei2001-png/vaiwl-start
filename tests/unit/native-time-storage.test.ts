@@ -10,6 +10,7 @@ import { projectCatalog } from '../../src/domain/projection.js';
 import { localDay } from '../../src/domain/time.js';
 import { scopeKey } from '../../src/domain/ids.js';
 import type { AccountScope, EvidenceWitness } from '../../contracts/free-v1.js';
+import { readFileSync } from 'node:fs';
 
 const NOW = '2026-11-03T12:00:00.000Z', AT = '2026-11-01T09:00:00.000Z';
 const PID = 'g-p-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -39,6 +40,25 @@ async function stores(factory: IDBFactory, name: string) {
     intents: await request(db.transaction('openIntents').objectStore('openIntents').getAll()) }; }
   finally { db.close(); }
 }
+test('installed home chronological HTML fixture has three supported members and one complete time order', () => {
+  const older = '2026-10-29T09:00:00.000Z';
+  const markup = readFileSync(new URL('../fixtures/home-native-time.html', import.meta.url), 'utf8')
+    .replace('{{RECENT_ACTIVITY}}', AT).replace('{{OLDER_ACTIVITY}}', older);
+  const dom = new JSDOM(markup, { url: 'https://chatgpt.com/g/g-p-00000000000000000000000000000301/project', pretendToBeVisual: true });
+  Object.defineProperty(dom.window.Element.prototype, 'getClientRects', { value() { return [{ x: 0, y: 0, width: 100, height: 20 }]; } });
+  for (const node of dom.window.document.querySelectorAll('[data-preview]')) Object.defineProperty(node, 'textContent', { get() { throw Error('private preview read'); } });
+  try {
+    const snapshots = observeNativeProjectSnapshots(dom.window.document);
+    assert.equal(snapshots.length, 1);
+    const candidate = snapshots[0]!.candidate;
+    assert.equal(candidate.members.length, 3);
+    assert.deepEqual(candidate.members.map(member => member.nativeTitle), ['排序成员 1', '排序成员 2', '排序成员 3']);
+    assert.deepEqual(candidate.timeOrder?.memberIds, [1, 2, 3].map(n => `94000000-0000-4000-8000-${String(n).padStart(12, '0')}`));
+    assert.equal(candidate.members[0]!.time, undefined);
+    assert.deepEqual(candidate.members.slice(1).map(member => member.time?.at), [AT, older]);
+    assert.ok([...dom.window.document.querySelectorAll('time')].every(node => node.textContent!.trim().length > 0), 'Real-browser time nodes have visible inline content.');
+  } finally { dom.window.close(); }
+});
 test('native time production pipeline preserves explicit timestamp semantics and infers a bounded member without activity writes', async () => {
   const h = fixture(), env = await setup();
   try {

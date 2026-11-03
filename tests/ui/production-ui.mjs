@@ -509,12 +509,19 @@ try {
   await localPage.reload(); await localPage.waitForSelector('html[data-start-ready="true"]');
   await localPage.locator('#scope-selector').selectOption('unassigned');
   const historySection = localPage.locator('.recent-section');
-  await historySection.waitFor();
-  check('UI-local-564-history-date-windows', await historySection.locator('.date-window').count() === 30 && await localPage.locator('#period-older').isVisible()
-    && await localPage.getByRole('heading', { name: '最近', exact: true }).isVisible()
-    && await localPage.locator('[data-date-basis="confirmed-open"]').count() === 0
-    && await localPage.locator('.unknown-section').count() === 0,
-  '564 synthetic local histories occupy their browser-visit calendar windows; the current window has 30 dates, no false active-date section or unstructured pending list.');
+  // Both scopes now use the same recent component. Its existence alone can
+  // match the previous scope while the requested SNAPSHOT is still pending.
+  await historySection.locator('[data-record-key="staging:ui-history-0"]').waitFor();
+  const localHistoryWindow = {
+    dateWindows: await historySection.locator('.date-window').count(),
+    olderVisible: await localPage.locator('#period-older').isVisible(),
+    recentHeadingVisible: await localPage.getByRole('heading', { name: '最近', exact: true }).isVisible(),
+    confirmedOpenSections: await localPage.locator('[data-date-basis="confirmed-open"]').count(),
+    unknownSections: await localPage.locator('.unknown-section').count(),
+  };
+  check('UI-local-564-history-date-windows', localHistoryWindow.dateWindows === 30 && localHistoryWindow.olderVisible
+    && localHistoryWindow.recentHeadingVisible && localHistoryWindow.confirmedOpenSections === 0 && localHistoryWindow.unknownSections === 0,
+  `564 synthetic local histories occupy their browser-visit calendar windows; the current window has 30 dates, no false active-date section or unstructured pending list. ${JSON.stringify(localHistoryWindow)}`);
   const firstHistoryDate = historySection.locator('.date-window').first();
   assert.equal(await firstHistoryDate.locator('.conversation-row').count(), 5);
   await firstHistoryDate.locator('[data-more]').click();

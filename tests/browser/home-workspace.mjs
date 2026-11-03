@@ -249,8 +249,9 @@ try {
   // rather than installing a fabricated inferred date in a database fixture.
   const orderProjectId = 'g-p-00000000000000000000000000000301';
   const orderIds = [1, 2, 3].map(n => `94000000-0000-4000-8000-${String(n).padStart(12, '0')}`);
-  const orderRows = orderIds.map((id, i) => `<li aria-setsize="3" aria-posinset="${i + 1}"><a href="/c/${id}"><div><div>排序成员 ${i + 1}</div></div></a>${i ? `<time aria-label="Last activity" datetime="${new Date(Date.now() - (i === 1 ? 2 : 5) * 86400000).toISOString()}"></time>` : ''}</li>`).join('');
-  const orderMarkup = `<main data-app-shell-main-surface><div data-app-shell-main-content-layout><div role="main"><h1><button><span>推断时间项目</span></button></h1><div role="tablist"><button role="tab" aria-selected="true" id="home-tab" aria-controls="home-panel">Chats</button></div><div role="tabpanel" id="home-panel" aria-labelledby="home-tab"><section><ol aria-label="Last activity, newest first" aria-sort="descending">${orderRows}</ol></section></div></div></div></main>`;
+  const orderMarkup = (await readFile(new URL('../fixtures/home-native-time.html', import.meta.url), 'utf8'))
+    .replace('{{RECENT_ACTIVITY}}', new Date(Date.now() - 2 * 86400000).toISOString())
+    .replace('{{OLDER_ACTIVITY}}', new Date(Date.now() - 5 * 86400000).toISOString());
   const native = await context.newPage(); await native.goto(`https://chatgpt.com/g/${orderProjectId}/project`);
   await native.evaluate(markup => { document.body.innerHTML = markup; }, orderMarkup);
   const observed = await until(async () => { const snap = await command(page, 'SNAPSHOT'); return snap.conversations.some(row => row.conversationId === orderIds[0] && row.localProject?.state === 'observed') && snap.timeOrders?.some(order => order.recordKeys.length === 3 && !order.invalidated) ? snap : null; }, 'Explicit chronological native fixture did not reach the real collector/storage path');
@@ -274,7 +275,7 @@ try {
   const partial = await command(page, 'SNAPSHOT');
   check('HOME-partial-invalidates-not-membership', partial.conversations.filter(row => row.localProject?.projectKey === inferred.localProject.projectKey).length === 3, 'A partial/virtualized list count removes time ordering evidence while retaining all three known project members.');
   const preciseTime = new Date(Date.now() - 86400000).toISOString();
-  await native.locator('#home-panel li').first().evaluate((node, at) => node.insertAdjacentHTML('beforeend', `<time aria-label="Last activity" datetime="${at}"></time>`), preciseTime);
+  await native.locator('#home-panel li').first().evaluate((node, at) => node.insertAdjacentHTML('beforeend', `<time aria-label="Last activity" datetime="${at}">1 day ago</time>`), preciseTime);
   await until(async () => (await command(page, 'SNAPSHOT')).conversations.find(row => row.key === inferred.key)?.displayTimeFacts?.some(fact => fact.at === preciseTime), 'Later explicit native activity time did not reach the existing record');
   await page.reload(); await ready();
   const corrected = (await command(page, 'SNAPSHOT')).conversations.filter(row => row.key === inferred.key);
