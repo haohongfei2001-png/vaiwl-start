@@ -405,7 +405,7 @@ try {
   await ime.detach(); await page.keyboard.press('Escape');
   await page.getByRole('button', { name: '设置', exact: true }).click();
   const sourceDescription = await page.locator('#source-description').textContent();
-  check('UI-source-limit-visible', sourceDescription.includes('本地历史可按日期浏览') && sourceDescription.includes('浏览日期不计活跃') && sourceDescription.includes('账号与原生归属仍待确认') && sourceDescription.includes('连接 ChatGPT 并开启继续收录后'), 'Settings disclose local capabilities and unverified account/native-membership boundaries; disconnected capture does not promise new activity.');
+  check('UI-source-limit-visible', sourceDescription.includes('本地历史可按日期浏览') && sourceDescription.includes('浏览日期不计活跃') && sourceDescription.includes('已有目录和本地项目继续保留') && sourceDescription.includes('完整账号空间认证与全量同步尚未完成') && sourceDescription.includes('连接 ChatGPT 并开启继续收录后'), 'Settings disclose preserved local Project capability separately from incomplete account/Workspace certification and full sync; disconnected capture does not promise new activity.');
   await page.locator('#settings-dialog [data-close]').first().click();
   for (const width of [320, 400, 720, 1000, 1440, 1920]) {
     await page.setViewportSize({ width, height: 1080 });

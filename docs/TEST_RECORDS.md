@@ -10,6 +10,8 @@
 
 真实来源：本轮已实际读取两个指定开源项目固定SHA的元数据相关源码；本机Browser连接返回缺少originating browser context，因此当前已登录ChatGPT样本仍未核验。该真实来源限制独立列为P11，不关闭已实现的本地组织能力。无新增诊断器，不要求用户重导历史或重复完整Free V1验收。
 
+首次同SHA CI `2142631c4dac49e557866a6c23c6b15b086491df` / [41605913182](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41605913182)：166单元、构建/审计/打包、既有浏览器17+8+9+18+25+3及新增Project实装37项通过，Microsoft Edge继承生活/书签job成功。Chromium后续完整UI在 `UI-source-limit-visible` 失败：断开连接说明漏掉完整认证/全量同步未完成的明确声明，旧断言仍要求原单一归属措辞。修复为始终显示“完整账号空间认证与全量同步尚未完成”，同时断言本地项目仍保留、断开后不承诺新增活动。未删除检查；本次仅产品说明/对应断言/本记录变化，最终同SHA完整CI结果见原PR回执。
+
 当前合同修订：`2026-11-03-native-experience`。本文件说明验证范围；交付包的 `build.json`、`verification/*.json` 及对应GitHub Actions是实际SHA和最终结果依据，不能引用另一提交的绿色结果。
 
 ## 书签与持久生活模式（2026-11-03）

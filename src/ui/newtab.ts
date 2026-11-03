@@ -385,9 +385,9 @@ function renderSettings(): void {
     ? '从 Start 主动打开会话并完成目标导航后记录当天活动；刷新、恢复和后台加载不计入。'
     : '连接 ChatGPT 并开启继续收录后，才会记录新的主动打开活动。';
   const projects = capture && snapshot.capabilities.localProjectCandidates === true
-    ? '直接观察到的原生项目与会话关系会稳定保存在本机；完整账号空间认证和全量同步独立处理。'
+    ? '直接观察到的原生项目与会话关系会稳定保存在本机。'
     : '已有目录和本地项目继续保留；重新连接后继续观察原生关系。';
-  byId('source-description').textContent = `本地历史可按日期浏览，浏览日期不计活跃。${activity}${projects}`;
+  byId('source-description').textContent = `本地历史可按日期浏览，浏览日期不计活跃。${activity}${projects}完整账号空间认证与全量同步尚未完成。`;
   byId('source-details').textContent = [snapshot.capabilities.sourceGate, ...(snapshot.capabilities.reasons || []), snapshot.capabilities.sourceStatus?.code || '', `构建：${snapshot.build.sha}`, `版本：${snapshot.build.version}`, `适配器：${snapshot.build.adapterVersion}`].filter(Boolean).join('\n');
 }
 
