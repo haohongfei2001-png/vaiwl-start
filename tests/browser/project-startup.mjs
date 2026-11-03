@@ -179,8 +179,9 @@ try {
   }
   pass('START-in-place-upgrade-retains-local-relations', 'The actual approved 6bc0b29 runtime is replaced at the same isolated path and ID; enabled observation resumes in the existing Project document, preserves its local key and adds the late member without toggling.');
   await start.locator('#settings-trigger').click(); await start.locator('#settings-dialog [data-close]').first().click();
+  if (await start.locator('#earlier-projects-toggle').getAttribute('aria-expanded') !== 'true') await start.locator('#earlier-projects-toggle').click();
   await start.locator('[data-local-project="' + oldKey + '"]').waitFor();
-  pass('START-written-project-reaches-UI', 'The automatically written Project reaches the unmodified Start projection; storage acceptance and visible rendering are checked separately.');
+  pass('START-written-project-reaches-UI', 'The automatically written undated Project reaches the production Start projection through global 更早; storage acceptance and visible rendering are checked separately.');
   assert.ok(requests.every(url => url === sessionURL), 'Only the existing bounded session metadata source is requested');
   assert.deepEqual(errors, []);
   pass('START-no-new-source-or-page-errors', 'No accounts roster, conversation API or third-party source is requested; no production page error was recorded.');

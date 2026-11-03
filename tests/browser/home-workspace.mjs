@@ -160,6 +160,7 @@ try {
   const active = page.locator(`[data-project="${pkey('active')}"]`);
   await active.waitFor();
   check('HOME-five-plus-twelve', await active.locator('.conversation-open:visible').count() === 5, 'Normal project rows begin at five.');
+  await screenshot('workspace-default');
   await active.locator('[data-more]').click();
   check('HOME-more-adds-twelve', await active.locator('.conversation-open:visible').count() === 17, 'First show-more increases five to seventeen.');
   await active.locator('[data-more]').click();
@@ -207,7 +208,7 @@ try {
   await page.locator('#settings-trigger').click();
   const settingsText = await page.locator('#settings-dialog').innerText();
   check('HOME-footer-settings-only', /隐藏新标签页页脚/.test(settingsText) && /自定义 Chrome/.test(settingsText) && /外观/.test(settingsText) && await page.locator('#settings-import').isVisible(), 'Settings explain the supported Chrome footer hide operation and preserve browser appearance access and history import.');
-  await screenshot('settings-footer'); await page.locator('#settings-dialog [data-close]').click();
+  await screenshot('settings-footer'); await page.locator('#settings-dialog').getByRole('button', { name: '关闭设置', exact: true }).click();
 
   // Use the actual Start click and browser navigation completion to promote an undated link.
   await search('只在全历史搜索的会话');

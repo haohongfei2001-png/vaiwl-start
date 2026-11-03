@@ -135,3 +135,9 @@ D1、原目录/活动/书签 PASS 与 D2 NOT_REPRODUCED 按用户本轮最新状
 新增home-workspace实装门进入Chrome/Edge CI，产出完整目录对照、主体隔离、搜索打开、pointer/drag/IME、生产collector时间推断/失效及内容区截图；其数据与ChatGPT页面为明确合成样本，不是用户私人目录。容器尝试下载Playwright浏览器时所得文件不是有效ZIP，因此本地没有执行实装，不把单元绿灯当浏览器通过。最终实际CI、失败修复和制品链接记录于原Draft PR #1。
 
 真实用户Mac原位安装/旧新个人数据对照、Chrome原生页脚开关点击、Edge原生标签栏favicon、新时间适配器当前真实ChatGPT可用性保持独立未验收；不合并main、不发布、不卸载清库。第14号合同、平台来源及独立审查见docs/free-v1/14-HOME-TIME-PROJECTION-AMENDMENT.md和docs/evidence/home-workspace-20261103/。
+
+### 首轮同SHA实装与针对性修正
+
+`ddccfb9` / CI 41638415669：Types/domain/package成功，233/233单元；Chrome基础18、导入恢复9、自动历史P1 14通过。Chrome privacy在旧“无日期缓存会话应在首页可见”的选择器处FAIL；按第14号合同改为准确URL的全历史搜索，保留原3秒和session pending断言。Edge生活/书签44通过；新增home专项在设置dialog两个data-close按钮的模糊定位处FAIL，改为精确关闭设置名称。原失败日志与制品保留。
+
+真实截图发现未配置书签时仍出现“选择显示方式”的重复设置引导，已删除该首页分支，设置里的显示偏好/权限申请保留。最近的interval-only行补按领域rank与精确日期行共同分组，防止可靠相对顺序被UI置底。新增回归；没有放宽安全条件或删除测试。独立浏览器步骤现在在build成功后全部运行，即使较早专项失败也保留其他专项的实际结果，任何失败仍使CI失败。

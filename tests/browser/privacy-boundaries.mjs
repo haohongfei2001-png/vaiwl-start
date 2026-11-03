@@ -93,9 +93,13 @@ try {
   const openedAt = Date.now();
   const freshStart = await context.newPage(); await freshStart.goto(`chrome-extension://${extensionId}/newtab.html`);
   await freshStart.waitForSelector('html[data-start-ready="true"]', { timeout: 3000 });
-  await freshStart.locator(`a[data-record-key="${cachedRecord.key}"]`).first().waitFor({ state: 'visible', timeout: 3000 });
+  // Passive route discovery supplies no activity date. Such records are now
+  // intentionally search-only; searching must remain independent of identity I/O.
+  await freshStart.locator('#search-trigger').click();
+  await freshStart.locator('#search-input').fill(cachedRecord.canonicalUrl);
+  await freshStart.locator(`#search-results a[data-record-key="${cachedRecord.key}"]`).waitFor({ state: 'visible', timeout: 3000 });
   const elapsed = Date.now() - openedAt;
-  check('PRIVACY-B-D11-cache-before-slow-identity', pendingRequests.size > 0 && elapsed < 3000, `A fresh Start page displayed the previously stored entry in ${elapsed}ms while the exact /api/auth/session request was still pending and unanswered (before its 6-second production deadline).`);
+  check('PRIVACY-B-D11-cache-before-slow-identity', pendingRequests.size > 0 && elapsed < 3000, `A fresh Start page found the previously stored undated entry through full-history search in ${elapsed}ms while the exact /api/auth/session request was still pending and unanswered (before its 6-second production deadline).`);
   releaseSession(); holdSession = false;
 
   const target = await worker.evaluate(async url => (await chrome.tabs.query({ url }))[0], CACHED);

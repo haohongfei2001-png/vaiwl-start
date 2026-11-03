@@ -154,9 +154,10 @@ try {
   check('SOURCE-B-passive-loading-no-activity', (await stores(start, ['openDays']))[0].length === 0 && beforeStart.conversations.every(c => c.activity === null), 'Ordinary browser navigation to a conversation, background collector requests, Project SPA navigation and source probes create no OpenDay without a Start user gesture.');
 
   const key = projectCatalog.conversations.find(c => c.canonicalUrl === C).key;
-  await start.bringToFront(); await start.locator(`a[data-record-key="${key}"]`).first().waitFor();
+  await start.bringToFront(); await start.locator('#search-trigger').click(); await start.locator('#search-input').fill(C);
+  const startLink = start.locator(`#search-results a[data-record-key="${key}"]`); await startLink.waitFor();
   const beforeIntents = (await stores(start, ['openIntents']))[0].length;
-  const newPage = context.waitForEvent('page'); await start.locator(`a[data-record-key="${key}"]`).first().click({ button: 'middle' });
+  const newPage = context.waitForEvent('page'); await startLink.click({ button: 'middle' });
   const destination = await newPage; await destination.waitForURL(C);
   const issued = await waitUntil(async () => (await stores(start, ['openIntents']))[0].find(i => i.targetRecordKey === key && i.targetDocumentId !== null && i.state === 'committed'), 'Start completed navigation did not commit local activity');
   const freshTab = await worker.evaluate(async url => (await chrome.tabs.query({ url }))[0], C);
@@ -171,7 +172,7 @@ try {
   check('SOURCE-B-refresh-cannot-reuse-gesture', afterRefresh.state === 'captured' && afterRefresh.openChain.state === 'no-matching-intent' && !afterRefresh.openChain.hasIntent && (await stores(start, ['openIntents']))[0].find(i => i.id === issued.id)?.state === 'committed' && JSON.stringify((await stores(start, ['openDays']))[0]) === JSON.stringify(daysAfterClick) && JSON.stringify(refreshedRecord.activity) === JSON.stringify(openedRecord.activity), 'A real browser reload replaces the target document without adding an OpenDay, updating activity time or recycling the consumed gesture.');
 
   await start.bringToFront();
-  const secondPageEvent = context.waitForEvent('page'); await start.locator(`a[data-record-key="${key}"]`).first().click({ button: 'middle' });
+  const secondPageEvent = context.waitForEvent('page'); await startLink.click({ button: 'middle' });
   const secondDestination = await secondPageEvent; await secondDestination.waitForURL(C);
   const repeated = await waitUntil(async () => (await stores(start, ['openIntents']))[0].find(i => i.id !== issued.id && i.targetRecordKey === key && i.state === 'committed'), 'Second Start opening did not commit');
   const daysAfterSecond = (await stores(start, ['openDays']))[0];

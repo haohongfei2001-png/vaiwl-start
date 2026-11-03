@@ -111,8 +111,11 @@ try {
   const firstRecord = first.conversations.find(c => c.conversationId === cid(1));
   check('PROJECT-B-late-hydration-single-member', firstRecord.nativeTitle === 'Synthetic conversation 1' && localProjectFor(first, firstRecord).nativeTitle === PROJECT_TITLE && !first.conversations.some(c => c.conversationId === cid(99)), 'After the old sampling window expires, an empty Project subsequently gains one member; only its bounded title leaf and true panel link are collected.');
   check('PROJECT-B-title-separation', firstRecord.nativeTitle !== localProjectFor(first, firstRecord).nativeTitle && firstRecord.membership.state === 'UNKNOWN', 'Project name and conversation title remain distinct fields and the locally observed relation remains UNKNOWN.');
-  await start.locator('.local-observed-project').getByRole('heading', { name: PROJECT_TITLE, exact: true }).waitFor();
-  check('PROJECT-B-Start-candidate-card', await start.locator(`.local-observed-project a[data-record-key="${firstRecord.key}"]`).count() === 1 && await start.locator('[data-project]').count() === 0, 'The actual Start page renders the observed name and member once in a marked locally observed native Project card; it does not present a certified Project card.');
+  await start.locator('#earlier-projects-toggle').click();
+  const observedCard = start.locator(`[data-local-project="${firstRecord.localProject.projectKey}"]`);
+  await observedCard.getByRole('heading', { name: PROJECT_TITLE, exact: true }).waitFor();
+  await observedCard.locator('[data-older]').click();
+  check('PROJECT-B-Start-candidate-card', await observedCard.locator(`a[data-record-key="${firstRecord.key}"]`).isVisible() && await start.locator('[data-project]').count() === 1 && first.projects.length === 0 && firstRecord.membership.state === 'UNKNOWN', 'The actual Start page uses the common project component: its undated project is reachable through global 更早, and its undated member through project 更早. The underlying relation remains UNKNOWN with no certified Project asset.');
 
   await native.locator('ol').evaluate((node, markup) => { node.insertAdjacentHTML('beforeend', markup); }, memberMarkup(2, 'Same conversation title') + memberMarkup(3, 'Same conversation title'));
   const added = await snapshotWith(start, s => [1, 2, 3].every(n => s.conversations.some(c => c.conversationId === cid(n) && localProjectFor(s, c)?.projectId === P)), 'Member additions were not collected incrementally');

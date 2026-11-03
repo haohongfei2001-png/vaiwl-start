@@ -44,21 +44,37 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm test
       - run: npm run build
+        id: extension_build
       - run: npm run test:browser
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/import-recovery.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/automatic-history.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/privacy-boundaries.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/source-recovery.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/project-observation.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/native-project-grouping.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/home-workspace.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/project-startup.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/storage-faults.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/ui/production-ui.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/native-experience.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/life-bookmarks.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/upgrade-native.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: node tests/browser/performance.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
       - run: npm run audit
       - run: node scripts/acceptance.mjs
       - run: npm run package
@@ -110,11 +126,14 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps msedge
       - run: npm run build
+        id: extension_build
       - run: node tests/browser/life-bookmarks.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
         env:
           VAIWL_BROWSER_CHANNEL: msedge
           VAIWL_TEST_BROWSER_FAMILY: edge
       - run: node tests/browser/home-workspace.mjs
+        if: ${{ !cancelled() && steps.extension_build.outcome == 'success' }}
         env:
           VAIWL_BROWSER_CHANNEL: msedge
           VAIWL_TEST_BROWSER_FAMILY: edge

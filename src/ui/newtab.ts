@@ -7,6 +7,7 @@ import { createFreeViewSession, freeWindowFor, dayLabel } from '../domain/time.j
 import { request, subscribeRevision } from '../shared/client.js';
 import { element as el, icon, byId, button, isEditing, allowedWebsiteUrl, dateTime } from './dom.js';
 import { readView, saveView, SafeRendering, preservePosition } from './view-state.js';
+import { recentDisplayGroups, type RecentDisplayGroup } from './recent-groups.js';
 
 interface UISnapshot extends CatalogSnapshot {
   capabilities: { chatgpt: boolean; history: boolean; captureEnabled?: boolean; startNavigationActivity?: boolean; localProjectCandidates?: boolean; sourceGate: string; reasons?: string[]; sourceStatus?: { code: string; profileId: string } | null };
@@ -166,11 +167,11 @@ function dateLabel(date: string): string {
   return `${year !== Number(dayLabel(calendar.T).slice(0, 4)) ? `${year} 年 ` : ''}${month} 月 ${day} 日`;
 }
 
-function recentSection(groups: Array<{ date: string | null; records: ConversationRecord[] }>): HTMLElement {
+function recentSection(groups: RecentDisplayGroup[]): HTMLElement {
   return el('section', { class: 'date-section recent-section', 'aria-label': '最近' }, [
     el('div', { class: 'section-heading' }, [el('h2', {}, ['最近'])]),
     el('div', { class: 'date-grid' }, groups.map(group => {
-      const key = `recent:${selectedScope}:${group.date || `period-${view.k}`}`;
+      const key = `recent:${selectedScope}:${group.key}`;
       const focusIndex = renderingFocusRecordKey ? group.records.findIndex(record => record.key === renderingFocusRecordKey) : -1;
       if (focusIndex >= (view.limits[key] || 5)) view.limits[key] = 5 + Math.ceil((focusIndex + 1 - 5) / 12) * 12;
       const limit = view.limits[key] || 5;
@@ -227,12 +228,7 @@ function renderWorkspace(): void {
   const showRecent = view.filter === 'all' || view.filter === 'none';
   const cards: DisplayCard[] = [...projection.projects, ...projection.localProjects.map(localCard), ...projection.candidateProjects.map(candidateCard)].sort(cardOrder);
   if (showProjects && cards.length) content.append(el('section', { 'aria-label': '项目' }, [el('div', { class: 'project-grid' }, cards.map(projectCard))]));
-  const dates = new Map<string, ConversationRecord[]>();
-  for (const group of [...projection.dates, ...projection.pendingDates]) {
-    const rows = dates.get(group.date) || []; rows.push(...group.records); dates.set(group.date, rows);
-  }
-  const groups: Array<{ date: string | null; records: ConversationRecord[] }> = [...dates.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([date, rows]) => ({ date, records: rows.sort((a, b) => projection.displayTimes.get(a.key)!.rank - projection.displayTimes.get(b.key)!.rank) }));
-  if (projection.segmentOnly.length) groups.push({ date: null, records: projection.segmentOnly });
+  const groups = recentDisplayGroups([...projection.dates, ...projection.pendingDates], projection.segmentOnly, projection.displayTimes, view.k);
   if (showRecent && groups.length) content.append(recentSection(groups));
   const hasRecords = showProjects && cards.length || showRecent && groups.length;
   if (!hasRecords) content.append(el('section', { class: 'period-empty' }, [el('h2', {}, ['这一段没有记录']), el('p', {}, ['可以继续向前翻，也可以搜索全部会话和项目。']), button('搜索全部', { class: 'text-button', id: 'empty-search' }, 'search')]));
@@ -597,7 +593,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('resize', () => { if (homeMode === 'workspace' && snapshot) renderSites(); });
 
-const nativeExperience = initNativeExperience({ shortcuts: () => snapshot?.shortcuts ?? [], openSettings: () => { renderSettings(); showDialog('settings-dialog'); }, preserve: preservePosition });
+const nativeExperience = initNativeExperience({ shortcuts: () => snapshot?.shortcuts ?? [], preserve: preservePosition });
 
 function updateClock(): void {
   clearTimeout(clockTimer);

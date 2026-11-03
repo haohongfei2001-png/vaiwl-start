@@ -20,7 +20,7 @@ export async function sanitizeIcon(file: File): Promise<string> {
   } finally { bitmap.close(); }
 }
 
-export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut[]; openSettings: () => void; preserve: (fn: () => void) => void }): { refresh: () => void } {
+export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut[]; preserve: (fn: () => void) => void }): { refresh: () => void } {
   const browser = browserFamily(navigator.userAgent);
   const language = chrome.i18n.getUILanguage();
   let values: Record<string, unknown> = {}, bars: BookmarkNode[] = [], granted = false, epoch = 0, linked = false;
@@ -68,22 +68,19 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
     const focused = home.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
     const focusId = focused?.id, focusBookmark = focused?.dataset.bookmarkId;
     shelf?.destroy(); shelf = undefined;
-    home.hidden = pref === 'always' || pref === 'hidden';
+    // Preferences and permission requests belong to the one settings dialog.
+    // An unconfigured/disconnected shelf must not become a permanent homepage banner.
+    home.hidden = pref !== 'newtab' || !granted;
     if (home.hidden) { home.replaceChildren(); return; }
-    if (pref === 'ask') {
-      home.replaceChildren(el('div', { class: 'bookmark-prompt' }, [el('span', {}, ['按你的书签栏习惯显示，不重复放置入口。']), button('选择显示方式', { id: 'bookmark-choose', class: 'text-button' })]));
-    } else {
-      let content = el('div', { id: 'native-bookmark-content', class: 'native-bookmark-content' });
-      if (!granted) content.append(el('p', { class: 'field-help' }, ['连接书签后，在这里打开常去的网站。']), button('连接浏览器书签', { id: 'bookmark-home-connect', class: 'secondary' }));
-      else if (bookmarkError) content.append(el('p', { role: 'status', class: 'field-help' }, [bookmarkError]), button('重新读取', { id: 'bookmark-retry', class: 'text-button' }));
-      else if (!bars.length) content.append(el('p', { class: 'field-help' }, ['未找到可读取的原生书签栏。可在浏览器书签管理器中检查。']));
-      else {
-        shelf = createBookmarkShelf(bars, shelfState, state => { shelfState = state; });
-        content = shelf.element;
-      }
-      home.replaceChildren(el('div', { class: 'section-line' }, [el('h2', { class: 'bookmark-section-label' }, ['浏览器书签'])]), content);
-      shelf?.refreshLayout();
+    let content = el('div', { id: 'native-bookmark-content', class: 'native-bookmark-content' });
+    if (bookmarkError) content.append(el('p', { role: 'status', class: 'field-help' }, [bookmarkError]), button('重新读取', { id: 'bookmark-retry', class: 'text-button' }));
+    else if (!bars.length) content.append(el('p', { class: 'field-help' }, ['未找到可读取的原生书签栏。可在浏览器书签管理器中检查。']));
+    else {
+      shelf = createBookmarkShelf(bars, shelfState, state => { shelfState = state; });
+      content = shelf.element;
     }
+    home.replaceChildren(el('div', { class: 'section-line' }, [el('h2', { class: 'bookmark-section-label' }, ['浏览器书签'])]), content);
+    shelf?.refreshLayout();
     const restore = focusId ? document.getElementById(focusId) : focusBookmark ? [...home.querySelectorAll<HTMLElement>('[data-bookmark-id]')].find(node => node.dataset.bookmarkId === focusBookmark && !node.hidden) : null;
     if (restore && home.contains(restore) && !restore.hidden) restore.focus({ preventScroll: true });
   }
@@ -138,12 +135,11 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
   byId('bookmark-preference').addEventListener('change', event => { run(save({ 'native.bookmarks': bookmarkPreference((event.target as HTMLSelectElement).value) })); });
   document.addEventListener('click', event => {
     const target = (event.target as Element)?.closest('button'); if (!target) return;
-    if (target.id === 'bookmark-choose') options.openSettings();
     if (target.id === 'bookmark-retry') run(refreshBookmarks());
-    if (target.id === 'bookmark-connect' || target.id === 'bookmark-home-connect') {
+    if (target.id === 'bookmark-connect') {
       if (!event.isTrusted) return;
       // Call request in the original gesture turn, before any asynchronous work.
-      const operation = granted && target.id === 'bookmark-connect' ? chrome.permissions.remove({ permissions: ['bookmarks'] }) : chrome.permissions.request({ permissions: ['bookmarks'] });
+      const operation = granted ? chrome.permissions.remove({ permissions: ['bookmarks'] }) : chrome.permissions.request({ permissions: ['bookmarks'] });
       run(operation.then(async accepted => { if (!accepted) message('未获得书签权限，工作空间及旧快捷项不受影响。'); await refreshBookmarks(); }));
     }
     if (target.id === 'bookmark-migrate' && event.isTrusted && confirm('将旧快捷网站加入所选原生书签栏？已有网址会跳过；原有书签和旧快捷项都不会删除。')) run(migrate());

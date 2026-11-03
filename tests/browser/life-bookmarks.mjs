@@ -143,6 +143,7 @@ try {
   const catalogBefore = await raw(page);
   await page.screenshot({ path: join(out, 'workspace.png'), fullPage: true });
   const realTabsBefore = (await worker.evaluate(() => chrome.tabs.query({}))).map(tab => tab.id).sort();
+  check('L-unconfigured-bookmarks-no-banner', await page.locator('#bookmarks-home').isHidden() && await page.locator('#bookmark-choose,#bookmark-home-connect').count() === 0, 'An unconfigured workspace does not display a bookmark setup banner or duplicate settings button.');
   await mode(page, 'life'); await noWork(page);
   assert.deepEqual((await worker.evaluate(() => chrome.tabs.query({}))).map(tab => tab.id).sort(), realTabsBefore);
   pass('L-switch-does-not-close-real-tabs', 'Mode switch leaves all actual browser tab IDs unchanged.');
@@ -168,7 +169,7 @@ try {
   await page.evaluate(() => { chrome.permissions.request = async requested => { window.__deniedPermissions = requested; return false; }; });
   await page.locator('#bookmark-connect').click(); await page.waitForFunction(() => document.querySelector('#native-status').textContent.includes('未获得'));
   await page.locator('#settings-dialog [data-close]').first().click(); await noWork(page);
-  check('L-denied-bookmarks-nonblocking', await page.evaluate(() => window.__deniedPermissions?.permissions?.join() === 'bookmarks'), 'Injected consent refusal leaves life mode/search usable and requests only bookmarks. Native consent UI is not claimed.');
+  check('L-denied-bookmarks-nonblocking', await page.evaluate(() => window.__deniedPermissions?.permissions?.join() === 'bookmarks') && await page.locator('#bookmarks-home').isHidden() && await page.locator('#bookmark-choose,#bookmark-home-connect').count() === 0, 'Injected consent refusal leaves life mode/search usable and requests only bookmarks. Native consent UI is not claimed.');
   await context.close(); context = null;
   await launch(productionProfile); page = await nativePage(); await noWork(page);
   check('L-browser-restart-retains-life', await page.evaluate(() => !window.__startCommands.includes('SNAPSHOT')), 'Full isolated browser-process restart retains life and avoids workspace projection.');
@@ -288,6 +289,7 @@ try {
   }, origin);
   await page.waitForFunction(count => document.querySelectorAll('.native-bookmark-list > [data-bookmark-id]').length === count, fixture.ids.length);
   assert.deepEqual(await page.locator('.native-bookmark-list > [data-bookmark-id]').evaluateAll(nodes => nodes.map(n => n.dataset.bookmarkId)), fixture.ids);
+  check('B-single-settings-entry', await page.locator('#bookmarks-home #bookmark-choose,#bookmarks-home #bookmark-home-connect').count() === 0 && !/显示设置|选择显示方式/.test(await page.locator('#bookmarks-home').textContent()), 'The configured bookmark shelf contains no settings or setup shortcut in either mode.');
   pass('B-native-order-and-labels', 'Actual browser bookmark creation order, mixed folders and original labels are kept exactly; no URL sort or flattening.');
   const blue = page.locator(`.native-bookmark-list > [data-bookmark-id="${fixture.known}"] .bookmark-favicon img`);
   await blue.waitFor();

@@ -32,10 +32,10 @@ try {
  check('N-install-minimal-permissions',!grants.permissions.includes('bookmarks')&&!grants.permissions.includes('history'),'Unmodified production manifest installs with no bookmarks/history grants.');
  check('N-default-browser-title',/^(New Tab|New tab|新标签页|新建标签页|新分頁|新增索引標籤)$/.test(await page.title()),await page.title());
  check('N-default-browser-favicon',(await page.locator('#tab-favicon').getAttribute('href')).endsWith(`tab-${expectedFamily}.svg`),'Local approximate Chrome style, not browser-internal resource.');
- check('N-default-one-time-choice',await page.locator('#bookmark-choose').isVisible()&&await page.locator('.native-bookmark').count()===0,'No speculative auto-detection and no duplicated bookmark links before choice.');
- await page.locator('#settings-trigger').click();await pref(page,'always');check('N-always-bar-hidden',await page.locator('#bookmarks-home').isHidden(),'Always visible native bar suppresses Start duplicate.');
+ check('N-default-choice-settings-only',await page.locator('#bookmarks-home').isHidden()&&await page.locator('#bookmark-choose,#bookmark-home-connect').count()===0&&await page.locator('.native-bookmark').count()===0,'An unconfigured homepage has no bookmark prompt or second settings entry; display preference remains available through the gear.');
+ await page.locator('#settings-trigger').click();check('N-choice-controls-reachable',await page.locator('#bookmark-preference').isVisible()&&await page.locator('#bookmark-connect').isVisible(),'The single settings dialog retains both the one-time preference and real permission action.');await pref(page,'always');check('N-always-bar-hidden',await page.locator('#bookmarks-home').isHidden(),'Always visible native bar suppresses Start duplicate.');
  await pref(page,'hidden');check('N-user-hidden-bar',await page.locator('#bookmarks-home').isHidden(),'User-hidden bar is respected.');
- await pref(page,'newtab');check('N-no-permission-help',await page.locator('#bookmark-home-connect').count()===1&&await page.locator('#bookmarks-home').isVisible(),'New-tab-only preference retains a recoverable permission entry.');
+ await pref(page,'newtab');check('N-no-permission-settings-only',await page.locator('#bookmark-home-connect').count()===0&&await page.locator('#bookmarks-home').isHidden()&&await page.locator('#bookmark-connect').isVisible(),'Unapproved bookmarks stay off the homepage; the settings permission action remains reachable.');
  // Deliberate prompt-result injection tests the UI refusal branch only. It does NOT prove a native permission dialog.
  await page.evaluate(()=>{chrome.permissions.request=async value=>{window.__requested=value;return false}});
  await page.locator('#bookmark-connect').click();await page.waitForFunction(()=>document.querySelector('#native-status').textContent.includes('未获得'));
@@ -88,6 +88,7 @@ try {
  await page.locator('#settings-trigger').click();await pref(page,'newtab');await page.locator('#settings-dialog [data-close]').first().click();
  const originalTree=await worker.evaluate(()=>chrome.bookmarks.getTree());
  const bar=await worker.evaluate(async()=>{const roots=(await chrome.bookmarks.getTree())[0].children;return (roots.find(n=>n.folderType==='bookmarks-bar')||roots.find(n=>n.id==='1')).id});
+ check('N-no-duplicate-bookmark-settings',await page.locator('#bookmarks-home #bookmark-choose,#bookmarks-home #bookmark-home-connect').count()===0&&!/显示设置|选择显示方式/.test(await page.locator('#bookmarks-home').textContent()),'The configured shelf has only its native bookmark content and disclosure controls.');
  check('N-empty-native-bookmark-bar',await page.locator('#native-bookmark-content').textContent().then(t=>t.includes('书签栏为空')),'Actual new browser profile starts with an empty native bar.');
  const ids=await worker.evaluate(async bar=>{
   const first=await chrome.bookmarks.create({parentId:bar,title:'First bookmark',url:'https://first.example/'});
