@@ -85,6 +85,7 @@ async function launch(currentProfile, useFeeder = true) {
 async function close() { if (context) { await context.close(); context = null; } }
 async function capture(enabled) {
   await page.locator('#settings-trigger').click();
+  await page.locator('#settings-nav-workspace').click();
   await page.locator('#capture-enabled').setChecked(enabled);
   await until(async () => (await command('SNAPSHOT')).settings.captureEnabled === enabled, 'Production capture setting did not settle');
   await page.locator('#settings-dialog [data-close]').first().click();
@@ -117,11 +118,13 @@ async function importAll() {
   // The enabled positive control has already left first-use. Use the persistent
   // settings entry, which opens the same production import dialog for existing catalogs.
   await page.locator('#settings-trigger').click();
+  await page.locator('#settings-nav-workspace').click();
   await page.locator('#settings-import').click();
   await page.locator('#import-range').selectOption('all');
   await page.locator('#confirm-import').click();
   const completed = await until(async () => (await command('SNAPSHOT')).importJobs.find(job => !previous.has(job.id) && job.state === 'complete'), 'Explicit UI import did not complete');
   await page.locator('#import-dialog [data-close]').first().click();
+  await page.locator('#settings-dialog [data-close]').first().click();
   return completed;
 }
 

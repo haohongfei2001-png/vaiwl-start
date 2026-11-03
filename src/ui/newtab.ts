@@ -1,4 +1,5 @@
 import { initNativeExperience } from './native-experience.js';
+import { initSettingsView, type SettingsPage } from './settings-view.js';
 import { HOME_MODE_KEY, homeMode as normalizeHomeMode, type HomeMode } from '../domain/home-mode.js';
 import type { ConversationRecord, WebsiteShortcut, OpenDisposition, ImportCheckpoint } from '../../contracts/free-v1.js';
 import type { CatalogSnapshot } from '../storage/repository.js';
@@ -47,6 +48,17 @@ let mutationRunning = false;
 let importPumping = false;
 let stopped = false;
 let activeJobId: string | null = null;
+let settingsWorkspaceAccess = false;
+let unsubscribeSettings: (() => void) | null = null;
+let settingsVisit = 0;
+let permissionSequence = 0;
+let connectionBusy = false;
+let importStarting = false;
+let timezoneDirty = false;
+let timezoneEdit = 0;
+function workspaceAccessAllowed(): boolean {
+  return homeMode === 'workspace' || homeMode === 'life' && settingsWorkspaceAccess;
+}
 const openingRecords = new Set<string>();
 const filterLabels: Record<Filter, string> = { all: '全部', project: '项目', none: '最近' };
 
@@ -66,48 +78,72 @@ function toast(message: string, action?: { label: string; run: () => void }): vo
 }
 function showDialog(id: string): void {
   const dialog = byId<HTMLDialogElement>(id);
-  for (const other of document.querySelectorAll<HTMLDialogElement>('dialog[open]')) if (other !== dialog) other.close();
+  const fromSettings = byId<HTMLDialogElement>('settings-dialog').open && ['sites-dialog', 'import-dialog', 'removed-dialog', 'clear-dialog'].includes(id);
+  if (!fromSettings) for (const other of document.querySelectorAll<HTMLDialogElement>('dialog[open]')) if (other !== dialog) other.close();
   if (!dialog.open) dialog.showModal();
 }
 function closeDialog(id: string): void { byId<HTMLDialogElement>(id).close(); }
-function fail(error: unknown): void {
-  if (homeMode !== 'workspace') return;
+function fail(error: unknown, target?: string): void {
+  if (!workspaceAccessAllowed()) return;
   const code = error instanceof Error ? error.message : String(error);
   const message = /REVISION|revision|CONFLICT/i.test(code) ? '记录已被另一标签页更新，请重试这次操作。'
     : /PERMISSION|permission/i.test(code) ? '还没有对应权限。可以在设置中重新连接。'
     : /QUOTA|quota/i.test(code) ? '本地存储空间不足。已有记录仍保留，请释放空间后重试。'
     : /URL|url|VALID/i.test(code) ? '请检查填写的信息，网址须为不带账号密码的 HTTP(S) 地址。'
-    : '这次操作没有完成，已有数据仍然保留。请重试或重新加载扩展。';
-  toast(message);
+    : '未能确认操作结果，请重新打开设置检查后重试。';
+  if (settingsView.isOpen || byId<HTMLDialogElement>('import-dialog').open) {
+    const location = target || (byId<HTMLDialogElement>('clear-dialog').open ? 'clear-status' : byId<HTMLDialogElement>('import-dialog').open ? 'import-status' : 'settings-status');
+    settingsView.showStatus(message, true, location);
+  } else toast(message);
 }
 
 async function refresh(immediate = false): Promise<void> {
-  if (homeMode !== 'workspace' || stopped) return;
+  if (!workspaceAccessAllowed() || stopped) return;
   const sequence = ++refreshSequence;
   const requestedModeEpoch = modeEpoch;
   const requestedScope = selectedScope;
   const received = await request('SNAPSHOT', selectedScope ? { selectedScope } : {}) as UISnapshot;
-  if (sequence !== refreshSequence || stopped || requestedScope !== selectedScope || homeMode !== 'workspace' || requestedModeEpoch !== modeEpoch) return;
+  if (sequence !== refreshSequence || stopped || requestedScope !== selectedScope || !workspaceAccessAllowed() || requestedModeEpoch !== modeEpoch) return;
   const apply = () => {
-    if (homeMode !== 'workspace' || requestedModeEpoch !== modeEpoch || sequence !== refreshSequence || requestedScope !== selectedScope || snapshot && received.revision < snapshot.revision) return;
+    if (!workspaceAccessAllowed() || requestedModeEpoch !== modeEpoch || sequence !== refreshSequence || requestedScope !== selectedScope || snapshot && received.revision < snapshot.revision) return;
     snapshot = received;
     if (!selectedScope || (selectedScope !== 'unassigned' && !received.scopes.some(scope => scope.key === selectedScope))) selectedScope = received.settings.selectedScope || 'unassigned';
-    view.selectedScope = selectedScope;
-    if (!calendar || calendar.Z !== received.settings.libraryTimeZone) calendar = createFreeViewSession({ now: new Date().toISOString(), timeZone: received.settings.libraryTimeZone });
+    if (homeMode === 'workspace') {
+      view.selectedScope = selectedScope;
+      if (!calendar || calendar.Z !== received.settings.libraryTimeZone) calendar = createFreeViewSession({ now: new Date().toISOString(), timeZone: received.settings.libraryTimeZone });
+    }
     render();
   };
-  safe.render(apply, immediate || !snapshot);
+  // A life page can explicitly visit workspace settings without constructing its home.
+  if (homeMode === 'life') apply(); else safe.render(apply, immediate || !snapshot);
 }
 
-async function mutate(command: string, payload: Record<string, unknown>, after?: () => void): Promise<void> {
-  if (!snapshot || mutationRunning) return;
+async function mutate(command: string, payload: Record<string, unknown>, after?: () => void): Promise<boolean> {
+  if (!snapshot || !workspaceAccessAllowed()) return false;
+  if (mutationRunning) { if (settingsView.isOpen) settingsView.showStatus('正在保存，请稍候。'); renderSettings(); return false; }
   mutationRunning = true;
+  const origin = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const saveControls = [...document.querySelectorAll<HTMLButtonElement>('#timezone-form button[type=submit],#confirm-clear,#save-site')];
+  for (const control of saveControls) { control.disabled = true; control.setAttribute('aria-busy', 'true'); }
   try {
     await request(command, { ...payload, expectedRevision: snapshot.revision });
-    await refresh(true);
-    if (homeMode === 'workspace') after?.();
-  } catch (error) { fail(error); await refresh().catch(() => {}); }
-  finally { mutationRunning = false; }
+    let refreshed = true;
+    try { await refresh(true); } catch { refreshed = false; }
+    if (workspaceAccessAllowed()) {
+      after?.();
+      if (!refreshed) {
+        const notice = '操作已完成，页面暂未刷新。请重新打开设置。';
+        if (settingsView.isOpen) settingsView.showStatus(notice, true); else toast(notice);
+      }
+    }
+    return true;
+  } catch (error) { fail(error); await refresh().catch(() => {}); return false; }
+  finally {
+    mutationRunning = false;
+    for (const control of saveControls) { control.disabled = false; control.removeAttribute('aria-busy'); }
+    if (settingsView.isOpen) renderSettings();
+    if (origin?.isConnected && origin.getClientRects().length && document.activeElement === document.body) origin.focus({ preventScroll: true });
+  }
 }
 
 function title(record: ConversationRecord): string { return record.nativeTitle || '未命名会话'; }
@@ -317,21 +353,29 @@ function openSearch(project?: DisplayProject): void {
 }
 
 function renderSettings(): void {
-  if (homeMode !== 'workspace' || !snapshot) return;
-  byId('connection-label').textContent = snapshot.capabilities.chatgpt ? '已授予 ChatGPT 观察权限。可撤销连接，已有目录继续保留。' : '只在你点击连接后申请 ChatGPT 观察权限。';
-  byId('connect-chatgpt').textContent = snapshot.capabilities.chatgpt ? '断开' : '连接';
-  byId<HTMLInputElement>('capture-enabled').checked = snapshot.settings.captureEnabled;
+  if (!workspaceAccessAllowed() || !snapshot) return;
+  const connected = snapshot.capabilities.chatgpt;
+  byId('connection-label').textContent = connected ? '已连接' : '未连接';
+  const connect = byId<HTMLButtonElement>('connect-chatgpt');
+  connect.textContent = connectionBusy ? '请稍候…' : connected ? '断开' : '连接';
+  connect.disabled = connectionBusy;
+  byId('chatgpt-permission-note').hidden = connected;
+  const capture = byId<HTMLInputElement>('capture-enabled');
+  capture.checked = connected && snapshot.settings.captureEnabled;
+  capture.disabled = !connected || mutationRunning || connectionBusy;
+  byId('capture-label').textContent = !connected ? '请先连接 ChatGPT' : capture.checked ? '正在收录' : '已暂停';
   byId('revoke-history').hidden = !snapshot.capabilities.history;
-  byId<HTMLInputElement>('time-zone').value = snapshot.settings.libraryTimeZone;
-  const capture = snapshot.capabilities.chatgpt && snapshot.settings.captureEnabled;
-  const activity = capture && snapshot.capabilities.startNavigationActivity === true
-    ? '从 Start 主动打开会话并完成目标导航后记录当天活动；刷新、恢复和后台加载不计入。'
-    : '连接 ChatGPT 并开启继续收录后，才会记录新的主动打开活动。';
-  const projects = capture && snapshot.capabilities.localProjectCandidates === true
-    ? '直接观察到的原生项目与会话关系会稳定保存在本机。'
-    : '已有目录和本地项目继续保留；重新连接后继续观察原生关系。';
-  byId('source-description').textContent = `本地历史可按日期浏览，浏览日期不计活跃。${activity}${projects}完整账号空间认证与全量同步尚未完成。`;
+  byId('history-permission-row').hidden = !snapshot.capabilities.history;
+  const job = latestJob();
+  byId('history-import-label').textContent = !job ? '找回浏览过的会话' : importStateLabel(job.state);
+  byId('settings-import').textContent = job && ['running', 'paused', 'partial', 'permission-revoked'].includes(job.state) ? '查看' : '导入';
+  if (!timezoneDirty) byId<HTMLInputElement>('time-zone').value = snapshot.settings.libraryTimeZone;
+  byId('removed-count').textContent = snapshot.tombstones.length ? `${snapshot.tombstones.length} 条会话` : '没有已移除的会话';
+  byId('source-description').textContent = '会话目录与已观察到的项目关系保存在本机。完整账号空间认证和全量同步尚未完成。';
   byId('source-details').textContent = [snapshot.capabilities.sourceGate, ...(snapshot.capabilities.reasons || []), snapshot.capabilities.sourceStatus?.code || '', `构建：${snapshot.build.sha}`, `版本：${snapshot.build.version}`, `适配器：${snapshot.build.adapterVersion}`].filter(Boolean).join('\n');
+}
+function importStateLabel(state: string): string {
+  return ({ running: '正在导入', paused: '已暂停', partial: '部分完成', complete: '已完成', cancelled: '已取消', 'permission-revoked': '历史权限已撤销' } as Record<string, string>)[state] || '导入记录';
 }
 
 function latestJob(): CatalogSnapshot['importJobs'][number] | undefined {
@@ -342,16 +386,21 @@ function latestJob(): CatalogSnapshot['importJobs'][number] | undefined {
 function renderImport(): void {
   const area = byId('import-progress'); const job = latestJob();
   byId('confirm-import').textContent = snapshot?.capabilities.history ? '开始导入' : '授权并导入';
+  byId<HTMLButtonElement>('confirm-import').disabled = importStarting || job?.state === 'running';
   if (!job) { area.replaceChildren(); return; }
-  const states: Record<string, string> = { running: '正在导入', paused: '导入已暂停', partial: '已导入可读取部分', complete: '已完成所选范围', cancelled: '导入已取消', 'permission-revoked': '历史权限已撤销' };
+  const stateLabel = importStateLabel(job.state);
   const start = new Date(job.startTimeMs).toLocaleDateString('zh-CN');
   const end = new Date(job.endTimeMs).toLocaleDateString('zh-CN');
-  area.replaceChildren(el('strong', {}, [states[job.state] || '导入状态']), el('p', {}, [`${start}—${end} · 已保留 ${job.acceptedCandidates} 条候选`]), el('p', {}, ['范围仅限浏览器当前可读取的历史；不代表完整账号历史。']));
-  if (job.state === 'partial' || job.saturatedIntervals.length) area.append(el('p', {}, ['部分时间段无法完整读取，已保留现有结果；不会把覆盖不完整标记为全量。']));
+  area.replaceChildren(el('strong', {}, [stateLabel]), el('p', {}, [`${start}—${end} · 已保留 ${job.acceptedCandidates} 条记录`]));
+  if (job.state === 'partial' || job.saturatedIntervals.length) area.append(el('p', {}, ['部分历史未能读取，已导入的会话已保留。']));
   const actions = el('div', { class: 'import-actions' });
   if (job.state === 'running') actions.append(button('暂停', { class: 'secondary', 'data-import-pause': job.id }));
   if (['paused', 'partial', 'cancelled'].includes(job.state) && (job.pendingIntervals.length || job.pendingCandidates?.length)) actions.append(button('继续', { class: 'secondary', 'data-import-resume': job.id }));
   if (job.state === 'running' || job.state === 'paused') actions.append(button('取消本次导入', { class: 'text-button', 'data-import-cancel': job.id }));
+  if (job.state === 'permission-revoked') {
+    area.append(el('p', {}, ['已导入的会话仍保留。授权后可继续剩余部分。']));
+    if (job.pendingIntervals.length || job.pendingCandidates?.length) actions.append(button('授权并继续', { class: 'secondary', 'data-import-authorize-resume': job.id }));
+  }
   area.append(actions);
 }
 
@@ -363,8 +412,11 @@ function renderRemoved(): void {
 }
 
 function render(): void {
-  if (homeMode !== 'workspace') return;
-  renderSites(); nativeExperience.refresh(); renderWorkspace();
+  if (!workspaceAccessAllowed()) return;
+  if (homeMode === 'workspace') { renderSites(); renderWorkspace(); }
+  else if (byId<HTMLDialogElement>('sites-dialog').open) renderSites();
+  nativeExperience.refresh();
+  if (settingsView.isOpen) renderSettings();
   if (byId<HTMLDialogElement>('sites-dialog').open) renderEditor();
   if (byId<HTMLDialogElement>('search-dialog').open) renderSearch();
   if (byId<HTMLDialogElement>('import-dialog').open) renderImport();
@@ -404,48 +456,73 @@ async function dispatchOpen(recordKey: string, disposition: OpenDisposition, ges
   finally { openingRecords.delete(recordKey); }
 }
 
-async function connectChatGPT(event: Event, disconnect = false): Promise<void> {
-  if (!event.isTrusted) return;
+async function connectChatGPT(event: Event, disconnect = false, enableCapture = false): Promise<void> {
+  if (!event.isTrusted || connectionBusy || !workspaceAccessAllowed()) return;
+  connectionBusy = true; settingsView.showStatus('', false, 'workspace-status');
   const requestedModeEpoch = modeEpoch;
   // Call request/remove synchronously in the actual user gesture, before any await.
   const permission: chrome.permissions.Permissions = { permissions: ['scripting', 'webNavigation'], origins: ['https://chatgpt.com/*'] };
-  const grant = disconnect ? chrome.permissions.remove(permission) : chrome.permissions.request(permission);
   try {
-    const accepted = await grant; await request('PERMISSIONS_SYNC', !disconnect && accepted ? { enableCapture: true } : {}); await refresh(true);
+    const grant = disconnect ? chrome.permissions.remove(permission) : chrome.permissions.request(permission);
+    renderSettings();
+    const accepted = await grant; await request('PERMISSIONS_SYNC', !disconnect && accepted && enableCapture ? { enableCapture: true } : {}); await refresh(true);
     if (byId<HTMLDialogElement>('settings-dialog').open) renderSettings();
-    if (homeMode === 'workspace' && requestedModeEpoch === modeEpoch) toast(disconnect ? '已断开 ChatGPT，已有目录继续保留。' : accepted ? '已连接 ChatGPT，可以继续收录并记录主动打开。' : '未授予连接权限，网站与本地目录仍可使用。');
-  } catch (error) { fail(error); }
+    if (workspaceAccessAllowed() && requestedModeEpoch === modeEpoch) {
+      const text = !accepted ? '未更改连接权限。' : disconnect ? '已断开，已有会话仍保留。' : '已连接。';
+      if (settingsView.isOpen) settingsView.showStatus(text, !accepted, 'workspace-status'); else toast(text);
+    }
+  } catch (error) { fail(error, 'workspace-status'); }
+  finally { connectionBusy = false; renderSettings(); }
 }
 
 async function startImport(event: Event): Promise<void> {
-  if (!event.isTrusted) return;
+  if (!event.isTrusted || importStarting || !workspaceAccessAllowed()) return;
+  importStarting = true; settingsView.showStatus('', false, 'import-status'); renderImport();
   const requestedModeEpoch = modeEpoch;
-  const grant = chrome.permissions.request({ permissions: ['history'] });
   try {
-    if (!await grant) { if (homeMode === 'workspace' && requestedModeEpoch === modeEpoch) toast('未授予历史权限，已有目录和网站仍可使用。'); return; }
+    const grant = chrome.permissions.request({ permissions: ['history'] });
+    if (!await grant) { if (workspaceAccessAllowed() && requestedModeEpoch === modeEpoch) settingsView.showStatus('未授予历史权限，尚未开始导入。', true, 'import-status'); return; }
     await request('PERMISSIONS_SYNC', {});
     const result = await request('IMPORT_START', { range: byId<HTMLSelectElement>('import-range').value, includeSynced: byId<HTMLInputElement>('include-synced').checked }) as { jobId?: string; id?: string; job?: { id: string } };
     activeJobId = result?.jobId || result?.id || result?.job?.id || null;
-    if (homeMode !== 'workspace' || requestedModeEpoch !== modeEpoch) return;
-    selectedScope = 'unassigned'; view.k = 0; view.filter = 'all';
+    if (!workspaceAccessAllowed() || requestedModeEpoch !== modeEpoch) return;
+    selectedScope = 'unassigned';
+    if (homeMode === 'workspace') { view.k = 0; view.filter = 'all'; }
     await refresh(true); renderImport(); void pumpImport();
-  } catch (error) { fail(error); }
+  } catch (error) { fail(error, 'import-status'); }
+  finally { importStarting = false; if (workspaceAccessAllowed()) renderImport(); }
+}
+
+async function resumeImportPermission(event: Event, jobId: string): Promise<void> {
+  if (!event.isTrusted || importStarting || !workspaceAccessAllowed()) return;
+  importStarting = true;
+  const epoch = modeEpoch;
+  try {
+    const grant = chrome.permissions.request({ permissions: ['history'] });
+    renderImport();
+    if (!await grant) { settingsView.showStatus('未授予历史权限，导入进度已保留。', true, 'import-status'); return; }
+    await request('PERMISSIONS_SYNC', {});
+    await request('IMPORT_RESUME', { jobId });
+    if (!workspaceAccessAllowed() || epoch !== modeEpoch) return;
+    activeJobId = jobId; await refresh(true); void pumpImport();
+  } catch (error) { fail(error, 'import-status'); }
+  finally { importStarting = false; if (workspaceAccessAllowed()) renderImport(); }
 }
 
 async function pumpImport(): Promise<void> {
-  if (homeMode !== 'workspace' || importPumping || stopped || document.hidden) return;
+  if (!workspaceAccessAllowed() || importPumping || stopped || document.hidden) return;
   importPumping = true;
   try {
     let job = latestJob();
     // Let an already-started transaction finish, but do not start another batch
     // in life mode. The persisted job/capture settings are left untouched.
-    while (homeMode === 'workspace' && !stopped && !document.hidden && job?.state === 'running') {
+    while (workspaceAccessAllowed() && !stopped && !document.hidden && job?.state === 'running') {
       const response = await request('IMPORT_STEP', { jobId: job.id }) as { job: ImportCheckpoint };
       job = response.job;
       await refresh();
       await new Promise<void>(resolve => setTimeout(resolve, 50));
     }
-  } catch (error) { if (homeMode === 'workspace') fail(error); await refresh().catch(() => {}); }
+  } catch (error) { if (workspaceAccessAllowed()) fail(error); await refresh().catch(() => {}); }
   finally { importPumping = false; }
 }
 
@@ -491,6 +568,7 @@ document.addEventListener('click', event => {
   if (control.dataset.pinSite) { const site = snapshot?.shortcuts.find(item => item.id === control.dataset.pinSite); if (site) void mutate('SHORTCUT_UPSERT', { shortcut: { id: site.id, label: site.label, url: site.url, pinned: !site.pinned } }); return; }
   if (control.dataset.moveSite) { const id = control.dataset.moveSite; const index = sortedSites().findIndex(site => site.id === id); void mutate('SHORTCUT_MOVE', { id, toIndex: index + Number(control.dataset.direction) }); return; }
   if (control.dataset.removeSite) { void mutate('SHORTCUT_REMOVE', { id: control.dataset.removeSite }, () => { if (siteEditingId === control.dataset.removeSite) clearSiteForm(); }); return; }
+  if (control.dataset.importAuthorizeResume) { void resumeImportPermission(event, control.dataset.importAuthorizeResume); return; }
   if (control.dataset.restoreRecord) { void mutate('RECORD_RESTORE', { recordKey: control.dataset.restoreRecord }, () => toast('已恢复到本地目录。')); return; }
   for (const [attribute, command] of [['importPause', 'IMPORT_PAUSE'], ['importResume', 'IMPORT_RESUME'], ['importCancel', 'IMPORT_CANCEL']] as const) {
     if (control.dataset[attribute]) { void request(command, { jobId: control.dataset[attribute] }).then(() => refresh(true)).then(() => { renderImport(); void pumpImport(); }).catch(fail); return; }
@@ -506,8 +584,8 @@ document.addEventListener('click', event => {
       firstNew?.focus({ preventScroll: true }); firstNew?.scrollIntoView({ block: 'nearest' }); break;
     }
     case 'project-find': if (currentProject) openSearch(currentProject); break;
-    case 'settings-trigger': renderSettings(); showDialog('settings-dialog'); break;
-    case 'legacy-sites': case 'site-edit': case 'add-site': renderEditor(); showDialog('sites-dialog'); if (control.id === 'add-site') byId('site-name').focus(); break;
+    case 'settings-trigger': showDialog('settings-dialog'); settingsView.open(); break;
+    case 'legacy-sites': case 'site-edit': case 'add-site': renderSites(); renderEditor(); showDialog('sites-dialog'); if (control.id === 'add-site') byId('site-name').focus(); break;
     case 'cancel-site-edit': clearSiteForm(); break;
     case 'site-toggle': if (snapshot) void mutate('SETTINGS_UPDATE', { patch: { shortcutSectionCollapsed: !snapshot.settings.shortcutSectionCollapsed } }); break;
     case 'show-more-sites': allSitesVisible = !allSitesVisible; renderSites(); break;
@@ -517,12 +595,12 @@ document.addEventListener('click', event => {
     case 'settings-import': case 'first-import': renderImport(); showDialog('import-dialog'); break;
     case 'confirm-import': void startImport(event); break;
     case 'connect-chatgpt': void connectChatGPT(event, !!snapshot?.capabilities.chatgpt); break;
-    case 'first-connect': void connectChatGPT(event); break;
+    case 'first-connect': void connectChatGPT(event, false, true); break;
     case 'revoke-history': if (event.isTrusted) void chrome.permissions.remove({ permissions: ['history'] }).then(() => request('PERMISSIONS_SYNC', {})).then(() => refresh(true)).then(renderSettings).catch(fail); break;
     case 'remove-record': if (currentRecord) { const key = currentRecord.key; void mutate('RECORD_REMOVE', { recordKey: key }, () => { closeDialog('record-dialog'); toast('已从首页移除，ChatGPT 会话仍然保留。', { label: '恢复收录', run: () => { void mutate('RECORD_RESTORE', { recordKey: key }); } }); }); } break;
     case 'show-removed': renderRemoved(); showDialog('removed-dialog'); break;
-    case 'clear-local': showDialog('clear-dialog'); break;
-    case 'confirm-clear': if (event.isTrusted) void mutate('CLEAR_LOCAL', {}, () => { selectedScope = 'unassigned'; view.k = 0; view.filter = 'all'; view.older = []; view.limits = {}; closeDialog('clear-dialog'); toast('Start 本地数据已清除。'); void refresh(true); }); break;
+    case 'clear-local': settingsView.showStatus('', false, 'clear-status'); showDialog('clear-dialog'); byId<HTMLButtonElement>('clear-dialog').querySelector<HTMLButtonElement>('.dialog-foot [data-close]')?.focus(); break;
+    case 'confirm-clear': if (event.isTrusted) void mutate('CLEAR_LOCAL', {}, () => { selectedScope = 'unassigned'; timezoneDirty = false; view.k = 0; view.filter = 'all'; view.older = []; view.limits = {}; closeDialog('clear-dialog'); settingsView.showStatus('Start 本地数据已清除。'); void refresh(true).catch(() => {}); }); break;
   }
 });
 
@@ -532,7 +610,9 @@ document.addEventListener('change', event => {
   if (target.id === 'scope-selector') { selectedScope = target.value; view.k = 0; view.older = []; searchProjectKey = null; void refresh(true).catch(fail); persistView(); }
   if (target.id === 'capture-enabled' && target instanceof HTMLInputElement) {
     if (target.checked && !snapshot?.capabilities.chatgpt) { target.checked = false; toast('请先连接 ChatGPT，再开启继续收录。'); return; }
-    void mutate('SETTINGS_UPDATE', { patch: { captureEnabled: target.checked } });
+    const enabled = target.checked; target.disabled = true;
+    settingsView.showStatus('', false, 'workspace-status');
+    void mutate('SETTINGS_UPDATE', { patch: { captureEnabled: enabled } }, () => settingsView.showStatus(enabled ? '已开启收录。' : '已暂停，已有会话仍保留。', false, 'workspace-status'));
   }
 });
 byId('search-input').addEventListener('input', renderSearch);
@@ -543,11 +623,16 @@ byId<HTMLFormElement>('add-site-form').addEventListener('submit', event => {
   const shortcut = siteEditingId ? { id: siteEditingId, label, url } : { label, url };
   void mutate('SHORTCUT_UPSERT', { shortcut }, clearSiteForm);
 });
+byId('time-zone').addEventListener('input', () => { timezoneDirty = true; timezoneEdit++; settingsView.showStatus('', false, 'timezone-status'); });
 byId<HTMLFormElement>('timezone-form').addEventListener('submit', event => {
   event.preventDefault(); const libraryTimeZone = byId<HTMLInputElement>('time-zone').value.trim();
   try { new Intl.DateTimeFormat('en', { timeZone: libraryTimeZone }).format(); }
-  catch { toast('请输入有效的 IANA 时区，例如 Asia/Shanghai。'); return; }
-  void mutate('SETTINGS_UPDATE', { patch: { libraryTimeZone } }, () => { toast('时区已更新，历史活动日记录保持不变。'); renderSettings(); });
+  catch { settingsView.showStatus('请输入有效时区，如 Asia/Shanghai。', true, 'timezone-status'); return; }
+  const edit = timezoneEdit;
+  void mutate('SETTINGS_UPDATE', { patch: { libraryTimeZone } }, () => {
+    if (edit === timezoneEdit) timezoneDirty = false;
+    settingsView.showStatus('时区已保存。', false, 'timezone-status'); renderSettings();
+  });
 });
 
 document.addEventListener('keydown', event => {
@@ -585,15 +670,60 @@ byId('site-editor').addEventListener('drop', event => {
 byId('site-editor').addEventListener('dragend', () => { siteDragId = null; for (const row of document.querySelectorAll('.drag-over')) row.classList.remove('drag-over'); });
 
 window.addEventListener('pagehide', () => { stopped = true; persistView(); clearTimeout(clockTimer); });
-window.addEventListener('pageshow', event => { stopped = false; if (event.persisted) { if (homeMode === 'life') updateClock(); else void refresh().then(() => pumpImport()).catch(fail); } });
+window.addEventListener('pageshow', event => { stopped = false; if (event.persisted) { if (homeMode === 'life') updateClock(); if (workspaceAccessAllowed()) void refresh().then(() => pumpImport()).catch(fail); } });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { clearTimeout(clockTimer); return; }
   if (homeMode === 'life') updateClock();
-  else if (homeMode === 'workspace') void refresh().then(() => pumpImport()).catch(fail);
+  if (workspaceAccessAllowed()) void refresh().then(() => pumpImport()).catch(fail);
 });
 window.addEventListener('resize', () => { if (homeMode === 'workspace' && snapshot) renderSites(); });
 
-const nativeExperience = initNativeExperience({ shortcuts: () => snapshot?.shortcuts ?? [], preserve: preservePosition });
+const nativeExperience = initNativeExperience({ shortcuts: () => snapshot?.shortcuts ?? [], legacyAvailable: () => workspaceAccessAllowed() && settingsView.isOpen && settingsView.page === 'legacy' && !!snapshot, preserve: preservePosition });
+
+function releaseSettingsWorkspace(): void {
+  settingsWorkspaceAccess = false; unsubscribeSettings?.(); unsubscribeSettings = null;
+  if (homeMode === 'life') {
+    ++refreshSequence;
+    clearWorkspaceSurface();
+    byId('source-description').textContent = '';
+    byId('legacy-count').textContent = '';
+    byId('removed-count').textContent = '';
+  }
+}
+async function visitSettings(page: SettingsPage): Promise<void> {
+  const sequence = ++settingsVisit;
+  const needsWorkspace = ['workspace', 'data', 'legacy', 'diagnostics'].includes(page);
+  if (!needsWorkspace) { releaseSettingsWorkspace(); settingsView.setLoading(false); nativeExperience.refresh(); return; }
+  // Only this explicit navigation can grant the life page a temporary settings view.
+  settingsWorkspaceAccess = homeMode === 'life';
+  if (homeMode === 'life' && !unsubscribeSettings) unsubscribeSettings = subscribeRevision(() => { if (settingsView.needsWorkspace) void refresh().catch(fail); });
+  settingsView.setLoading(!snapshot);
+  try {
+    await refresh(true);
+    if (sequence !== settingsVisit || !settingsView.isOpen || !settingsView.needsWorkspace) return;
+    if (!snapshot) { settingsView.loadFailed(); return; }
+    settingsView.setLoading(false); renderSettings(); nativeExperience.refresh();
+    if (page === 'workspace' && latestJob()?.state === 'running') void pumpImport();
+  } catch { if (sequence === settingsVisit && settingsView.isOpen) settingsView.loadFailed(); }
+}
+const settingsView = initSettingsView({ onNavigate: page => { void visitSettings(page); }, onClose: () => { ++settingsVisit; releaseSettingsWorkspace(); } });
+
+async function syncSettingsPermissions(): Promise<void> {
+  if (!workspaceAccessAllowed() || !snapshot || !settingsView.isOpen) return;
+  const sequence = ++permissionSequence;
+  try {
+    const [chatgpt, history] = await Promise.all([
+      chrome.permissions.contains({ permissions: ['scripting', 'webNavigation'], origins: ['https://chatgpt.com/*'] }),
+      chrome.permissions.contains({ permissions: ['history'] }),
+    ]);
+    if (sequence !== permissionSequence || !workspaceAccessAllowed() || !snapshot) return;
+    snapshot.capabilities.chatgpt = chatgpt; snapshot.capabilities.history = history; renderSettings();
+    if (byId<HTMLDialogElement>('import-dialog').open) renderImport();
+  } catch (error) { fail(error); }
+}
+chrome.permissions.onAdded.addListener(() => { void syncSettingsPermissions(); });
+chrome.permissions.onRemoved.addListener(() => { void syncSettingsPermissions(); });
+window.addEventListener('focus', () => { if (settingsView.isOpen) { void syncSettingsPermissions(); if (workspaceAccessAllowed()) void refresh().catch(fail); } });
 
 function updateClock(): void {
   clearTimeout(clockTimer);
@@ -641,6 +771,7 @@ function applyHomeMode(next: HomeMode): void {
   persistView();
   ++refreshSequence; // Invalidate responses and queued SafeRendering callbacks.
   unsubscribeWorkspace?.(); unsubscribeWorkspace = null;
+  releaseSettingsWorkspace();
   for (const dialog of document.querySelectorAll<HTMLDialogElement>('dialog[open]')) dialog.close();
   byId('workspace-content').hidden = true;
   byId('life-content').hidden = true;

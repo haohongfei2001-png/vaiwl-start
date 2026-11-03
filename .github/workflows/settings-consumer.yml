@@ -1,0 +1,101 @@
+name: Settings consumer redesign
+on:
+  push:
+    branches: [design/settings-consumer-redesign-20261103]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: settings-consumer-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  domain-and-package:
+    name: Settings types, unit, privacy and package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: settings-package-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+  chrome:
+    name: Installed Chrome settings and regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get install -y fonts-noto-cjk
+      - run: npm run build
+        id: build
+      - run: node tests/browser/settings-consumer.mjs
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      - name: Existing installed extension, privacy and UI regressions
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          failed=0
+          for test in extension import-recovery automatic-history privacy-boundaries source-recovery project-observation native-project-grouping project-startup storage-faults native-experience life-bookmarks upgrade-native home-workspace; do
+            node "tests/browser/$test.mjs" || failed=1
+          done
+          node tests/ui/production-ui.mjs || failed=1
+          exit "$failed"
+      - run: npm run audit
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: settings-chrome-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+  edge:
+    name: Installed Microsoft Edge settings and regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VAIWL_BROWSER_CHANNEL: msedge
+      VAIWL_TEST_BROWSER_FAMILY: edge
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps msedge
+      - run: sudo apt-get install -y fonts-noto-cjk
+      - run: npm run build
+        id: build
+      - run: node tests/browser/settings-consumer.mjs
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      - name: Existing Edge life, bookmark and home regressions
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          failed=0
+          node tests/browser/life-bookmarks.mjs || failed=1
+          node tests/browser/home-workspace.mjs || failed=1
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: settings-edge-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error

@@ -206,9 +206,13 @@ try {
   await page.locator('#scope-selector').selectOption('unassigned');
 
   await page.locator('#settings-trigger').click();
+  await page.locator('#settings-nav-about').click();
+  await page.locator('#browser-footer-help').locator('..').locator('summary').click();
   const settingsText = await page.locator('#settings-dialog').innerText();
+  await screenshot('settings-footer');
+  await page.locator('#settings-nav-workspace').click();
   check('HOME-footer-settings-only', /隐藏新标签页页脚/.test(settingsText) && /自定义 Chrome/.test(settingsText) && /外观/.test(settingsText) && await page.locator('#settings-import').isVisible(), 'Settings explain the supported Chrome footer hide operation and preserve browser appearance access and history import.');
-  await screenshot('settings-footer'); await page.locator('#settings-dialog').getByRole('button', { name: '关闭设置', exact: true }).click();
+  await page.locator('#settings-dialog').getByRole('button', { name: '关闭设置', exact: true }).click();
 
   // Use the actual Start click and browser navigation completion to promote an undated link.
   await search('只在全历史搜索的会话');

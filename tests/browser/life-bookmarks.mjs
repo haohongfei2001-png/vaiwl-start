@@ -83,6 +83,8 @@ async function noWork(page) {
   assert.ok(await page.locator('#life-content').isVisible());
   assert.ok(await page.locator('#workspace-content').isHidden());
   assert.equal(await page.locator('.project:visible,.candidate-project:visible,.conversation-row:visible,.pending-dates:visible,.history-rail:visible,dialog[open] [data-record-key]:visible').count(), 0);
+  assert.equal(await page.locator('[data-record-key]').count(), 0, 'Work records must be removed from the DOM, not merely hidden.');
+  assert.ok(await page.evaluate(() => !/Private synthetic work conversation|Preserved old shortcut/.test(document.body.textContent)), 'No private fixture title or legacy shortcut text may remain in the life DOM.');
 }
 async function raw(page) {
   return page.evaluate(async () => {
@@ -111,6 +113,7 @@ async function seed(page) {
 }
 async function preference(page, value) {
   if (!await page.locator('#settings-dialog').isVisible()) await page.locator('#settings-trigger').click();
+  await page.locator('#settings-nav-newtab').click();
   await page.locator('#bookmark-preference').selectOption(value);
   await waitForAsync(page, async value => (await chrome.storage.local.get('native.bookmarks'))['native.bookmarks'] === value, value);
   await page.locator('#settings-dialog [data-close]').first().click();
@@ -151,6 +154,18 @@ try {
   await page.screenshot({ path: join(out, 'life.png'), fullPage: true });
   const lifePeer = await nativePage(); await noWork(lifePeer);
   check('L-new-native-tab-inherits-life-no-projection', await lifePeer.evaluate(() => !window.__startCommands.includes('SNAPSHOT')), 'New native tab reads only home preferences/bookmarks; no catalog SNAPSHOT IPC.');
+  await lifePeer.locator('#settings-trigger').click();
+  assert.ok(await lifePeer.locator('#settings-panel-newtab').isVisible());
+  assert.ok(await lifePeer.locator('#settings-panel-workspace').isHidden());
+  assert.ok(await lifePeer.locator('#settings-panel-data').isHidden());
+  await lifePeer.locator('#settings-nav-about').click(); await noWork(lifePeer);
+  check('L-common-settings-no-workspace-read', await lifePeer.evaluate(() => !window.__startCommands.includes('SNAPSHOT') && !document.querySelector('#source-details').textContent && !document.querySelector('#legacy-count').textContent && !document.querySelector('#removed-list').childElementCount && !document.querySelector('#site-editor').childElementCount), 'Opening ordinary life settings and browser help keeps work pages collapsed, sends zero SNAPSHOT commands, and exposes no work records or legacy data in the DOM.');
+  await lifePeer.locator('#settings-nav-workspace').click(); await lifePeer.locator('#workspace-settings').waitFor();
+  await lifePeer.waitForFunction(() => document.querySelector('#settings-scroll').getAttribute('aria-busy') === 'false');
+  check('L-explicit-workspace-settings-keeps-life', await lifePeer.evaluate(() => window.__startCommands.includes('SNAPSHOT')) && await lifePeer.getAttribute('html', 'data-home-mode') === 'life' && await lifePeer.locator('#workspace-content').isHidden(), 'Only an explicit AI workspace-settings visit reads the catalog; the underlying homepage stays in life mode.');
+  await lifePeer.locator('#settings-nav-newtab').click(); await noWork(lifePeer);
+  assert.ok(await lifePeer.evaluate(() => !document.querySelector('#source-details').textContent && !document.querySelector('#legacy-count').textContent && !document.querySelector('#removed-list').childElementCount));
+  await lifePeer.locator('#settings-dialog [data-close]').first().click();
   await page.evaluate(() => chrome.storage.local.set({ 'native.homeMode': 'workspace' }));
   await pause(100);
   check('L-storage-event-does-not-switch-open-pages', await page.getAttribute('html', 'data-home-mode') === 'life' && await lifePeer.getAttribute('html', 'data-home-mode') === 'life', 'A default-mode update leaves both already-open life tabs unchanged.');
@@ -394,7 +409,7 @@ try {
   if (!await worker.evaluate(() => chrome.permissions.contains({ permissions: ['bookmarks'] }))) {
     await page.locator('#bookmark-connect').click(); await page.waitForFunction(() => document.querySelector('#bookmark-connect').textContent.includes('撤销'));
   }
-  await page.locator('#bookmark-connect').click(); await page.waitForFunction(() => document.querySelector('#bookmark-connect').textContent.includes('授权'));
+  await page.locator('#bookmark-connect').click(); await page.waitForFunction(() => document.querySelector('#bookmark-permission-label').textContent === '未授权' && document.querySelector('#bookmark-connect').textContent === '允许访问');
   check('B-real-optional-revocation', !await worker.evaluate(() => chrome.permissions.contains({ permissions: ['bookmarks'] })) && await page.locator('.native-bookmark').count() === 0, 'Actual optional permission revocation removes bookmark entries without changing the selected mode.');
   await page.locator('#settings-dialog [data-close]').first().click(); await noWork(page);
   check('L-no-unhandled-page-errors', errors.length === 0, JSON.stringify(errors));
