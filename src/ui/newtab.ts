@@ -1,8 +1,8 @@
 import { initNativeExperience } from './native-experience.js';
 import { HOME_MODE_KEY, homeMode as normalizeHomeMode, type HomeMode } from '../domain/home-mode.js';
-import type { ConversationRecord, ProjectRecord, WebsiteShortcut, OpenDisposition, ImportCheckpoint } from '../../contracts/free-v1.js';
+import type { ConversationRecord, WebsiteShortcut, OpenDisposition, ImportCheckpoint } from '../../contracts/free-v1.js';
 import type { CatalogSnapshot } from '../storage/repository.js';
-import { projectCatalog, searchCatalog, type PendingDateGroup, type CandidateProjectCard, type LocalObservedProjectCard } from '../domain/projection.js';
+import { projectCatalog, searchCatalog, searchProjects, type CandidateProjectCard, type LocalObservedProjectCard } from '../domain/projection.js';
 import { createFreeViewSession, freeWindowFor, dayLabel } from '../domain/time.js';
 import { request, subscribeRevision } from '../shared/client.js';
 import { element as el, icon, byId, button, isEditing, allowedWebsiteUrl, dateTime } from './dom.js';
@@ -12,8 +12,8 @@ interface UISnapshot extends CatalogSnapshot {
   capabilities: { chatgpt: boolean; history: boolean; captureEnabled?: boolean; startNavigationActivity?: boolean; localProjectCandidates?: boolean; sourceGate: string; reasons?: string[]; sourceStatus?: { code: string; profileId: string } | null };
   build: { sha: string; version: string; sourceGate: string; adapterVersion: string };
 }
-type Filter = 'all' | 'project' | 'none' | 'unknown';
-type Card = ReturnType<typeof projectCatalog>['projects'][number];
+type Filter = 'all' | 'project' | 'none';
+interface DisplayProject { key: string; nativeTitle: string | null; canonicalUrl: string; stableRank?: number }
 const view = readView();
 const initialScrollY = view.scrollY;
 const safe = new SafeRendering();
@@ -28,17 +28,18 @@ let clockTimer: ReturnType<typeof setTimeout> | undefined;
 let snapshot: UISnapshot | null = null;
 let calendar: ReturnType<typeof createFreeViewSession> | null = null;
 let selectedScope = view.selectedScope;
-let currentProject: ProjectRecord | null = null;
+let currentProject: DisplayProject | null = null;
 let currentRecord: ConversationRecord | null = null;
 let siteEditingId: string | null = null;
 let siteDragId: string | null = null;
 let allSitesVisible = false;
 let siteRenderRevision = 0;
 let searchFilter: Filter = 'all';
-let searchProjectId: string | null = null;
+let searchProjectKey: string | null = null;
 const SEARCH_PAGE_SIZE = 100;
 let searchVisibleLimit = SEARCH_PAGE_SIZE;
 let searchConditions = '';
+let renderingFocusRecordKey: string | null = null;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 let refreshSequence = 0;
 let mutationRunning = false;
@@ -46,7 +47,7 @@ let importPumping = false;
 let stopped = false;
 let activeJobId: string | null = null;
 const openingRecords = new Set<string>();
-const filterLabels: Record<Filter, string> = { all: '全部', project: '项目', none: '无项目', unknown: '待确认' };
+const filterLabels: Record<Filter, string> = { all: '全部', project: '项目', none: '最近' };
 
 function persistView(): void {
   if (homeMode !== 'workspace' || modeLoading) return;
@@ -94,7 +95,7 @@ async function refresh(immediate = false): Promise<void> {
     if (!calendar || calendar.Z !== received.settings.libraryTimeZone) calendar = createFreeViewSession({ now: new Date().toISOString(), timeZone: received.settings.libraryTimeZone });
     render();
   };
-  if (immediate || !snapshot) preservePosition(apply); else safe.schedule(apply);
+  safe.render(apply, immediate || !snapshot);
 }
 
 async function mutate(command: string, payload: Record<string, unknown>, after?: () => void): Promise<void> {
@@ -110,17 +111,8 @@ async function mutate(command: string, payload: Record<string, unknown>, after?:
 
 function title(record: ConversationRecord): string { return record.nativeTitle || '未命名会话'; }
 function membershipLabel(record: ConversationRecord): string {
-  if (record.owner.kind === 'unassigned' && record.localProject?.state === 'conflicting') return '原生项目关系冲突 · 待归属';
-  if (record.owner.kind === 'unassigned' && record.localProject?.state === 'observed') {
-    const project = snapshot?.localProjects?.find(p => p.key === record.localProject!.projectKey && p.boundaryKey === record.localProject!.boundaryKey);
-    if (project) return `${project.nativeTitle || '未命名项目'} · 本地已观察，账号空间未认证`;
-  }
-  if (record.owner.kind === 'unassigned') return '本地历史 · 账号未绑定／归属待确认';
-  if (record.membership.state === 'NONE') return '无项目';
-  if (record.membership.state === 'UNKNOWN') return '归属待确认';
-  const scopeKey = record.owner.scopeKey;
-  const projectId = record.membership.projectId;
-  return snapshot?.projects.find(project => project.scopeKey === scopeKey && project.projectId === projectId)?.nativeTitle || '原生项目';
+  if (!snapshot) return '最近';
+  return searchCatalog(snapshot, '', selectedScope || 'unassigned').find(result => result.record.key === record.key)?.path || '最近';
 }
 
 function conversationRow(record: ConversationRecord): HTMLElement {
@@ -131,70 +123,39 @@ function conversationRow(record: ConversationRecord): HTMLElement {
   return el('div', { class: 'conversation-row' }, [link, menu]);
 }
 
-function projectCard(card: Card): HTMLElement {
-  const project = card.project;
-  const projectTitle = project.nativeTitle || '未命名项目';
-  const expanded = view.older.includes(project.key);
-  const limit = view.limits[project.key] || 5;
-  const body = el('div', { class: 'project-body' });
-  const recent = el('div', { class: 'conversation-list' }, card.recent.slice(0, limit).map(conversationRow));
-  if (card.recent.length > limit) recent.append(button('显示更多', { class: 'more-rows', 'data-more': project.key, 'data-focus-key': `more:${project.key}` }));
-  if (card.recent.length) body.append(recent);
-  if (card.older.length) {
-    body.append(button('较早会话', { class: 'history-disclosure', 'data-older': project.key, 'aria-expanded': String(expanded), 'aria-controls': `older-${project.key}`, 'data-focus-key': `older:${project.key}` }, 'chevron'));
-    const old = el('div', { class: 'old-list', id: `older-${project.key}` }, [el('div', { class: 'conversation-list' }, card.older.map(conversationRow))]);
-    old.hidden = !expanded; body.append(old);
-  }
-  if (card.undated.length) body.append(el('p', { class: 'project-undated-label' }, ['尚无可用日期']), el('div', { class: 'conversation-list' }, card.undated.map(conversationRow)));
-  if (!card.recent.length && !card.older.length && !card.undated.length) body.append(el('p', { class: 'project-note' }, ['尚未收录会话，可以打开原生项目。']));
-  return el('article', { class: 'project', 'data-project': project.key, 'aria-labelledby': `project-${project.key}` }, [
-    el('header', { class: 'project-head' }, [el('span', { class: 'project-symbol' }, [icon('folder')]), el('h3', { id: `project-${project.key}`, title: projectTitle }, [projectTitle]), button('', { class: 'icon-button', 'data-project-menu': project.key, 'data-focus-key': `project-menu:${project.key}`, 'aria-label': `${projectTitle}项目操作` }, 'more')]), body]);
-}
-
-function candidateProjectCard(card: CandidateProjectCard): HTMLElement {
-  const project = card.candidate, key = `candidate:${project.key}`;
-  const expanded = view.older.includes(key), limit = view.limits[key] || 5;
-  const body = el('div', { class: 'project-body' }, [el('p', { class: 'project-note' }, ['本地候选项目／原生归属待确认'])]);
-  if (card.recent.length) {
-    const recent = el('div', { class: 'conversation-list' }, card.recent.slice(0, limit).map(conversationRow));
-    if (card.recent.length > limit) recent.append(button('显示更多', { class: 'more-rows', 'data-more': key, 'data-focus-key': `more:${key}` }));
-    body.append(recent);
-  }
-  if (card.older.length) {
-    body.append(button('较早会话', { class: 'history-disclosure', 'data-older': key, 'aria-expanded': String(expanded), 'aria-controls': `older-${key}`, 'data-focus-key': `older:${key}` }, 'chevron'));
-    const older = el('div', { class: 'old-list', id: `older-${key}` }, [el('div', { class: 'conversation-list' }, card.older.map(conversationRow))]);
-    older.hidden = !expanded; body.append(older);
-  }
-  if (card.undated.length) body.append(el('p', { class: 'project-undated-label' }, ['尚无可用日期']), el('div', { class: 'conversation-list' }, card.undated.map(conversationRow)));
-  return el('article', { class: 'project candidate-project', 'data-candidate-project': project.key, 'aria-labelledby': `candidate-project-${project.key}` }, [
-    el('header', { class: 'project-head' }, [el('span', { class: 'project-symbol' }, [icon('folder')]),
-      el('h3', { id: `candidate-project-${project.key}`, title: project.nativeTitle }, [project.nativeTitle]),
-      el('a', { class: 'icon-button', href: project.canonicalUrl, 'aria-label': `在 ChatGPT 中打开候选项目：${project.nativeTitle}`, title: '在 ChatGPT 中打开项目' }, [icon('external')])]), body]);
-}
-
-function localProjectCard(card: LocalObservedProjectCard): HTMLElement {
+interface DisplayCard { project: DisplayProject; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; sortTime: number | null; attributes?: Record<string, string> }
+/** Every supported native relationship uses one visual component. Identity remains in domain keys. */
+function projectCard(card: DisplayCard): HTMLElement {
   const project = card.project, key = project.key, name = project.nativeTitle || '未命名项目';
+  const focusIndex = renderingFocusRecordKey ? card.recent.findIndex(record => record.key === renderingFocusRecordKey) : -1;
+  if (focusIndex >= (view.limits[key] || 5)) view.limits[key] = 5 + Math.ceil((focusIndex + 1 - 5) / 12) * 12;
+  if (renderingFocusRecordKey && [...card.older, ...card.undated].some(record => record.key === renderingFocusRecordKey) && !view.older.includes(key)) view.older.push(key);
   const expanded = view.older.includes(key), limit = view.limits[key] || 5;
-  const provenance = project.identityBasis === 'principal'
-    ? '来自已观察的原生项目关系；按账号主体隔离，当前 Workspace 尚未认证。'
-    : '来自此文档中已观察的原生项目关系；账号未确认，不与其他文档自动合并。';
-  const body = el('div', { class: 'project-body' }, [el('p', { class: 'project-note', title: provenance }, ['原生项目 · 本地已观察'])]);
+  const body = el('div', { class: 'project-body' });
   if (card.recent.length) {
     const rows = el('div', { class: 'conversation-list' }, card.recent.slice(0, limit).map(conversationRow));
     if (card.recent.length > limit) rows.append(button('显示更多', { class: 'more-rows', 'data-more': key, 'data-focus-key': `more:${key}` }));
     body.append(rows);
   }
-  if (card.older.length) {
-    body.append(button('较早会话', { class: 'history-disclosure', 'data-older': key, 'aria-expanded': String(expanded), 'aria-controls': `older-${key}`, 'data-focus-key': `older:${key}` }, 'chevron'));
-    const older = el('div', { class: 'old-list', id: `older-${key}` }, [el('div', { class: 'conversation-list' }, card.older.map(conversationRow))]);
-    older.hidden = !expanded; body.append(older);
+  // Compatibility with an older projection never drops a member or duplicates it.
+  const seen = new Set(card.recent.map(record => record.key));
+  const older = [...card.older, ...card.undated].filter(record => { if (seen.has(record.key)) return false; seen.add(record.key); return true; });
+  if (older.length) {
+    body.append(button('更早', { class: 'history-disclosure', 'data-older': key, 'aria-expanded': String(expanded), 'aria-controls': `older-${key}`, 'data-focus-key': `older:${key}` }, 'chevron'));
+    const old = el('div', { class: 'old-list', id: `older-${key}` }, [el('div', { class: 'conversation-list' }, older.map(conversationRow))]);
+    old.hidden = !expanded; body.append(old);
   }
-  if (card.undated.length) body.append(el('p', { class: 'project-undated-label' }, ['尚无可用日期']), el('div', { class: 'conversation-list' }, card.undated.map(conversationRow)));
-  if (!card.recent.length && !card.older.length && !card.undated.length) body.append(el('p', { class: 'project-note' }, ['尚未观察到会话，可以打开原生项目。']));
-  return el('article', { class: 'project local-observed-project', 'data-local-project': key, 'data-identity-basis': project.identityBasis, 'aria-labelledby': `local-project-${key}` }, [
+  if (!card.recent.length && !older.length) body.append(el('a', { class: 'empty-project-link', href: project.canonicalUrl }, ['打开项目', icon('external')]));
+  return el('article', { class: 'project', 'data-project': key, ...card.attributes, 'aria-labelledby': `project-${key}` }, [
     el('header', { class: 'project-head' }, [el('span', { class: 'project-symbol' }, [icon('folder')]),
-      el('h3', { id: `local-project-${key}`, title: name }, [name]),
-      el('a', { class: 'icon-button', href: project.canonicalUrl, 'aria-label': `在 ChatGPT 中打开项目：${name}`, title: '在 ChatGPT 中打开项目' }, [icon('external')])]), body]);
+      el('h3', { id: `project-${key}`, title: name }, [name]),
+      button('', { class: 'icon-button', 'data-project-menu': key, 'data-focus-key': `project-menu:${key}`, 'aria-label': `${name}项目操作` }, 'more')]), body]);
+}
+function localCard(card: LocalObservedProjectCard): DisplayCard { return { ...card, attributes: { 'data-local-project': card.project.key } }; }
+function candidateCard(card: CandidateProjectCard): DisplayCard { return { ...card, project: { ...card.candidate, key: `candidate:${card.candidate.key}`, stableRank: card.stableRank }, attributes: { 'data-candidate-project': card.candidate.key } }; }
+function cardOrder(a: DisplayCard, b: DisplayCard): number {
+  return (b.sortTime ?? -Infinity) - (a.sortTime ?? -Infinity)
+    || (a.project.stableRank ?? 0) - (b.project.stableRank ?? 0) || a.project.key.localeCompare(b.project.key);
 }
 
 function dateLabel(date: string): string {
@@ -205,28 +166,29 @@ function dateLabel(date: string): string {
   return `${year !== Number(dayLabel(calendar.T).slice(0, 4)) ? `${year} 年 ` : ''}${month} 月 ${day} 日`;
 }
 
-function unknownSection(records: ConversationRecord[], force: boolean): HTMLElement {
-  const expanded = force || view.unknownOpen;
-  const label = '归属待确认 · 日期未知';
-  const header = force ? el('h2', { class: 'unknown-toggle' }, [icon('info', 'hint-icon'), label])
-    : button(label, { class: 'unknown-toggle', id: 'unknown-toggle', 'aria-expanded': String(expanded), 'aria-controls': 'unknown-content' }, 'chevron');
-  const note = '这些链接没有可用的浏览日期或主动打开日期，仍可直接打开和搜索。原生归属确认后，会进入对应位置。';
-  const content = el('div', { class: 'unknown-content', id: 'unknown-content' }, [el('p', { class: 'unknown-note' }, [note]), el('div', { class: 'unknown-grid' }, records.map(conversationRow))]);
-  content.hidden = !expanded;
-  return el('section', { class: 'unknown-section', 'aria-label': label }, [header, content]);
-}
-
-function pendingDateSection(groups: PendingDateGroup[]): HTMLElement {
-  const label = '待归属';
-  return el('section', { class: 'date-section pending-dates', 'aria-label': label }, [
-    el('div', { class: 'section-heading' }, [el('h2', {}, [label])]),
+function recentSection(groups: Array<{ date: string | null; records: ConversationRecord[] }>): HTMLElement {
+  return el('section', { class: 'date-section recent-section', 'aria-label': '最近' }, [
+    el('div', { class: 'section-heading' }, [el('h2', {}, ['最近'])]),
     el('div', { class: 'date-grid' }, groups.map(group => {
-      const key = `pending:${selectedScope}:${group.date}`, limit = view.limits[key] || 5;
+      const key = `recent:${selectedScope}:${group.date || `period-${view.k}`}`;
+      const focusIndex = renderingFocusRecordKey ? group.records.findIndex(record => record.key === renderingFocusRecordKey) : -1;
+      if (focusIndex >= (view.limits[key] || 5)) view.limits[key] = 5 + Math.ceil((focusIndex + 1 - 5) / 12) * 12;
+      const limit = view.limits[key] || 5;
       const list = el('div', { class: 'conversation-list' }, group.records.slice(0, limit).map(conversationRow));
-      if (group.records.length > limit) list.append(button('显示更多', { class: 'more-rows', 'data-more': key, 'data-focus-key': `more:${key}`, 'aria-label': `显示更多 ${group.date} 的待确认会话` }));
-      return el('article', { class: 'date-window', 'data-date': group.date }, [
-        el('h3', { 'aria-label': group.date }, [icon('calendar'), dateLabel(group.date)]), list]);
+      if (group.records.length > limit) list.append(button('显示更多', { class: 'more-rows', 'data-more': key, 'data-focus-key': `more:${key}`, 'aria-label': '显示更多会话' }));
+      const period = calendar ? freeWindowFor(view.k, calendar) : null;
+      const label = group.date ? dateLabel(group.date) : period ? `${period.start}—${dayLabel(calendar!.T - 30 * view.k)}` : '最近';
+      return el('article', { class: 'date-window', ...(group.date ? { 'data-date': group.date } : { 'data-period': String(view.k) }) }, [
+        el('h3', { 'aria-label': group.date || label }, [icon('calendar'), label]), list]);
     }))]);
+}
+function earlierProjects(cards: DisplayCard[]): HTMLElement {
+  if (renderingFocusRecordKey && cards.some(card => [...card.recent, ...card.older, ...card.undated].some(record => record.key === renderingFocusRecordKey))) view.earlierProjectsOpen = true;
+  const expanded = view.earlierProjectsOpen;
+  const list = el('div', { class: 'project-grid', id: 'earlier-projects-content' }, cards.map(projectCard));
+  list.hidden = !expanded;
+  return el('section', { class: 'earlier-projects', 'aria-label': '更早' }, [
+    button('更早', { id: 'earlier-projects-toggle', class: 'earlier-projects-toggle', 'aria-expanded': String(expanded), 'aria-controls': list.id }, 'chevron'), list]);
 }
 
 function workspaceHeading(): HTMLElement {
@@ -234,7 +196,7 @@ function workspaceHeading(): HTMLElement {
   if (snapshot && snapshot.scopes.length > 0) {
     const scopeSelect = el('select', { class: 'scope-selector', id: 'scope-selector', 'aria-label': '选择本地资料库' });
     for (const scope of snapshot.scopes) scopeSelect.append(el('option', { value: scope.key }, [scope.label || '已保存的资料库']));
-    scopeSelect.append(el('option', { value: 'unassigned' }, ['本地历史（账号未绑定）']));
+    scopeSelect.append(el('option', { value: 'unassigned' }, ['此浏览器']));
     scopeSelect.value = selectedScope || 'unassigned'; heading.append(scopeSelect);
   }
   const filters = el('div', { class: 'segment', role: 'tablist', 'aria-label': '筛选会话' });
@@ -258,37 +220,26 @@ function renderWorkspace(): void {
     content.replaceChildren(firstUse()); byId('history-rail').hidden = true; return;
   }
   const projection = projectCatalog(snapshot, { ...calendar, k: view.k, selectedScope: selectedScope || 'unassigned' });
+  const focused = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
+  renderingFocusRecordKey = focused?.startsWith('record:') ? focused.slice(7) : focused?.startsWith('details:') ? focused.slice(8) : null;
   content.replaceChildren(workspaceHeading());
-  if (selectedScope === 'unassigned' && snapshot.conversations.length) {
-    content.append(el('div', { class: 'import-note' }, [icon('info'), el('div', {}, ['会话已保存在本机', el('p', {}, ['已观察的原生项目会在这里展开；其他会话仍可直接打开。'])]), button('导入更多', { class: 'text-button', id: 'import-more' })]));
-  }
   const showProjects = view.filter === 'all' || view.filter === 'project';
-  const showNone = view.filter === 'all' || view.filter === 'none';
-  const showPending = view.filter === 'all' || view.filter === 'unknown';
-  const showCandidates = showProjects || showPending;
-  if (showProjects && projection.projects.length) content.append(el('section', { 'aria-label': '原生项目' }, [el('div', { class: 'project-grid' }, projection.projects.map(projectCard))]));
-  if (showProjects && projection.localProjects.length) content.append(el('section', { 'aria-label': '本地已观察的原生项目' }, [el('div', { class: 'project-grid' }, projection.localProjects.map(localProjectCard))]));
-  if (showCandidates && projection.candidateProjects.length) content.append(el('section', { 'aria-label': '本地候选项目／原生归属待确认' }, [el('div', { class: 'project-grid' }, projection.candidateProjects.map(candidateProjectCard))]));
-  if (showNone && projection.dates.length) content.append(el('section', { class: 'date-section', 'aria-label': '无项目会话' }, [
-    el('div', { class: 'section-heading' }, [el('h2', {}, ['无项目'])]), el('div', { class: 'date-grid' }, projection.dates.map(group => el('article', { class: 'date-window' }, [
-      el('h3', { 'aria-label': group.date }, [icon('calendar'), dateLabel(group.date)]), el('div', { class: 'conversation-list' }, group.records.map(conversationRow))]))) ]));
-  if (showPending && projection.pendingDates.length) content.append(pendingDateSection(projection.pendingDates));
-  if (showProjects && projection.undatedProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无可用日期的项目' }, [
-    el('h2', {}, ['项目 · 尚无可用日期']), el('div', { class: 'project-grid' }, projection.undatedProjects.map(projectCard))]));
-  if (showProjects && projection.undatedLocalProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无日期的本地原生项目' }, [
-    el('h2', {}, ['原生项目 · 尚无可用日期']), el('div', { class: 'project-grid' }, projection.undatedLocalProjects.map(localProjectCard))]));
-  if (showCandidates && projection.undatedCandidateProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无日期的本地候选项目' }, [
-    el('h2', {}, ['本地候选项目 · 尚无可用日期']), el('div', { class: 'project-grid' }, projection.undatedCandidateProjects.map(candidateProjectCard))]));
-  if (showNone && projection.undatedNone.length) content.append(el('section', { class: 'undated-section' }, [el('h2', {}, ['无项目 · 尚无可用日期']), el('div', { class: 'unknown-grid' }, projection.undatedNone.map(conversationRow))]));
-  // Undated entries are independent of k. Keeping them reachable must not make
-  // an otherwise empty 30-day segment appear occupied or suppress its hint.
-  const hasDatedRecords = (showProjects && (projection.projects.length || projection.localProjects.length)) || (showCandidates && projection.candidateProjects.length)
-    || (showNone && projection.dates.length) || (showPending && projection.pendingDates.length);
-  if (!hasDatedRecords) {
-    content.append(el('section', { class: 'period-empty' }, [el('h2', {}, ['这一段没有记录']), el('p', {}, [view.filter === 'project' ? '这一段没有带日期的项目会话，也可以继续查看相邻 30 天。' : view.filter === 'none' ? '这一段没有已确认无项目的会话。' : '可以继续向前翻，也可以搜索全部本地会话。']), button('搜索全部已知', { class: 'text-button', id: 'empty-search' }, 'search')]));
+  const showRecent = view.filter === 'all' || view.filter === 'none';
+  const cards: DisplayCard[] = [...projection.projects, ...projection.localProjects.map(localCard), ...projection.candidateProjects.map(candidateCard)].sort(cardOrder);
+  if (showProjects && cards.length) content.append(el('section', { 'aria-label': '项目' }, [el('div', { class: 'project-grid' }, cards.map(projectCard))]));
+  const dates = new Map<string, ConversationRecord[]>();
+  for (const group of [...projection.dates, ...projection.pendingDates]) {
+    const rows = dates.get(group.date) || []; rows.push(...group.records); dates.set(group.date, rows);
   }
-  if (showPending && projection.unknown.length) content.append(unknownSection(projection.unknown, view.filter === 'unknown' || selectedScope === 'unassigned'));
-  renderRail();
+  const groups: Array<{ date: string | null; records: ConversationRecord[] }> = [...dates.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([date, rows]) => ({ date, records: rows.sort((a, b) => projection.displayTimes.get(a.key)!.rank - projection.displayTimes.get(b.key)!.rank) }));
+  if (projection.segmentOnly.length) groups.push({ date: null, records: projection.segmentOnly });
+  if (showRecent && groups.length) content.append(recentSection(groups));
+  const hasRecords = showProjects && cards.length || showRecent && groups.length;
+  if (!hasRecords) content.append(el('section', { class: 'period-empty' }, [el('h2', {}, ['这一段没有记录']), el('p', {}, ['可以继续向前翻，也可以搜索全部会话和项目。']), button('搜索全部', { class: 'text-button', id: 'empty-search' }, 'search')]));
+  const older = [...projection.undatedProjects, ...projection.undatedLocalProjects.map(localCard), ...projection.undatedCandidateProjects.map(candidateCard)].sort(cardOrder);
+  if (showProjects && view.k === 0 && older.length) content.append(earlierProjects(older));
+
+  renderRail(); renderingFocusRecordKey = null;
 }
 
 function renderRail(): void {
@@ -335,27 +286,23 @@ function renderEditor(): void {
 function renderSearch(): void {
   if (homeMode !== 'workspace' || !snapshot) return;
   const query = byId<HTMLInputElement>('search-input').value.trim();
-  const conditions = JSON.stringify([selectedScope, query, searchFilter, searchProjectId]);
+  const conditions = JSON.stringify([selectedScope, query, searchFilter, searchProjectKey]);
   if (conditions !== searchConditions) { searchVisibleLimit = SEARCH_PAGE_SIZE; searchConditions = conditions; }
-  const results = searchCatalog(snapshot, query, selectedScope || 'unassigned').filter(result =>
-    (!searchProjectId || result.project?.projectId === searchProjectId) && (searchFilter === 'all' || (searchFilter === 'project' ? result.record.membership.state === 'PROJECT' || result.localProject !== null || result.candidateProject !== null : searchFilter === 'none' ? result.record.membership.state === 'NONE' : result.record.membership.state === 'UNKNOWN' && !result.localProject)));
-  // An empty native project remains reachable even when it has no conversation rows.
-  const foundProjectIds = new Set(results.map(result => result.project?.projectId));
-  const emptyProjects = searchFilter === 'all' || searchFilter === 'project' ? snapshot.projects.filter(project =>
-    project.scopeKey === selectedScope && !foundProjectIds.has(project.projectId) && (!searchProjectId || project.projectId === searchProjectId) &&
-    (!query || `${project.nativeTitle || ''} ${project.canonicalUrl}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))) : [];
-  const foundLocalKeys = new Set(results.map(result => result.localProject?.key));
-  const emptyLocalProjects = !searchProjectId && selectedScope === 'unassigned' && (searchFilter === 'all' || searchFilter === 'project')
-    ? (snapshot.localProjects ?? []).filter(project => project.localProfileKey === snapshot!.localProfileKey && !foundLocalKeys.has(project.key)
-      && (!query || `${project.nativeTitle || ''} ${project.canonicalUrl}`.normalize('NFKC').toLocaleLowerCase().includes(query.normalize('NFKC').toLocaleLowerCase()))) : [];
-  const projectResults = [...emptyProjects.map(project => ({ project, path: '原生项目 · 打开 ChatGPT' })),
-    ...emptyLocalProjects.map(project => ({ project, path: '原生项目 · 本地已观察 · 打开 ChatGPT' }))];
+  const projectKey = (result: ReturnType<typeof searchCatalog>[number]) => result.project?.key || result.localProject?.key || (result.candidateProject ? `candidate:${result.candidateProject.key}` : null);
+  const results = searchCatalog(snapshot, query, selectedScope || 'unassigned').filter(result => {
+    const key = projectKey(result);
+    return (!searchProjectKey || key === searchProjectKey) && (searchFilter === 'all' || (searchFilter === 'project' ? key !== null : key === null));
+  });
+  const foundProjectKeys = new Set(results.map(projectKey));
+  const projectResults = searchFilter === 'all' || searchFilter === 'project' ? searchProjects(snapshot, query, selectedScope || 'unassigned')
+    .filter(project => !foundProjectKeys.has(project.key) && (!searchProjectKey || project.key === searchProjectKey))
+    .map(project => ({ project, path: '打开项目' })) : [];
   const total = results.length + projectResults.length;
   const list = byId('search-results');
   // Query the entire scoped catalog; only materialize the requested slice into DOM.
   const shownConversations = results.slice(0, searchVisibleLimit);
   const shownProjects = projectResults.slice(0, Math.max(0, searchVisibleLimit - results.length));
-  list.replaceChildren(...shownConversations.map(({ record, path, localProject }) => el('a', { class: 'search-result', href: record.canonicalUrl, 'data-record-key': record.key, 'data-focus-key': `search:${record.key}` }, [icon(record.membership.state === 'PROJECT' || localProject ? 'folder' : record.membership.state === 'NONE' ? 'chat' : 'info'), el('span', {}, [el('strong', {}, [title(record)]), el('small', {}, [path])]), icon('arrow', 'enter-icon')])));
+  list.replaceChildren(...shownConversations.map(({ record, path, localProject, project, candidateProject }) => el('a', { class: 'search-result', href: record.canonicalUrl, 'data-record-key': record.key, 'data-focus-key': `search:${record.key}` }, [icon(project || localProject || candidateProject ? 'folder' : 'chat'), el('span', {}, [el('strong', {}, [title(record)]), el('small', {}, [path])]), icon('arrow', 'enter-icon')])));
   for (const { project, path } of shownProjects) list.append(el('a', { class: 'search-result', href: project.canonicalUrl }, [icon('folder'), el('span', {}, [el('strong', {}, [project.nativeTitle || '未命名项目']), el('small', {}, [path])]), icon('arrow', 'enter-icon')]));
   list.dataset.totalMatches = String(total);
   list.dataset.visibleMatches = String(shownConversations.length + shownProjects.length);
@@ -364,10 +311,10 @@ function renderSearch(): void {
   for (const control of document.querySelectorAll<HTMLButtonElement>('[data-search-filter]')) control.setAttribute('aria-pressed', String(control.dataset.searchFilter === searchFilter));
 }
 
-function openSearch(project?: ProjectRecord): void {
+function openSearch(project?: DisplayProject): void {
   if (homeMode === 'life') { byId('life-search-input').focus(); return; }
   if (homeMode !== 'workspace') return;
-  searchProjectId = project?.projectId || null; searchFilter = project ? 'project' : 'all';
+  searchProjectKey = project?.key || null; searchFilter = project ? 'project' : 'all';
   searchConditions = '';
   byId<HTMLInputElement>('search-input').value = '';
   renderSearch(); showDialog('search-dialog'); byId<HTMLInputElement>('search-input').focus();
@@ -431,11 +378,9 @@ function render(): void {
 
 function showRecord(record: ConversationRecord): void {
   currentRecord = record; byId('record-title').textContent = title(record);
-  const lines: Array<[string, string]> = [ ['归属', membershipLabel(record)], ['保存的网址', record.canonicalUrl],
+  const lines: Array<[string, string]> = [ ['位置', membershipLabel(record)], ['保存的网址', record.canonicalUrl],
     ['最近可确认的主动打开', dateTime(record.activity?.lastConfirmedOpenAt || null, snapshot!.settings.libraryTimeZone)],
-    ['浏览器最后记录时间', `${dateTime(record.browserLastVisitAt, snapshot!.settings.libraryTimeZone)}（不作为主动活动）`],
-    ['访问状态', ({ unverified: '尚未确认', reachable: '上次可访问', 'auth-required': '需要登录', unavailable: '暂时无法访问' })[record.availability]] ];
-  if (record.membership.state !== 'UNKNOWN') lines.push(['归属核对时间', dateTime(record.membership.confirmedAt, snapshot!.settings.libraryTimeZone)]);
+    ['浏览器最后记录时间', `${dateTime(record.browserLastVisitAt, snapshot!.settings.libraryTimeZone)}（不作为主动活动）`] ];
   byId('record-details').replaceChildren(...lines.flatMap(([name, value]) => [el('dt', {}, [name]), el('dd', {}, [value])]));
   showDialog('record-dialog');
 }
@@ -486,7 +431,7 @@ async function startImport(event: Event): Promise<void> {
     const result = await request('IMPORT_START', { range: byId<HTMLSelectElement>('import-range').value, includeSynced: byId<HTMLInputElement>('include-synced').checked }) as { jobId?: string; id?: string; job?: { id: string } };
     activeJobId = result?.jobId || result?.id || result?.job?.id || null;
     if (homeMode !== 'workspace' || requestedModeEpoch !== modeEpoch) return;
-    selectedScope = 'unassigned'; view.k = 0; view.filter = 'unknown'; view.unknownOpen = true;
+    selectedScope = 'unassigned'; view.k = 0; view.filter = 'all';
     await refresh(true); renderImport(); void pumpImport();
   } catch (error) { fail(error); }
 }
@@ -531,14 +476,14 @@ document.addEventListener('click', event => {
   const control = target?.closest<HTMLButtonElement>('button'); if (!control || control.disabled) return;
   if (control.dataset.close) { closeDialog(control.dataset.close); return; }
   if (control.dataset.filter) { chooseFilter(control.dataset.filter as Filter); return; }
-  if (control.dataset.searchFilter) { searchFilter = control.dataset.searchFilter as Filter; searchProjectId = null; renderSearch(); return; }
+  if (control.dataset.searchFilter) { searchFilter = control.dataset.searchFilter as Filter; searchProjectKey = null; renderSearch(); return; }
   if (control.dataset.older) {
     const key = control.dataset.older; view.older = view.older.includes(key) ? view.older.filter(item => item !== key) : [...view.older, key];
     preservePosition(renderWorkspace); persistView(); return;
   }
   if (control.dataset.more) { const key = control.dataset.more; view.limits[key] = (view.limits[key] || 5) + 12; preservePosition(renderWorkspace); persistView(); return; }
   if (control.dataset.projectMenu) {
-    currentProject = snapshot?.projects.find(project => project.key === control.dataset.projectMenu) || null;
+    currentProject = snapshot ? searchProjects(snapshot, '', selectedScope || 'unassigned').find(project => project.key === control.dataset.projectMenu) || null : null;
     if (currentProject) { byId('project-title').textContent = currentProject.nativeTitle || '未命名项目'; for (const id of ['project-native', 'project-new']) byId<HTMLAnchorElement>(id).href = currentProject.canonicalUrl; showDialog('project-dialog'); } return;
   }
   if (control.dataset.recordMenu) { const record = snapshot?.conversations.find(item => item.key === control.dataset.recordMenu); if (record) showRecord(record); return; }
@@ -557,7 +502,7 @@ document.addEventListener('click', event => {
   switch (control.id) {
     case 'home': if (homeMode === 'workspace') { view.k = 0; view.filter = 'all'; renderWorkspace(); } window.scrollTo(0, 0); persistView(); break;
     case 'search-trigger': case 'empty-search': openSearch(); break;
-    case 'clear-search': searchProjectId = null; searchFilter = 'all'; byId<HTMLInputElement>('search-input').value = ''; renderSearch(); byId('search-input').focus(); break;
+    case 'clear-search': searchProjectKey = null; searchFilter = 'all'; byId<HTMLInputElement>('search-input').value = ''; renderSearch(); byId('search-input').focus(); break;
     case 'search-more': {
       const list = byId('search-results'); const previousCount = Number(list.dataset.visibleMatches || 0); const scrollTop = list.scrollTop;
       searchVisibleLimit += SEARCH_PAGE_SIZE; renderSearch(); list.scrollTop = scrollTop;
@@ -570,10 +515,10 @@ document.addEventListener('click', event => {
     case 'cancel-site-edit': clearSiteForm(); break;
     case 'site-toggle': if (snapshot) void mutate('SETTINGS_UPDATE', { patch: { shortcutSectionCollapsed: !snapshot.settings.shortcutSectionCollapsed } }); break;
     case 'show-more-sites': allSitesVisible = !allSitesVisible; renderSites(); break;
-    case 'unknown-toggle': view.unknownOpen = !view.unknownOpen; preservePosition(renderWorkspace); persistView(); break;
+    case 'earlier-projects-toggle': view.earlierProjectsOpen = !view.earlierProjectsOpen; preservePosition(renderWorkspace); persistView(); break;
     case 'period-newer': changePeriod(-1); break;
     case 'period-older': changePeriod(1); break;
-    case 'settings-import': case 'first-import': case 'import-more': renderImport(); showDialog('import-dialog'); break;
+    case 'settings-import': case 'first-import': renderImport(); showDialog('import-dialog'); break;
     case 'confirm-import': void startImport(event); break;
     case 'connect-chatgpt': void connectChatGPT(event, !!snapshot?.capabilities.chatgpt); break;
     case 'first-connect': void connectChatGPT(event); break;
@@ -588,7 +533,7 @@ document.addEventListener('click', event => {
 document.addEventListener('auxclick', event => { const target = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[data-record-key]') : null; if (target) void openConversation(event, target); });
 document.addEventListener('change', event => {
   const target = event.target as HTMLInputElement | HTMLSelectElement;
-  if (target.id === 'scope-selector') { selectedScope = target.value; view.k = 0; view.older = []; searchProjectId = null; void refresh(true).catch(fail); persistView(); }
+  if (target.id === 'scope-selector') { selectedScope = target.value; view.k = 0; view.older = []; searchProjectKey = null; void refresh(true).catch(fail); persistView(); }
   if (target.id === 'capture-enabled' && target instanceof HTMLInputElement) {
     if (target.checked && !snapshot?.capabilities.chatgpt) { target.checked = false; toast('请先连接 ChatGPT，再开启继续收录。'); return; }
     void mutate('SETTINGS_UPDATE', { patch: { captureEnabled: target.checked } });

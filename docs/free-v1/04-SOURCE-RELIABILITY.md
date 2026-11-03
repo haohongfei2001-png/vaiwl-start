@@ -1,5 +1,7 @@
 # 数据来源与可靠性验证矩阵
 
+> **当前最高优先修订：[第14号首页与时间投影合同](14-HOME-TIME-PROJECTION-AMENDMENT.md)。** 废止可见待确认/来源等级、严格更早日期证明与独立无日期会话区；完整项目、范围时间证据、最近与全局更早按该合同执行。身份隔离、P1权限及12stores不变。
+
 > **2026-11-03 更新：** [第13号修订](13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)接入 principal-only 本地隔离和多种原生关系适配器。下方旧 M0 认证矩阵只约束完整 AccountScope/PROJECT/NONE，不再阻断本地原生项目组织。固定竞品源码与同 SHA 隔离测试支持本地实现，真实已登录 ChatGPT 来源仍单独记录未核验。
 
 > **当前有效修订：2026-11-02-local-first，用户已批准。** [统一修订合同](10-LOCAL-FIRST-AMENDMENT.md)覆盖原 M0 全局前置门：本地时间组织、Start 主动打开与局部候选项目可独立运行；账号隔离及正式原生归属证明仍保留。`LOCAL_WORKSPACE_READY` 不等于 `FREE_V1_ACCEPTED`。

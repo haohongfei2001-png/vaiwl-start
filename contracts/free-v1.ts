@@ -101,6 +101,37 @@ export interface LocalObservedMembership {
   state: 'observed' | 'conflicting';
   conflictingProjectKeys?: string[];
 }
+/** Display-only facts. They never create OpenDay or authenticated activity. */
+export interface VerifiedDisplayTimeFact {
+  id: string;
+  kind: 'message-sent' | 'native-updated';
+  semantic: 'conversation-last-activity';
+  at: ISOInstant;
+  observedAt: ISOInstant;
+  localProfileKey: string;
+  owner: RecordOwner;
+  boundaryKey: string; // scoped owner key, or exact observed local identity boundary
+  source: { adapterId: string; adapterVersion: string; field: string };
+  revoked?: boolean;
+}
+/** One proved native chronological list snapshot, newest first. */
+export interface NativeTimeOrderEvidence {
+  id: string;
+  localProfileKey: string;
+  owner: RecordOwner;
+  boundaryKey: string;
+  recordKeys: RecordKey[];
+  semantic: 'conversation-last-activity';
+  direction: 'descending';
+  verified: true;
+  coverage: 'complete';
+  pinned: false;
+  manual: false;
+  observedAt: ISOInstant;
+  expiresAt: ISOInstant;
+  source: { adapterId: string; adapterVersion: string; documentKey: string; routeEpoch: number; sourceRevision: number };
+  invalidated?: boolean;
+}
 export interface ConversationBase {
   key: RecordKey;
   provider: 'chatgpt';
@@ -118,6 +149,9 @@ export interface ConversationBase {
   localProjectCandidate?: LocalProjectCandidate;
   // Local grouping only; owner and formal membership remain unchanged.
   localProject?: LocalObservedMembership;
+  // Optional, additive metadata; absent on old records and never an activity receipt.
+  displayTimeFacts?: VerifiedDisplayTimeFact[];
+  displayTimeBoundaryKey?: string;
   stableRank: number;
   revision: Revision;
 }

@@ -155,10 +155,13 @@ try {
   await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error)});db.close();
  });
  const dataBefore=await raw(page);await page.reload();await page.waitForSelector('html[data-start-ready="true"]');
- check('N-one-unified-pending-area',await page.locator('.pending-dates').count()===1&&await page.locator('.pending-dates .date-window').count()===1,'History-only, active-only and both-source records share one date window.');
+ check('N-one-unified-recent-area',await page.locator('.recent-section').count()===1&&await page.locator('.recent-section .date-window').count()===1,'History-only, active-only and both-source records share one date window.');
  check('N-no-visible-source-groups',!(await page.locator('#workspace-content').textContent()).match(/主动打开／归属待确认|历史浏览／归属待确认/)&&await page.locator('[data-date-basis]').count()===0,'No legacy source hierarchy or source tabs are rendered.');
- check('N-no-duplicate-conversation',await page.locator('[data-record-key="staging:native-both"]').count()===1&&await page.locator('.pending-dates [data-record-key]').count()===3,'A mixed-source conversation occupies exactly one stable entity.');
- check('N-undated-remains-reachable',await page.locator('[data-record-key="staging:native-undated"]').isVisible(),'Missing both dates does not hide the saved link.');
+ check('N-no-duplicate-conversation',await page.locator('[data-record-key="staging:native-both"]').count()===1&&await page.locator('.recent-section [data-record-key]').count()===3,'A mixed-source conversation occupies exactly one stable entity.');
+ check('N-undated-home-hidden',await page.locator('#workspace-content [data-record-key="staging:native-undated"]').count()===0,'Without any project or time evidence, the saved link does not create a homepage section.');
+ await page.locator('#search-trigger').click();await page.locator('#search-input').fill('Unified undated');
+ check('N-undated-search-reachable',await page.locator('#search-results [data-record-key="staging:native-undated"]').isVisible(),'The same saved undated link remains searchable and openable.');
+ await page.keyboard.press('Escape');
  await page.locator('#period-older').click();await page.locator('#period-older').click();
  check('N-unified-30-day-pages',await page.locator('[data-record-key="staging:native-old"]').isVisible()&&await page.locator('[data-record-key="staging:native-both"]').count()===0,'Older history follows the same 30-day navigation.');
  const dataAfter=await raw(page);assert.deepEqual(dataAfter.openDays,dataBefore.openDays);assert.deepEqual(dataAfter.conversations,dataBefore.conversations);

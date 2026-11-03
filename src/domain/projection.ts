@@ -1,23 +1,19 @@
 import type { ConversationRecord, LocalObservedProject, ProjectRecord } from '../../contracts/free-v1.js';
 import type { CatalogSnapshot } from '../storage/repository.js';
-import { dayLabel, freeSegmentFor, instant, localDay } from './time.js';
+import { instant } from './time.js';
+import { deriveDisplayTimes, directDisplayAt } from './time-evidence.js';
+import type { DisplayTimeProjection } from './time-evidence.js';
 export interface ProjectionView { H: 30; T: number; Z: string; k: number; selectedScope: string; now?: string }
-export interface ProjectCard { project: ProjectRecord; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestActiveAt: string | null; latestDisplayAt: string | null; segment: number | null }
+export interface ProjectCard { project: ProjectRecord; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestActiveAt: string | null; latestDisplayAt: string | null; segment: number | null; sortTime: number | null }
 export type LocalProjectCandidate = NonNullable<ConversationRecord['localProjectCandidate']>;
-export interface CandidateProjectCard { candidate: LocalProjectCandidate; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestDisplayAt: string | null; segment: number | null; stableRank: number }
-export interface LocalObservedProjectCard { project: LocalObservedProject; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestDisplayAt: string | null; segment: number | null }
+export interface CandidateProjectCard { candidate: LocalProjectCandidate; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestDisplayAt: string | null; segment: number | null; sortTime: number | null; stableRank: number }
+export interface LocalObservedProjectCard { project: LocalObservedProject; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestDisplayAt: string | null; segment: number | null; sortTime: number | null }
 export interface DateGroup { date: string; records: ConversationRecord[] }
 export type PendingDateGroup = DateGroup;
-export interface CatalogProjection { projects: ProjectCard[]; localProjects: LocalObservedProjectCard[]; undatedLocalProjects: LocalObservedProjectCard[]; candidateProjects: CandidateProjectCard[]; undatedCandidateProjects: CandidateProjectCard[]; dates: DateGroup[]; pendingDates: PendingDateGroup[]; unknown: ConversationRecord[]; undatedNone: ConversationRecord[]; undatedProjects: ProjectCard[] }
+export interface CatalogProjection { projects: ProjectCard[]; localProjects: LocalObservedProjectCard[]; undatedLocalProjects: LocalObservedProjectCard[]; candidateProjects: CandidateProjectCard[]; undatedCandidateProjects: CandidateProjectCard[]; dates: DateGroup[]; pendingDates: PendingDateGroup[]; unknown: ConversationRecord[]; undatedNone: ConversationRecord[]; undatedProjects: ProjectCard[]; segmentOnly: ConversationRecord[]; displayTimes: Map<string, DisplayTimeProjection> }
 /** Display metadata only: never writes activity/OpenDay or transfers visits across owners. */
 export function lastDisplayAt(record: ConversationRecord, now = new Date().toISOString()): string | null {
-  const cutoff = instant(now); if (cutoff === null) return null;
-  let latest: number | null = null;
-  for (const value of [record.activity?.lastConfirmedOpenAt, record.browserLastVisitAt]) {
-    const time = instant(value);
-    if (time !== null && time <= cutoff && (latest === null || time > latest)) latest = time;
-  }
-  return latest === null ? null : new Date(latest).toISOString();
+  return directDisplayAt(record, now);
 }
 export function compareRecords(a: ConversationRecord, b: ConversationRecord, now = new Date().toISOString()): number {
   const aTime = instant(lastDisplayAt(a, now)), bTime = instant(lastDisplayAt(b, now));
@@ -38,38 +34,33 @@ function observedProject(record: ConversationRecord, projects: Map<string, Local
   const project = projects.get(record.localProject.projectKey);
   return project && project.localProfileKey === record.owner.localProfileKey && project.boundaryKey === record.localProject.boundaryKey ? project : null;
 }
-function pendingPlacement(record: ConversationRecord, view: ProjectionView): { at: string | null; segment: number | null } {
-  const at = lastDisplayAt(record, view.now);
-  return { at, segment: freeSegmentFor(at, view) };
-}
+/** The arrays retain internal provenance; all use the same user-facing card. */
 export function projectCatalog(snapshot: CatalogSnapshot, view: ProjectionView): CatalogProjection {
   if (view.H !== 30 || !Number.isSafeInteger(view.k) || view.k < 0) throw Error('invalid-view');
   view = { ...view, now: view.now ?? new Date().toISOString() };
   const records = scoped(snapshot, view.selectedScope);
-  const times = new Map(records.map(record => [record.key, pendingPlacement(record, view)]));
-  records.sort((a, b) => (instant(times.get(b.key)!.at) ?? -Infinity) - (instant(times.get(a.key)!.at) ?? -Infinity)
-    || a.stableRank - b.stableRank || a.key.localeCompare(b.key));
-  const out: CatalogProjection = { projects: [], localProjects: [], undatedLocalProjects: [], candidateProjects: [], undatedCandidateProjects: [], dates: [], pendingDates: [], unknown: [], undatedNone: [], undatedProjects: [] };
-  const projects = snapshot.projects.filter(p => p.scopeKey === view.selectedScope);
+  const orders = snapshot.timeOrders ?? [];
+  const times = deriveDisplayTimes(records, view, orders, snapshot.localProfileKey);
+  records.sort((a, b) => times.get(a.key)!.rank - times.get(b.key)!.rank);
+  const out: CatalogProjection = { projects: [], localProjects: [], undatedLocalProjects: [], candidateProjects: [], undatedCandidateProjects: [], dates: [], pendingDates: [], unknown: [], undatedNone: [], undatedProjects: [], segmentOnly: [], displayTimes: times };
+  const projects = [...new Map(snapshot.projects.filter(p => p.scopeKey === view.selectedScope).sort((a, b) => a.revision - b.revision || a.key.localeCompare(b.key)).map(p => [p.projectId, p])).values()];
   const projectIds = new Set(projects.map(p => p.projectId));
+  const placement = (members: ConversationRecord[]) => {
+    const dated = members.filter(record => times.get(record.key)!.segment !== null);
+    const segment = dated.length ? Math.min(...dated.map(record => times.get(record.key)!.segment!)) : null;
+    const recent = segment === null ? [] : members.filter(record => times.get(record.key)!.segment === segment);
+    // “更早” is a collection area, including records without usable time evidence.
+    const older = members.filter(record => segment === null || times.get(record.key)!.segment !== segment);
+    const precise = recent.map(record => times.get(record.key)!.at).filter((at): at is string => at !== null).sort((a, b) => instant(b)! - instant(a)!);
+    const sortValues = recent.map(record => times.get(record.key)!.sortTime).filter((value): value is number => value !== null);
+    return { segment, recent, older, undated: [] as ConversationRecord[], latestDisplayAt: precise[0] ?? null, sortTime: sortValues.length ? Math.max(...sortValues) : null };
+  };
   for (const project of projects) {
-    const members = records.filter(r => r.membership.state === 'PROJECT' && r.membership.projectId === project.projectId);
-    // Future/invalid activities are not treated as fresh. Undated children remain with the parent.
-    const dated = members.filter(r => times.get(r.key)!.segment !== null);
-    const latestDisplayAt = dated.length ? times.get(dated[0]!.key)!.at : null;
-    // Retained field keeps its original meaning; it is no longer a placement key.
-    const active = members.map(r => r.activity?.lastConfirmedOpenAt).filter((at): at is string => instant(at) !== null && instant(at)! <= instant(view.now)!).sort((a, b) => instant(b)! - instant(a)!);
-    const latestActiveAt = active[0] ?? null;
-    const segment = freeSegmentFor(latestDisplayAt, view);
-    const card: ProjectCard = { project, latestActiveAt, latestDisplayAt, segment, recent: [], older: [], undated: [] };
-    for (const record of members) {
-      const own = times.get(record.key)!.segment;
-      if (own === null || segment === null) card.undated.push(record);
-      else if (own === segment) card.recent.push(record);
-      else card.older.push(record);
-    }
-    if (segment === null) out.undatedProjects.push(card);
-    else if (segment === view.k) out.projects.push(card);
+    const members = records.filter(record => record.membership.state === 'PROJECT' && record.membership.projectId === project.projectId);
+    const active = members.map(record => record.activity?.lastConfirmedOpenAt).filter((at): at is string => instant(at) !== null && instant(at)! <= instant(view.now)!).sort((a, b) => instant(b)! - instant(a)!);
+    const card: ProjectCard = { project, latestActiveAt: active[0] ?? null, ...placement(members) };
+    if (card.segment === null && view.k === 0) out.undatedProjects.push(card);
+    else if (card.segment === view.k) out.projects.push(card);
   }
   const localProjects = new Map((view.selectedScope === 'unassigned' ? snapshot.localProjects ?? [] : [])
     .filter(project => project.localProfileKey === snapshot.localProfileKey).map(project => [project.key, project]));
@@ -77,23 +68,11 @@ export function projectCatalog(snapshot: CatalogSnapshot, view: ProjectionView):
   for (const project of localProjects.values()) {
     const members = records.filter(record => observedProject(record, localProjects)?.key === project.key);
     for (const record of members) localMemberKeys.add(record.key);
-    const dated = members.filter(record => times.get(record.key)!.segment !== null);
-    const latestDisplayAt = dated.length ? times.get(dated[0]!.key)!.at : null;
-    const segment = freeSegmentFor(latestDisplayAt, view);
-    const card: LocalObservedProjectCard = { project, latestDisplayAt, segment, recent: [], older: [], undated: [] };
-    for (const record of members) {
-      const own = times.get(record.key)!.segment;
-      if (own === null || segment === null) card.undated.push(record);
-      else if (own === segment) card.recent.push(record);
-      else card.older.push(record);
-    }
-    if (segment === null) out.undatedLocalProjects.push(card);
-    else if (segment === view.k) out.localProjects.push(card);
+    const card: LocalObservedProjectCard = { project, ...placement(members) };
+    if (card.segment === null && view.k === 0) out.undatedLocalProjects.push(card);
+    else if (card.segment === view.k) out.localProjects.push(card);
   }
-  out.localProjects.sort((a, b) => instant(b.latestDisplayAt)! - instant(a.latestDisplayAt)! || a.project.stableRank - b.project.stableRank || a.project.key.localeCompare(b.project.key));
-  out.undatedLocalProjects.sort((a, b) => a.project.stableRank - b.project.stableRank || a.project.key.localeCompare(b.project.key));
-  // Legacy candidate keys keep their original observation boundary. They are never
-  // keyed by title or joined with the formally scoped native Project table.
+  // Legacy observations keep their exact identity boundary; names never merge cards.
   const candidateGroups = new Map<string, { candidate: LocalProjectCandidate; members: ConversationRecord[] }>();
   const candidateMemberKeys = new Set<string>();
   for (const record of records) {
@@ -103,46 +82,31 @@ export function projectCatalog(snapshot: CatalogSnapshot, view: ProjectionView):
     group.members.push(record); candidateMemberKeys.add(record.key); candidateGroups.set(candidate.key, group);
   }
   for (const { candidate, members } of candidateGroups.values()) {
-    const rows = members.map(record => ({ record, ...times.get(record.key)! })).sort((a, b) =>
-      (a.segment === null ? Infinity : a.segment) - (b.segment === null ? Infinity : b.segment)
-      || (instant(b.at) ?? -Infinity) - (instant(a.at) ?? -Infinity) || a.record.stableRank - b.record.stableRank || a.record.key.localeCompare(b.record.key));
-    const latest = rows.find(row => row.segment !== null);
-    const card: CandidateProjectCard = { candidate, latestDisplayAt: latest?.at ?? null, segment: latest?.segment ?? null,
-      recent: [], older: [], undated: [], stableRank: Math.min(...members.map(record => record.stableRank)) };
-    for (const row of rows) {
-      if (row.segment === null) card.undated.push(row.record);
-      else if (row.segment === card.segment) card.recent.push(row.record);
-      else card.older.push(row.record);
-    }
-    if (card.segment === null) out.undatedCandidateProjects.push(card);
+    const card: CandidateProjectCard = { candidate, ...placement(members), stableRank: Math.min(...members.map(record => record.stableRank)) };
+    if (card.segment === null && view.k === 0) out.undatedCandidateProjects.push(card);
     else if (card.segment === view.k) out.candidateProjects.push(card);
   }
-  out.candidateProjects.sort((a, b) => instant(b.latestDisplayAt)! - instant(a.latestDisplayAt)! || a.stableRank - b.stableRank || a.candidate.key.localeCompare(b.candidate.key));
-  out.undatedCandidateProjects.sort((a, b) => a.stableRank - b.stableRank || a.candidate.key.localeCompare(b.candidate.key));
-  const dates = new Map<string, ConversationRecord[]>();
-  const pendingDates = new Map<string, PendingDateGroup>();
+  const dates = new Map<string, ConversationRecord[]>(), pendingDates = new Map<string, ConversationRecord[]>();
   for (const record of records) {
     if (candidateMemberKeys.has(record.key) || localMemberKeys.has(record.key)) continue;
-    if (record.membership.state === 'UNKNOWN' || record.membership.state === 'PROJECT' && !projectIds.has(record.membership.projectId)) {
-      // Unified display time does not assert ownership, membership or active use.
-      const { at, segment } = times.get(record.key)!;
-      if (segment === null) out.unknown.push(record);
-      else if (segment === view.k) {
-        const date = dayLabel(localDay(at!, view.Z)), key = date;
-        const group = pendingDates.get(key) ?? { date, records: [] };
-        group.records.push(record); pendingDates.set(key, group);
-      }
-      continue;
+    if (record.membership.state === 'PROJECT' && projectIds.has(record.membership.projectId)) continue;
+    const time = times.get(record.key)!;
+    if (time.segment === null) {
+      // Internal fallback arrays are retained for compatibility, never homepage sections.
+      if (record.membership.state === 'NONE') out.undatedNone.push(record); else out.unknown.push(record);
+    } else if (time.segment === view.k) {
+      if (time.date === null) { out.segmentOnly.push(record); continue; }
+      const target = record.membership.state === 'NONE' ? dates : pendingDates;
+      const rows = target.get(time.date) ?? []; rows.push(record); target.set(time.date, rows);
     }
-    if (record.membership.state !== 'NONE') continue;
-    const { at, segment } = times.get(record.key)!;
-    if (segment === null) out.undatedNone.push(record);
-    else if (segment === view.k) { const date = dayLabel(localDay(at!, view.Z)); const items = dates.get(date) ?? []; items.push(record); dates.set(date, items); }
   }
-  out.projects.sort((a, b) => instant(b.latestDisplayAt)! - instant(a.latestDisplayAt)! || a.project.stableRank - b.project.stableRank || a.project.key.localeCompare(b.project.key));
-  out.undatedProjects.sort((a, b) => a.project.stableRank - b.project.stableRank || a.project.key.localeCompare(b.project.key));
+  const projectOrder = (a: ProjectCard | LocalObservedProjectCard, b: ProjectCard | LocalObservedProjectCard) =>
+    (b.sortTime ?? -Infinity) - (a.sortTime ?? -Infinity) || a.project.stableRank - b.project.stableRank || a.project.key.localeCompare(b.project.key);
+  out.projects.sort(projectOrder); out.localProjects.sort(projectOrder); out.undatedProjects.sort(projectOrder); out.undatedLocalProjects.sort(projectOrder);
+  const candidateOrder = (a: CandidateProjectCard, b: CandidateProjectCard) => (b.sortTime ?? -Infinity) - (a.sortTime ?? -Infinity) || a.stableRank - b.stableRank || a.candidate.key.localeCompare(b.candidate.key);
+  out.candidateProjects.sort(candidateOrder); out.undatedCandidateProjects.sort(candidateOrder);
   out.dates = [...dates.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([date, rows]) => ({ date, records: rows }));
-  out.pendingDates = [...pendingDates.values()].sort((a, b) => b.date.localeCompare(a.date));
+  out.pendingDates = [...pendingDates.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([date, rows]) => ({ date, records: rows }));
   return out;
 }
 export interface SearchResult { record: ConversationRecord; project: ProjectRecord | null; localProject: LocalObservedProject | null; candidateProject: LocalProjectCandidate | null; path: string }
@@ -156,9 +120,28 @@ export function searchCatalog(snapshot: CatalogSnapshot, query: string, selected
     const candidateProject = localCandidate(record);
     const localProject = observedProject(record, localProjects);
     if (![record.nativeTitle ?? '', project?.nativeTitle ?? '', localProject?.nativeTitle ?? '', candidateProject?.nativeTitle ?? '', record.canonicalUrl].some(value => value.normalize('NFKC').toLocaleLowerCase().includes(q))) return [];
-    const path = project ? `${project.nativeTitle ?? '未命名项目'} · 原生项目` : localProject ? `${localProject.nativeTitle ?? '未命名项目'} · 原生项目 · 本地已观察`
-      : candidateProject ? `${candidateProject.nativeTitle} · 本地候选项目／原生归属待确认` : record.localProject?.state === 'conflicting' ? '原生项目关系冲突 · 待归属'
-      : record.membership.state === 'NONE' ? '无项目' : record.owner.kind === 'unassigned' ? '本地历史 · 账号未绑定／归属待确认' : '归属待确认';
+    const path = project?.nativeTitle ?? localProject?.nativeTitle ?? candidateProject?.nativeTitle ?? '最近';
     return [{ record, project, localProject, candidateProject, path }];
   });
+}
+
+export interface ProjectSearchResult {
+  key: string; nativeTitle: string | null; canonicalUrl: string;
+  project: ProjectRecord | null; localProject: LocalObservedProject | null; candidateProject: LocalProjectCandidate | null;
+}
+/** Includes empty native projects; a real project does not require a fake conversation. */
+export function searchProjects(snapshot: CatalogSnapshot, query: string, selectedScope: string): ProjectSearchResult[] {
+  const q = query.normalize('NFKC').trim().toLocaleLowerCase();
+  const rows: ProjectSearchResult[] = snapshot.projects.filter(project => project.scopeKey === selectedScope).map(project => ({
+    key: project.key, nativeTitle: project.nativeTitle, canonicalUrl: project.canonicalUrl, project, localProject: null, candidateProject: null,
+  }));
+  if (selectedScope === 'unassigned') for (const project of snapshot.localProjects ?? []) if (project.localProfileKey === snapshot.localProfileKey) rows.push({
+    key: project.key, nativeTitle: project.nativeTitle, canonicalUrl: project.canonicalUrl, project: null, localProject: project, candidateProject: null,
+  });
+  const candidates = new Map<string, LocalProjectCandidate>();
+  for (const record of scoped(snapshot, selectedScope)) { const candidate = localCandidate(record); if (candidate) candidates.set(candidate.key, candidate); }
+  for (const candidate of candidates.values()) rows.push({ key: `candidate:${candidate.key}`, nativeTitle: candidate.nativeTitle, canonicalUrl: candidate.canonicalUrl,
+    project: null, localProject: null, candidateProject: candidate });
+  return rows.filter(row => [row.nativeTitle ?? '', row.canonicalUrl].some(value => value.normalize('NFKC').toLocaleLowerCase().includes(q)))
+    .sort((a, b) => (a.nativeTitle ?? '').localeCompare(b.nativeTitle ?? '') || a.key.localeCompare(b.key));
 }

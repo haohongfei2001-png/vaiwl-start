@@ -29,7 +29,7 @@ interface ObservationOptions {
 }
 
 const EXCLUDED = '[contenteditable],dialog,[role="dialog"],article,[data-preview],[data-message-author-role],[data-testid^="conversation-turn"],.markdown,[data-thread-scroll-footer],[data-app-action-timeline-scroll],[data-va-owned],[data-vaiwl-owned],#cgps-project-groups';
-const ATTRIBUTES = ['href', 'id', 'role', 'aria-label', 'title', 'aria-controls', 'aria-labelledby', 'aria-selected', 'aria-hidden', 'hidden', 'class', 'style', 'data-sidebar-navigation-root', 'data-app-shell-main-surface', 'data-app-shell-main-content-layout'];
+const ATTRIBUTES = ['href', 'id', 'role', 'aria-label', 'title', 'aria-controls', 'aria-labelledby', 'aria-selected', 'aria-hidden', 'hidden', 'class', 'style', 'datetime', 'aria-sort', 'aria-setsize', 'aria-posinset', 'aria-busy', 'draggable', 'aria-grabbed', 'data-sidebar-navigation-root', 'data-app-shell-main-surface', 'data-app-shell-main-content-layout'];
 
 /** Inspect only node positions, never mutation oldValue, preview/body text or
  * HTML. A parent/structure change may require the strict parser to run again. */
@@ -90,12 +90,12 @@ export function startProjectObservation(document: Document, options: Observation
       for (const snapshot of snapshots) {
         if (!current()) return;
         if (snapshot.identitySurfaces.some(surface => options.memory.blockedSurfaces?.has(surface))) continue;
-        // DOM order has no authority over Start's activity/date order. Normalize
-        // before the existing bounded IPC cap so pure reordering is a no-op.
+        // Plain DOM order has no authority. A separate validated chronological
+        // snapshot carries its original IDs; ordinary reorder stays a no-op.
         const candidate: ProjectCandidate = { ...snapshot.candidate, members: [...snapshot.candidate.members]
           .sort((a, b) => a.conversationId.localeCompare(b.conversationId)).slice(0, 200) };
         const projectId = candidate.projectId;
-        const metadata = JSON.stringify([candidate.nativeTitle, candidate.members]);
+        const metadata = JSON.stringify([candidate.nativeTitle, candidate.members, candidate.timeOrder ?? null]);
         const previous = options.memory.last;
         const reusedTitle = candidate.relationBasis === 'native-project-page' && !!snapshot.titleSurface && previous?.titleSurface === snapshot.titleSurface;
         if (snapshot.routeBound && previous && previous.projectId !== projectId && (previous.panel === snapshot.panel || reusedTitle) && !snapshot.allMembersContainerLinked) {

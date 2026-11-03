@@ -1,5 +1,7 @@
 # 数据合同与状态转换
 
+> **当前最高优先修订：[第14号首页与时间投影合同](14-HOME-TIME-PROJECTION-AMENDMENT.md)。** 废止可见待确认/来源等级、严格更早日期证明与独立无日期会话区；完整项目、范围时间证据、最近与全局更早按该合同执行。身份隔离、P1权限及12stores不变。
+
 > **当前本地项目数据规则见[第13号修订](13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)。** LocalObservedProject 与 ConversationRecord.localProject 是独立的已观察关系；不调用 confirmObservation、不伪装正式 PROJECT/NONE。数据库 v1/12 stores 不变，原目录/活动不迁移，完整认证规则继续有效。
 
 > **当前有效修订：2026-11-02-local-first，用户已批准。** [统一修订合同](10-LOCAL-FIRST-AMENDMENT.md)覆盖原 M0 全局前置门：本地时间组织、Start 主动打开与局部候选项目可独立运行；账号隔离及正式原生归属证明仍保留。`LOCAL_WORKSPACE_READY` 不等于 `FREE_V1_ACCEPTED`。
@@ -43,7 +45,7 @@
 
 书面规范中的 `[ownerKey,lastActiveAt]` 对应平铺派生字段：ownerKey 为 scope key 或 `unassigned:<localProfileKey>`；无活动不进入时间索引，用稳定 rank 查询无日期部分。绝不以 null/undefined/boolean 作为不合法 IDB key。
 
-本次修订不改变数据库 version/store/index。会话允许可选 `localProjectCandidate`；已有 v1 记录缺少该字段可直接读取。该字段 key 隔离 Profile/session/binding/observationId/Project ID，不进入正式 projects 表；形状与边界见修订合同第5节。`browserLastVisitAt` 仅供待确认日期投影，仍不进入活动索引。
+本次修订不改变数据库 version/store/index。会话允许可选 `localProjectCandidate`；已有 v1 记录缺少该字段可直接读取。该字段 key 隔离 Profile/session/binding/observationId/Project ID，不进入正式 projects 表；形状与边界见修订合同第5节。`browserLastVisitAt` 可用于项目与最近的展示时间投影，仍不进入活动索引。
 
 ## 4. 归属归约
 

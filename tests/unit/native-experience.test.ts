@@ -65,7 +65,7 @@ test('project follows newest member display time, keeps old/undated children and
   foreign.owner={kind:'scoped',scopeKey:'b'};
   const project={key:'pa',scopeKey:'a',projectId:'p',nativeTitle:'P',canonicalUrl:'https://chatgpt.com/g/p/project',evidenceId:'e',observedAt:now,membershipCoverage:'observed-only',stableRank:0,revision:1} as ProjectRecord;
   const snapshot=catalog([old,foreign,undated,recent],[project]),result=projectCatalog(snapshot,view),card=result.projects[0]!;
-  assert.deepEqual(card.recent.map(r=>r.key),['recent']);assert.deepEqual(card.older.map(r=>r.key),['old']);assert.deepEqual(card.undated.map(r=>r.key),['undated']);
+  assert.deepEqual(card.recent.map(r=>r.key),['recent']);assert.deepEqual(card.older.map(r=>r.key),['old','undated']);assert.deepEqual(card.undated,[]);
   assert.equal(card.latestDisplayAt,'2026-11-02T11:00:00.000Z');assert.equal(card.latestActiveAt,'2026-08-01T00:00:00Z');
   assert.equal(projectCatalog(snapshot,{...view,k:3}).projects.length,0);
 });

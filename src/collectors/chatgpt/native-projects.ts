@@ -5,6 +5,7 @@
 import { parseConversationUrl, parseProjectUrl, projectIdFromContainer } from '../../domain/ids.js';
 import { observeProjectSnapshot } from './metadata.js';
 import type { ProjectCandidate } from './project-candidate.js';
+import { withNativeProjectTime } from './native-time.js';
 
 export interface NativeProjectSnapshot {
   candidate: ProjectCandidate;
@@ -146,7 +147,7 @@ export function observeNativeProjectSnapshots(document: Document): NativeProject
   const heading = project && main ? projectHeading(document, main) : null;
   const panel: NativeProjectSnapshot | null = strict ? { ...strict, routeBound: true, identitySurfaces: [strict.panel] } : project && main ? semanticPanel(document, main, project) : null;
   if (panel && heading) { panel.titleSurface = heading.surface; panel.identitySurfaces.push(heading.surface); }
-  if (panel) results.push(panel);
+  if (panel) { panel.candidate = withNativeProjectTime(document, panel.panel, panel.candidate); results.push(panel); }
   const sidebars = outermost([...document.querySelectorAll(SIDEBAR)].filter(node => visible(document, node)));
   const roots = [...sidebars, ...(project && main ? [main] : [])];
   const anchors = [...new Set(roots.flatMap(root => [...root.querySelectorAll('a[href]')]))];

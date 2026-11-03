@@ -120,13 +120,13 @@ test('local candidate project keeps historical children in one window without cl
   const card = projection.candidateProjects[0]!;
   assert.equal(card.latestDisplayAt, now);
   assert.deepEqual(card.recent.map(row => row.key), ['recent-member']);
-  assert.deepEqual(card.older.map(row => row.key), ['old-member']);
-  assert.deepEqual(card.undated.map(row => row.key), ['undated-member']);
+  assert.deepEqual(card.older.map(row => row.key), ['old-member', 'undated-member']);
+  assert.deepEqual(card.undated, []);
   assert.equal(projectCatalog(snapshot, { ...view, k: 3 }).candidateProjects.length, 0);
   assert.equal(JSON.stringify(snapshot), before);
   assert.ok(snapshot.conversations.every(row => row.membership.state === 'UNKNOWN' && row.activity === null));
   const result = searchCatalog(snapshot, 'Same native title', 'unassigned');
-  assert.equal(result.length, 3); assert.ok(result.every(item => item.project === null && item.path.includes('本地候选项目／原生归属待确认')));
+  assert.equal(result.length, 3); assert.ok(result.every(item => item.project === null && item.path === 'Same native title'));
 });
 
 test('candidate keys separate observation boundaries even for the same Project ID and title', () => {
@@ -158,6 +158,6 @@ test('conflicted or revoked candidate evidence falls back to explicit pending da
   const snapshot = catalog([conflict, revoked, undated]), projection = projectCatalog(snapshot, view);
   assert.equal(projection.candidateProjects.length, 0);
   assert.deepEqual(keys(projection), ['conflicted', 'revoked']);
-  assert.deepEqual(projection.undatedCandidateProjects[0]!.undated.map(row => row.key), ['undated-candidate']);
+  assert.deepEqual(projection.undatedCandidateProjects[0]!.older.map(row => row.key), ['undated-candidate']);
   assert.equal(searchCatalog(snapshot, 'Same native title', 'unassigned').length, 1);
 });

@@ -250,8 +250,8 @@ test('native local grouping keeps old children with the Project and global searc
     const local = projection.localProjects[0]!;
     assert.equal(projection.localProjects.length, 1); assert.equal(projection.projects.length, 0);
     assert.deepEqual(local.recent.map(r => r.conversationId), [cid(1)]);
-    assert.deepEqual(local.older.map(r => r.conversationId), [cid(2)]);
-    assert.deepEqual(local.undated.map(r => r.conversationId), [cid(3)]);
+    assert.deepEqual(local.older.map(r => r.conversationId), [cid(2), cid(3)]);
+    assert.deepEqual(local.undated, []);
     assert.equal(projection.pendingDates.length, 0); assert.equal(projection.unknown.length, 0);
     assert.equal(projectCatalog(snapshot, { ...view, k: 3 }).localProjects.length, 0);
     const found = searchCatalog(snapshot, 'Native research project', 'unassigned');

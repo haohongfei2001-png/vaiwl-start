@@ -149,6 +149,7 @@ try {
   const undated = conversation('尚无日期的无项目会话', { state: 'NONE', projectId: null, evidenceId: 'test-none-undated', confirmedAt: today }, null);
   undated.browserLastVisitAt = null; records.push(undated);
   records.push(conversation('<img src=x onerror=window.__xss=1>', { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, null));
+  records.push(conversation('未分项目的最近阅读', { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }));
   records.push(conversation('Other account secret', { state: 'NONE', projectId: null, evidenceId: 'test-other', confirmedAt: today }, today, otherScope));
   records.push(conversation('Other account pending', { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, null, otherScope));
   await page.evaluate(async data => {
@@ -181,22 +182,24 @@ try {
   });
   const businessBeforeFilters = await readBusinessStores();
   const workspaceKeys = () => page.locator('#workspace-content a[data-record-key]').evaluateAll(links => links.map(link => link.dataset.recordKey));
-  for (const [filter, state] of [['project', 'PROJECT'], ['none', 'NONE'], ['unknown', 'UNKNOWN']]) {
+  for (const filter of ['project', 'none']) {
     await page.locator(`[data-filter="${filter}"]`).click();
     const keys = await workspaceKeys();
-    check(`UI-filter-${filter}-exact-membership`, keys.length > 0 && keys.every(key => records.some(record => record.key === key && record.owner.scopeKey === scope && record.membership.state === state)), `${filter} renders only current-scope ${state} records; UNKNOWN is never classified as NONE.`);
+    check(`UI-filter-${filter}-display-position`, keys.length > 0 && keys.every(key => records.some(record => record.key === key && record.owner.scopeKey === scope && (filter === 'project' ? record.membership.state === 'PROJECT' : record.membership.state !== 'PROJECT' && record.activity))), `${filter} renders its current-scope display position; recent combines dated NONE and UNKNOWN without changing either membership fact.`);
   }
+  check('UI-no-confirmation-filter', await page.locator('[data-filter="unknown"], [data-search-filter="unknown"]').count() === 0 && (await page.locator('[data-filter]').allTextContents()).join('|') === '全部|项目|最近', 'Homepage and search contain no confirmation queue; the three filters use the approved product labels.');
   await page.locator('[data-filter="all"]').click();
   await page.locator('#scope-selector').selectOption(otherScope);
   await page.getByText('Other account secret', { exact: true }).waitFor();
   const projectlessHome = await page.locator('.project').count() === 0 && await page.locator('.new-chat').isVisible() && await page.locator('.date-window').count() === 1 && await page.locator('#scope-selector').inputValue() === otherScope;
   await page.locator('[data-filter="none"]').click();
   const projectlessNone = (await workspaceKeys()).length === 1 && await page.getByText('Other account secret', { exact: true }).isVisible() && await page.getByText('Other account pending', { exact: true }).count() === 0;
-  await page.locator('[data-filter="unknown"]').click();
-  const projectlessUnknown = (await workspaceKeys()).length === 1 && await page.getByText('Other account pending', { exact: true }).isVisible() && await page.getByText('Other account secret', { exact: true }).count() === 0 && await page.locator('.date-window').count() === 0;
+  await page.locator('#search-trigger').click(); await page.locator('#search-input').fill('Other account pending');
+  const projectlessSearch = await page.locator('#search-results [data-record-key]').count() === 1 && await page.locator('#search-results').getByText('Other account pending', { exact: true }).isVisible();
+  await page.keyboard.press('Escape');
   await page.locator('[data-filter="project"]').click();
   const projectlessEmpty = (await workspaceKeys()).length === 0 && await page.locator('.new-chat').isVisible() && await page.getByText('这一段没有记录', { exact: true }).isVisible();
-  check('UI-projectless-scope-home', projectlessHome && projectlessNone && projectlessUnknown && projectlessEmpty, 'A synthetic verified scope with zero projects retains its homepage, new-chat link and scope selector; NONE and UNKNOWN remain separate and the project filter has a usable empty state.');
+  check('UI-projectless-scope-home', projectlessHome && projectlessNone && projectlessSearch && projectlessEmpty, 'A synthetic verified scope with zero projects retains its homepage, new-chat link and scope selector; Recent uses available time evidence; the undated UNKNOWN stays searchable without a homepage queue and the project filter has a usable empty state.');
   await page.locator('[data-filter="all"]').click();
   await page.locator('#scope-selector').selectOption(scope);
   await page.locator('.project').first().waitFor();
@@ -208,18 +211,18 @@ try {
   check('UI-add-twelve', await firstCard.locator('.project-body > .conversation-list .conversation-row').count() === 17, 'One Show More increases 5 to 17.');
   await firstCard.getByRole('button', { name: '显示更多', exact: true }).click();
   check('UI-project-more-complete', await firstCard.locator('.project-body > .conversation-list .conversation-row').count() === 18 && await firstCard.getByRole('button', { name: '显示更多', exact: true }).count() === 0, 'The final recent member is reachable and Show More ends at the actual collection boundary.');
-  await firstCard.getByRole('button', { name: '较早会话', exact: true }).click();
+  await firstCard.getByRole('button', { name: '更早', exact: true }).click();
   const expectedOldKeys = records.filter(record => record.membership.state === 'PROJECT' && record.membership.projectId === projects[0].projectId && record.activity?.lastConfirmedOpenAt === old).map(record => record.key);
   const renderedOldKeys = await firstCard.locator('.old-list [data-record-key]').evaluateAll(rows => rows.map(row => row.getAttribute('data-record-key')));
   check('UI-old-stays-in-parent', expectedOldKeys.length === 2 && JSON.stringify(renderedOldKeys) === JSON.stringify(expectedOldKeys) && await firstCard.getByText('VAIWL较早方案', { exact: true }).isVisible() && await firstCard.getByText('VAIWL另一旧会话', { exact: true }).isVisible(), 'Exactly both old members expand under their one parent; no current member is mixed into the old-member list.');
-  await firstCard.getByRole('button', { name: '较早会话', exact: true }).click();
+  await firstCard.getByRole('button', { name: '更早', exact: true }).click();
   check('UI-no-top-arrow', await page.locator('#period-newer').count() === 0, 'k=0 has no newer-period button.');
   await page.locator('#period-older').click();
   check('UI-empty-adjacent-segment', await page.evaluate(() => JSON.parse(sessionStorage.getItem('vaiwl-start-view/1')).k) === 1
     && await page.locator('.date-window').count() === 0 && await page.locator('.project').count() === 0
     && await page.getByText('这一段没有记录', { exact: true }).isVisible()
-    && await page.locator(`.undated-section [data-record-key="${undated.key}"]`).count() === 1,
-    'One click reaches empty k1 without skipping it. Global undated entries stay reachable but cannot suppress the current empty-period hint.');
+    && await page.locator(`#workspace-content [data-record-key="${undated.key}"]`).count() === 0,
+    'One click reaches empty k1 without skipping it. An ungrouped undated record stays outside the homepage; search still reaches it.');
   await page.locator('#period-older').click();
   const earlierKnownVisible = await page.getByText('更早区间的独立会话', { exact: true }).isVisible();
   const olderProjectsAbsent = await page.locator('.project').count() === 0;
@@ -227,7 +230,7 @@ try {
   const returnedToEmpty = await page.getByText('这一段没有记录', { exact: true }).isVisible();
   await page.locator('#period-newer').click();
   check('UI-empty-segment-to-known-and-back', earlierKnownVisible && olderProjectsAbsent && returnedToEmpty && await page.locator('.project').count() === 6 && await page.locator('#period-newer').count() === 0, 'k0 → empty k1 → known NONE at k2 → empty k1 → k0; no empty segment is skipped and old project members do not duplicate their current parent.');
-  check('UI-undated-independent-entry', await page.locator(`.undated-section [data-record-key="${undated.key}"]`).count() === 1 && await page.locator(`.date-window [data-record-key="${undated.key}"]`).count() === 0, 'A record with neither a valid visit nor confirmed-open time stays in the independent undated section, outside dated windows.');
+  check('UI-undated-search-only', await page.locator(`#workspace-content [data-record-key="${undated.key}"]`).count() === 0, 'A record with neither project nor valid time is absent from homepage normal lists and remains in the complete search catalog.');
   await page.keyboard.press('/'); await page.locator('#search-input').fill(undated.nativeTitle);
   assert.equal(await page.locator('.search-result').getAttribute('data-record-key'), undated.key);
   const undatedTabPromise = context.waitForEvent('page'); await page.keyboard.press('Control+Enter');
@@ -296,9 +299,10 @@ try {
   await page.waitForFunction(key => !!document.querySelector(`#workspace-content [data-record-key="${key}"]`), removeKey);
   await page.locator('#removed-dialog [data-close]').first().click();
   check('UI-restore-conversation', await page.locator(`#workspace-content [data-record-key="${removeKey}"]`).count() === 1, 'Explicit restore returns exactly one local entry.');
-  await page.locator('[data-filter="unknown"]').click();
-  check('UI-unknown-text-only', await page.getByText('<img src=x onerror=window.__xss=1>', { exact: true }).isVisible() && !await page.evaluate(() => window.__xss), 'An HTML-looking native title is rendered as plain text.');
-  await page.locator('[data-filter="all"]').click();
+  await page.locator('#search-trigger').click(); await page.locator('#search-input').fill('<img src=x onerror=window.__xss=1>');
+  check('UI-unknown-text-only', await page.locator('#search-results').getByText('<img src=x onerror=window.__xss=1>', { exact: true }).isVisible() && !await page.evaluate(() => window.__xss), 'An undated HTML-looking native title is searchable and rendered as plain text.');
+  await page.keyboard.press('Escape');
+  check('UI-no-home-technical-status', !(await page.locator('#workspace-content').textContent()).match(/待确认|待归属|本地已观察|本地候选|尚无可用日期|会话已保存在本机|已观察的原生项目会在这里展开/) && await page.locator('.import-note, .pending-dates, .unknown-section, .undated-section').count() === 0, 'The normal homepage contains project and recent content without provenance cards, diagnosis bars or confirmation sections.');
   const forwarded = await page.evaluate(() => ['ctrlKey', 'metaKey'].flatMap(modifier => ['k', 'l'].map(key => { const event = new KeyboardEvent('keydown', { key, [modifier]: true, bubbles: true, cancelable: true }); document.dispatchEvent(event); return event.defaultPrevented; })));
   check('UI-browser-shortcuts', forwarded.every(value => value === false), 'Ctrl+K/L and Meta+K/L events remain uncancelled in Linux Chromium; this is not a Mac native-shortcut claim.');
   await page.evaluate(() => {
@@ -504,10 +508,10 @@ try {
   });
   await localPage.reload(); await localPage.waitForSelector('html[data-start-ready="true"]');
   await localPage.locator('#scope-selector').selectOption('unassigned');
-  const historySection = localPage.locator('.pending-dates');
+  const historySection = localPage.locator('.recent-section');
   await historySection.waitFor();
   check('UI-local-564-history-date-windows', await historySection.locator('.date-window').count() === 30 && await localPage.locator('#period-older').isVisible()
-    && await localPage.getByRole('heading', { name: '待归属', exact: true }).isVisible()
+    && await localPage.getByRole('heading', { name: '最近', exact: true }).isVisible()
     && await localPage.locator('[data-date-basis="confirmed-open"]').count() === 0
     && await localPage.locator('.unknown-section').count() === 0,
   '564 synthetic local histories occupy their browser-visit calendar windows; the current window has 30 dates, no false active-date section or unstructured pending list.');
@@ -516,9 +520,9 @@ try {
   await firstHistoryDate.locator('[data-more]').click();
   check('UI-history-date-show-more', await firstHistoryDate.locator('.conversation-row').count() === 6 && await firstHistoryDate.locator('[data-more]').count() === 0,
     'Date windows use the existing bounded row expansion; all six same-day records are reachable without rendering the whole catalog.');
-  await localPage.locator('[data-filter="unknown"]').click(); await localPage.locator('#period-older').click();
-  check('UI-local-pending-30-day-navigation', await localPage.locator('#period-newer').isVisible() && await localPage.locator('[data-record-key="staging:ui-history-30"]').count() === 1
-    && await localPage.locator('[data-record-key="staging:ui-history-0"]').count() === 0, 'The pending filter retains adjacent 30-day navigation and shows only that window.');
+  await localPage.locator('[data-filter="none"]').click(); await localPage.locator('#period-older').click();
+  check('UI-local-recent-30-day-navigation', await localPage.locator('#period-newer').isVisible() && await localPage.locator('[data-record-key="staging:ui-history-30"]').count() === 1
+    && await localPage.locator('[data-record-key="staging:ui-history-0"]').count() === 0, 'The recent filter retains adjacent 30-day navigation and shows only that window.');
   await localPage.locator('#search-trigger').click(); await localPage.locator('#search-input').fill('合成历史');
   assert.equal(await localPage.locator('#search-results').getAttribute('data-total-matches'), '564');
   await localPage.locator('#search-input').fill('合成历史 00564');
@@ -547,12 +551,14 @@ try {
     await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); }); db.close();
   }, localSeed.now);
   await localPage.reload(); await localPage.waitForSelector('html[data-start-ready="true"]');
+  await localPage.locator('[data-filter="all"]').click();
   const candidateCard = localPage.locator('[data-candidate-project="local-project:ui-synthetic"]');
-  await candidateCard.waitFor(); await candidateCard.getByRole('button', { name: '较早会话', exact: true }).click();
-  check('UI-local-project-candidate-distinct', await candidateCard.getByText('本地候选项目／原生归属待确认', { exact: true }).isVisible()
+  await candidateCard.waitFor(); await candidateCard.getByRole('button', { name: '更早', exact: true }).click();
+  check('UI-local-project-candidate-unified', (await candidateCard.getAttribute('class')) === 'project'
+    && !(await candidateCard.textContent()).match(/本地候选|待确认|原生项目/)
     && await localPage.locator('[data-record-key="staging:ui-history-1"]').count() === 1 && await candidateCard.locator('[data-record-key="staging:ui-history-65"]').isVisible()
-    && await localPage.locator('[data-project]').count() === 0,
-  'Candidate project metadata groups existing stable UNKNOWN rows once, keeps its older child reachable and never renders as an authenticated native project.');
+    && await localPage.locator('[data-project]').count() === 1,
+  'Supported legacy Project relationships retain their identity boundary and older child, while using the same project component without provenance labels.');
   await localPage.screenshot({ path: 'artifacts/ui-local-history.png', fullPage: true });
   await localPage.close();
   check('UI-no-script-errors', errors.length === 0, JSON.stringify(errors));

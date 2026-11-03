@@ -51,6 +51,7 @@ jobs:
       - run: node tests/browser/source-recovery.mjs
       - run: node tests/browser/project-observation.mjs
       - run: node tests/browser/native-project-grouping.mjs
+      - run: node tests/browser/home-workspace.mjs
       - run: node tests/browser/project-startup.mjs
       - run: node tests/browser/storage-faults.mjs
       - run: node tests/ui/production-ui.mjs
@@ -76,6 +77,8 @@ jobs:
             artifacts/native-project-grouping-validation.json
             artifacts/project-startup-validation.json
             artifacts/native-project-grouping.png
+            artifacts/home-workspace-validation.json
+            artifacts/home-workspace/chrome/
             artifacts/storage-faults-validation.json
             artifacts/native-experience-validation.json
             artifacts/life-bookmarks-validation.json
@@ -111,6 +114,10 @@ jobs:
         env:
           VAIWL_BROWSER_CHANNEL: msedge
           VAIWL_TEST_BROWSER_FAMILY: edge
+      - run: node tests/browser/home-workspace.mjs
+        env:
+          VAIWL_BROWSER_CHANNEL: msedge
+          VAIWL_TEST_BROWSER_FAMILY: edge
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -118,4 +125,6 @@ jobs:
           path: |
             artifacts/edge-life-bookmarks-validation.json
             artifacts/life-bookmarks/edge/
+            artifacts/edge-home-workspace-validation.json
+            artifacts/home-workspace/edge/
           if-no-files-found: error

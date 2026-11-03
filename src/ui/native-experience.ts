@@ -81,7 +81,7 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
         shelf = createBookmarkShelf(bars, shelfState, state => { shelfState = state; });
         content = shelf.element;
       }
-      home.replaceChildren(el('div', { class: 'section-line' }, [el('h2', { class: 'bookmark-section-label' }, ['浏览器书签']), button('显示设置', { id: 'bookmark-choose', class: 'text-button' })]), content);
+      home.replaceChildren(el('div', { class: 'section-line' }, [el('h2', { class: 'bookmark-section-label' }, ['浏览器书签'])]), content);
       shelf?.refreshLayout();
     }
     const restore = focusId ? document.getElementById(focusId) : focusBookmark ? [...home.querySelectorAll<HTMLElement>('[data-bookmark-id]')].find(node => node.dataset.bookmarkId === focusBookmark && !node.hidden) : null;

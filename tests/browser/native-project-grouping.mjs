@@ -141,6 +141,7 @@ try {
   await native.goto(projectUrl(P)); await fill(native, panel());
   const empty = await snapshot(start, s => localProjects(s).some(p => p.projectId === P), 'A supported empty native Project was not saved');
   const pKey = localProjects(empty).find(p => p.projectId === P).key;
+  await start.locator('#earlier-projects-toggle').click();
   await start.locator(`[data-local-project="${pKey}"]`).getByRole('heading', { name: TITLE, exact: true }).waitFor();
   check('LOCAL-P-empty-card-without-workspace', localProjects(empty).length === 1 && members(empty, pKey).length === 0 && empty.projects.length === 0 && empty.scopes.length === 0, 'An empty observed native Project has a persistent named Start card without current Workspace certification or invented members.');
   await native.locator('ol').evaluate((node, markup) => node.insertAdjacentHTML('beforeend', markup), member(1, 'ChatGPT') + member(2, 'Earlier history member'));
@@ -150,7 +151,7 @@ try {
   check('LOCAL-P-legacy-data-preserved', JSON.stringify(first.activity) === JSON.stringify(oldFirst.activity) && first.browserLastVisitAt === oldFirst.browserLastVisitAt && first.firstSeenAt === oldFirst.firstSeenAt && first.stableRank === oldFirst.stableRank && second.browserLastVisitAt === oldSecond.browserLastVisitAt && JSON.stringify((await stores(start, ['openDays']))[0]) === JSON.stringify(daysBefore), 'Adopting existing directory rows retains original keys, titles, visits, ranks, first-seen time and existing activity; passive observation creates no OpenDay.');
   const card = start.locator(`[data-local-project="${pKey}"]`);
   await card.locator(`a[data-record-key="${oldFirst.key}"]`).waitFor();
-  await card.getByRole('button', { name: '较早会话', exact: true }).click();
+  await card.getByRole('button', { name: '更早', exact: true }).click();
   check('LOCAL-P-older-member-stays-in-project', await card.locator(`a[data-record-key="${oldSecond.key}"]`).isVisible() && await start.locator(`#workspace-content a[data-record-key="${oldSecond.key}"]`).count() === 1, 'A member older than the current 30-day window stays under its Project and appears once, through the existing earlier-conversations control.');
   await native.locator('ol').evaluate((node, markup) => node.insertAdjacentHTML('beforeend', markup), member(3, 'Same conversation title') + member(4, 'Same conversation title'));
   const expanded = await snapshot(start, s => members(s, pKey).length === 4, 'Incremental members were not observed');

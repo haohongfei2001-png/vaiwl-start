@@ -125,3 +125,13 @@ D1、原目录/活动/书签 PASS 与 D2 NOT_REPRODUCED 按用户本轮最新状
 - npm run typecheck：PASS。
 - npm test：110/110 PASS（含4组新增D1回归测试）。
 - D2 跳回首页：保持 BLOCKED；本轮未取得完整 Chrome 导航事件链，未修改导航架构。
+
+## 2026-11-03 · 首页信息架构与时间范围投影
+
+在17695ae的P1修复之上实施第14号合同：统一项目卡与最近、完整保留无日期成员、全局更早保留空/无时间项目、删除首页技术分类/常驻横条/书签重复设置，Chrome原生页脚仅设置内提供官方用户操作。新增纯时间范围推断与可选原生语义元数据采集，来源、身份和活动事实保持分离。数据库v1/12stores、P1代际/撤权检查不变。
+
+本地Types、全单元、生产build和privacy audit已完成，确切计数与最终SHA以同构建artifacts/unit-validation.json及GitHub CI为准。独立审查已修复：不足锚覆盖直接历史、native顺序压过更晚Start打开、未来/倒退值借旧锚、scoped新记录拷贝旧时间事实，以及异步refresh回包绕过手势保护；保留新增反例。
+
+新增home-workspace实装门进入Chrome/Edge CI，产出完整目录对照、主体隔离、搜索打开、pointer/drag/IME、生产collector时间推断/失效及内容区截图；其数据与ChatGPT页面为明确合成样本，不是用户私人目录。容器尝试下载Playwright浏览器时所得文件不是有效ZIP，因此本地没有执行实装，不把单元绿灯当浏览器通过。最终实际CI、失败修复和制品链接记录于原Draft PR #1。
+
+真实用户Mac原位安装/旧新个人数据对照、Chrome原生页脚开关点击、Edge原生标签栏favicon、新时间适配器当前真实ChatGPT可用性保持独立未验收；不合并main、不发布、不卸载清库。第14号合同、平台来源及独立审查见docs/free-v1/14-HOME-TIME-PROJECTION-AMENDMENT.md和docs/evidence/home-workspace-20261103/。

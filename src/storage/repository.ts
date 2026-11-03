@@ -1,6 +1,7 @@
-import type { AccountScope, CandidateResolution, ConfirmedOpenDay, ConversationRecord, EvidenceWitness, ImportCheckpoint, LocalObservedProject, Membership, OpenDisposition, OpenIntent, OpenIntentEvidence, ProjectRecord, StartSettings, Tombstone, WebsiteShortcut } from '../../contracts/free-v1.js';
+import type { AccountScope, CandidateResolution, ConfirmedOpenDay, ConversationRecord, EvidenceWitness, ImportCheckpoint, LocalObservedProject, Membership, NativeTimeOrderEvidence, OpenDisposition, OpenIntent, OpenIntentEvidence, ProjectRecord, StartSettings, Tombstone, VerifiedDisplayTimeFact, WebsiteShortcut } from '../../contracts/free-v1.js';
 import { conversationKey, parseConversationUrl, parseProjectUrl, projectKey, scopeKey, stagingKey, tupleHash, validateWebsiteUrl } from '../domain/ids.js';
 import { parseLocalProjectCandidate } from '../collectors/chatgpt/project-candidate.js';
+import { NATIVE_TIME_ADAPTER } from '../collectors/chatgpt/native-time.js';
 import { activitySummary, upsertOpenDay } from '../domain/open-activity.js';
 import { reduceMembership, validateMembership } from '../domain/membership.js';
 import { dayLabel, instant, localDay, validateTimeZone } from '../domain/time.js';
@@ -9,8 +10,9 @@ import { openDatabase, request, STORE_NAMES, transactionDone } from './db.js';
 
 export interface CandidateInput { url: string; title?: string | null; lastVisitAt?: string | null; source?: 'local' | 'synced' | 'unknown'; titleBasis?: 'browser-history' | 'native-label' | 'unknown' }
 export interface RuntimeImportJob extends ImportCheckpoint { includeSynced?: boolean; seenKeys?: string[]; errorCode?: string; pendingCandidates?: CandidateInput[]; failureCode?: 'history-api-failed' | 'saturated-time-slice' | null }
-export interface CatalogSnapshot { revision: number; settings: StartSettings; localProfileKey: string; scopes: AccountScope[]; conversations: ConversationRecord[]; projects: ProjectRecord[]; localProjects?: LocalObservedProject[]; shortcuts: WebsiteShortcut[]; importJobs: RuntimeImportJob[]; tombstones: Tombstone[] }
+export interface CatalogSnapshot { revision: number; settings: StartSettings; localProfileKey: string; scopes: AccountScope[]; conversations: ConversationRecord[]; projects: ProjectRecord[]; localProjects?: LocalObservedProject[]; timeOrders?: NativeTimeOrderEvidence[]; shortcuts: WebsiteShortcut[]; importJobs: RuntimeImportJob[]; tombstones: Tombstone[] }
 interface LocalProjectRow { key: string; value: LocalObservedProject }
+interface NativeTimeOrderRow { key: string; value: NativeTimeOrderEvidence }
 export interface LocalProjectContext { browserSessionId: string; documentId: string; identityGeneration: number; principalKey: string | null; sourceHref: string; routeEpoch: number }
 interface SettingsRow extends StartSettings { key: 'main'; localProfileKey: string }
 export interface AutomaticHistoryAuthorization { localProfileKey: string; generation: string; workerId: string }
@@ -90,6 +92,8 @@ async function writeCandidates(ctx: MutationContext, prepared: PreparedCandidate
       fresh.canonicalUrl = previous.canonicalUrl; fresh.stableRank = previous.stableRank;
       if (previous.localProjectCandidate) fresh.localProjectCandidate = previous.localProjectCandidate;
       if (previous.localProject) fresh.localProject = previous.localProject;
+      if (previous.displayTimeFacts) fresh.displayTimeFacts = previous.displayTimeFacts;
+      if (previous.displayTimeBoundaryKey) fresh.displayTimeBoundaryKey = previous.displayTimeBoundaryKey;
       Object.assign(fresh, chooseTitle(previous, fresh.nativeTitle, fresh.titleBasis, fresh.titleObservedAt ?? now));
       if (!fresh.browserLastVisitAt || previous.browserLastVisitAt && instant(previous.browserLastVisitAt)! > instant(fresh.browserLastVisitAt)!) fresh.browserLastVisitAt = previous.browserLastVisitAt;
     } else inserted++;
@@ -147,7 +151,7 @@ export class Repository {
       request<RuntimeImportJob[]>(tx.objectStore('importJobs').getAll()),
       request<StoredTombstone[]>(tx.objectStore('tombstones').getAll()),
       request<CandidateResolution[]>(tx.objectStore('candidateLinks').getAll()),
-      request<Array<LocalProjectRow | SettingsRow | AutomaticHistoryRow>>(tx.objectStore('settings').getAll()),
+      request<Array<LocalProjectRow | NativeTimeOrderRow | SettingsRow | AutomaticHistoryRow>>(tx.objectStore('settings').getAll()),
     ]);
     await done;
     const selected = selectedScope ?? settings.selectedScope;
@@ -155,7 +159,8 @@ export class Repository {
     const removed = new Set(tombstones.map(t => t.key));
     const resolvedCandidates = new Set(links.map(link => link.candidateRecordKey));
     const localProjects = localRows.filter((row): row is LocalProjectRow => row.key.startsWith('localProject:') && 'value' in row).map(row => row.value).filter(p => p.localProfileKey === settings.localProfileKey);
-    return { revision: revision.value, settings: settingsValue(settings), localProfileKey: settings.localProfileKey, scopes, conversations: records.filter(r => !removed.has(r.key) && (selected === 'unassigned' ? r.owner.kind === 'unassigned' && !resolvedCandidates.has(r.key) : r.owner.kind === 'scoped' && r.owner.scopeKey === selected)).map(publicRecord), projects: projects.filter(p => p.scopeKey === selected), localProjects: selected === 'unassigned' ? localProjects : [], shortcuts: shortcuts.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)), importJobs, tombstones: tombstones.filter(t => t.record && (selected === 'unassigned' ? t.record.owner.kind === 'unassigned' : t.record.owner.kind === 'scoped' && t.record.owner.scopeKey === selected)).map(({ key, removedAt, reason }) => ({ key, removedAt, reason })) };
+    const timeOrders = localRows.filter((row): row is NativeTimeOrderRow => row.key.startsWith('timeOrder:') && 'value' in row).map(row => row.value).filter(order => order.localProfileKey === settings.localProfileKey && (selected === 'unassigned' ? order.owner.kind === 'unassigned' : order.owner.kind === 'scoped' && order.owner.scopeKey === selected));
+    return { revision: revision.value, settings: settingsValue(settings), localProfileKey: settings.localProfileKey, scopes, conversations: records.filter(r => !removed.has(r.key) && (selected === 'unassigned' ? r.owner.kind === 'unassigned' && !resolvedCandidates.has(r.key) : r.owner.kind === 'scoped' && r.owner.scopeKey === selected)).map(publicRecord), projects: projects.filter(p => p.scopeKey === selected), localProjects: selected === 'unassigned' ? localProjects : [], ...(timeOrders.length ? { timeOrders } : {}), shortcuts: shortcuts.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)), importJobs, tombstones: tombstones.filter(t => t.record && (selected === 'unassigned' ? t.record.owner.kind === 'unassigned' : t.record.owner.kind === 'scoped' && t.record.owner.scopeKey === selected)).map(({ key, removedAt, reason }) => ({ key, removedAt, reason })) };
   }
   async discoverCandidates(inputs: CandidateInput[], expectedRevision?: number, checkpoint?: RuntimeImportJob): Promise<{ accepted: number; inserted: number }> {
     if (!Array.isArray(inputs) || inputs.length > 200) throw Error('invalid-candidate-batch');
@@ -271,6 +276,8 @@ export class Repository {
       // Empty/partial observations update metadata but never subtract members.
       await request(settings.put({ key: rowKey, value: project } satisfies LocalProjectRow)); ctx.changed();
       let accepted = 0;
+      const timedMembers = new Map<string, string>();
+      let chronological = true;
       for (const item of prepared) {
         // A user removal is not undone by a new observer or account boundary.
         const removedStage = await request<StoredTombstone | undefined>(ctx.tx.objectStore('tombstones').get(item.staging));
@@ -295,9 +302,43 @@ export class Repository {
           record.localProject = { projectKey: key, boundaryKey, identityBasis, relationBasis: observed.relationBasis, observedAt: now, state: 'observed' };
         }
         delete record.localProjectCandidate;
+        // Native timestamps stay separate from browser visits and Start activity.
+        // The worker supplies identity, observation time and source generation.
+        if (record.localProject.state === 'observed') {
+          record.displayTimeBoundaryKey = boundaryKey;
+          timedMembers.set(record.conversationId, record.key);
+          const time = item.member.time;
+          const previousFacts = (record.displayTimeFacts ?? []).filter(fact => fact.source?.adapterId === NATIVE_TIME_ADAPTER.id && fact.boundaryKey === boundaryKey && !fact.revoked);
+          const previousTime = Math.max(-Infinity, ...previousFacts.map(fact => instant(fact.at) ?? -Infinity));
+          if (time && (instant(time.at)! > instant(now)! || instant(time.at)! < previousTime)) {
+            // An anomalous newer snapshot cannot reuse an old anchor to claim
+            // that its current ordering is valid. Keep the historical fact.
+            chronological = false;
+          } else if (time) {
+            const fact: VerifiedDisplayTimeFact = { id: `native-updated:${record.key}`, kind: time.kind, semantic: time.semantic,
+              at: time.at, observedAt: now, localProfileKey: profile, owner: record.owner, boundaryKey,
+              source: { adapterId: NATIVE_TIME_ADAPTER.id, adapterVersion: NATIVE_TIME_ADAPTER.version, field: 'time[datetime][aria-label=updated]' } };
+            record.displayTimeFacts = [...(record.displayTimeFacts ?? []).filter(oldFact => oldFact.source.adapterId !== NATIVE_TIME_ADAPTER.id), fact].slice(-16);
+          }
+        }
         Object.assign(record, chooseTitle(record, item.member.nativeTitle, 'native-label', now));
         record.lastSeenAt = now; record.revision = ctx.revision.value + 1;
         await request(conversations.put(decorate(record, old?.browserSource))); accepted++; ctx.changed();
+      }
+      const orderKey = `timeOrder:${key}`;
+      if (chronological && observed.timeOrder && observed.timeOrder.memberIds.every(id => timedMembers.has(id))) {
+        const order: NativeTimeOrderEvidence = { id: orderKey, localProfileKey: profile,
+          owner: { kind: 'unassigned', localProfileKey: profile, accountKey: null }, boundaryKey,
+          recordKeys: observed.timeOrder.memberIds.map(id => timedMembers.get(id)!), semantic: observed.timeOrder.semantic,
+          direction: 'descending', verified: true, coverage: 'complete', pinned: false, manual: false,
+          observedAt: now, expiresAt: new Date(instant(now)! + 86_400_000).toISOString(),
+          source: { adapterId: NATIVE_TIME_ADAPTER.id, adapterVersion: NATIVE_TIME_ADAPTER.version,
+            documentKey, routeEpoch: context.routeEpoch, sourceRevision: ctx.revision.value + 1 } };
+        await request(settings.put({ key: orderKey, value: order } satisfies NativeTimeOrderRow));
+      } else {
+        // A later partial/pinned/unsupported list invalidates ordering only.
+        // Membership and historical time facts remain preserved.
+        await request(settings.delete(orderKey));
       }
       return accepted;
     });
@@ -445,7 +486,10 @@ export class Repository {
         const scope = await request<AccountScope | undefined>(ctx.tx.objectStore('scopes').get(input.scopeKey));
         const witness = input.evidenceId ? await request<EvidenceWitness | undefined>(ctx.tx.objectStore('witnesses').get(input.evidenceId)) : undefined;
         if (!scope || scope.state !== 'ready' || !witness || witness.revoked || witness.scopeKey !== scope.key || witness.documentId !== input.targetDocumentId || witness.routeEpoch !== input.routeEpoch || witness.scopeEpoch !== input.scopeEpoch) return reject('scope-mismatch');
-        if (!record) record = decorate({ ...publicRecord(requested), key, owner: { kind: 'scoped', scopeKey: input.scopeKey }, membership: { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, activity: null, nativeTitle: title(input.nativeTitle), titleBasis: input.nativeTitle ? 'native-label' : 'unknown', titleObservedAt: input.nativeTitle ? now : null, browserLastVisitAt: null, firstSeenAt: now, lastSeenAt: now, stableRank: ctx.rank(), revision: ctx.revision.value + 1 });
+        if (!record) {
+          const { displayTimeFacts: _oldFacts, displayTimeBoundaryKey: _oldBoundary, ...source } = publicRecord(requested);
+          record = decorate({ ...source, key, owner: { kind: 'scoped', scopeKey: input.scopeKey }, membership: { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, activity: null, nativeTitle: title(input.nativeTitle), titleBasis: input.nativeTitle ? 'native-label' : 'unknown', titleObservedAt: input.nativeTitle ? now : null, browserLastVisitAt: null, firstSeenAt: now, lastSeenAt: now, stableRank: ctx.rank(), revision: ctx.revision.value + 1 });
+        }
         delete record.localProjectCandidate; // A local observation never migrates into an account asset.
         delete record.localProject;
         if (requested.owner.kind === 'unassigned') await request(ctx.tx.objectStore('candidateLinks').put({ candidateRecordKey: requested.key, scopedRecordKey: key, evidenceId: witness.id, confirmedAt: now } satisfies CandidateResolution));
