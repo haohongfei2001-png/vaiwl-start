@@ -1,5 +1,5 @@
 import type { WebsiteShortcut } from '../../contracts/free-v1.js';
-import { NATIVE_KEYS, browserFamily, defaultTabTitle, validTitle, normalizeTitle, normalizeIcon, bookmarkPreference, safeBookmarkUrl, bookmarkBars, imageDimensions, type BookmarkNode } from '../domain/native-experience.js';
+import { NATIVE_KEYS, browserFamily, defaultTabTitle, validTitle, normalizeTitle, normalizeIcon, bookmarkPreference, safeBookmarkUrl, bookmarkBars, orderedBookmarks, imageDimensions, type BookmarkNode } from '../domain/native-experience.js';
 import { element as el, byId, button } from './dom.js';
 import { createBookmarkShelf, type BookmarkShelfState } from './bookmark-shelf.js';
 
@@ -20,22 +20,63 @@ export async function sanitizeIcon(file: File): Promise<string> {
   } finally { bitmap.close(); }
 }
 
-export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut[]; preserve: (fn: () => void) => void }): { refresh: () => void } {
+/** Writable native folders, in browser order. The synthetic root and managed subtrees are not destinations. */
+export function bookmarkMigrationDestinations(tree: BookmarkNode[]): { id: string; title: string }[] {
+  const destinations: { id: string; title: string }[] = [];
+  const visit = (node: BookmarkNode, parent: string[]) => {
+    if (node.url || node.unmodifiable) return;
+    const path = [...parent, node.title || (node.folderType === 'bookmarks-bar' || node.id === '1' ? '书签栏' : '未命名文件夹')];
+    destinations.push({ id: node.id, title: path.join(' / ') });
+    orderedBookmarks(node.children).forEach(child => visit(child, path));
+  };
+  orderedBookmarks(tree).forEach(root => { if (!root.unmodifiable) orderedBookmarks(root.children).forEach(child => visit(child, [])); });
+  return destinations;
+}
+
+export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut[]; preserve: (fn: () => void) => void; legacyAvailable?: () => boolean }): { refresh: () => void } {
   const browser = browserFamily(navigator.userAgent);
   const language = chrome.i18n.getUILanguage();
   let values: Record<string, unknown> = {}, bars: BookmarkNode[] = [], granted = false, epoch = 0, linked = false;
   let bookmarkError = '', pendingSave = Promise.resolve(), iconEpoch = 0;
+  const preferenceVersions: Record<string, number> = {};
+  let migrationFolders: { id: string; title: string }[] = [], destinationKey = '';
+  let titleDirty = false, titleVersion = 0, titleSaving = false, iconSaving = false, preferenceSaving = false, permissionChanging = false, migrating = false;
   let shelf: ReturnType<typeof createBookmarkShelf> | undefined;
   let shelfState: BookmarkShelfState = { expanded: false, path: [] };
   let bookmarkRevision = 0, bookmarkRenderKey = '';
-  const message = (text: string) => { byId('native-status').textContent = text; };
-  const save = (patch: Record<string, unknown>): Promise<void> => {
-    // Serialize this page's edits; independent keys avoid cross-tab title/icon clobbering.
-    const task = pendingSave.then(() => chrome.storage.local.set(patch));
-    pendingSave = task.catch(() => {});
-    return task.then(async () => { values = await chrome.storage.local.get([...NATIVE_KEYS]); render(); });
+  type MessageArea = 'identity' | 'bookmarks' | 'migration';
+  const message = (text: string, area: MessageArea = 'identity', error = false) => {
+    const receipt = byId('native-status');
+    const node = document.getElementById(area === 'identity' ? 'tab-identity-status' : area === 'migration' ? 'bookmark-migration-status' : 'bookmark-status') || receipt;
+    node.textContent = text; node.dataset.state = error ? 'error' : 'success';
+    if (receipt !== node) { receipt.textContent = text; receipt.dataset.state = node.dataset.state; }
   };
-  const run = (task: Promise<unknown>) => { void task.catch(error => message(error instanceof Error ? error.message : '操作未完成，原有数据保留。')); };
+  const save = (patch: Record<string, unknown>, current: () => boolean = () => true): Promise<boolean> => {
+    // Serialize this page's edits; independent keys avoid cross-tab title/icon clobbering.
+    const task = pendingSave.then(async () => {
+      if (!current()) return false;
+      const versions = Object.fromEntries(Object.keys(patch).map(key => [key, preferenceVersions[key] || 0]));
+      await chrome.storage.local.set(patch);
+      // An onChanged notification may already contain a newer edit from another tab.
+      for (const [key, value] of Object.entries(patch)) if ((preferenceVersions[key] || 0) === versions[key]) values[key] = value;
+      render();
+      return true;
+    });
+    pendingSave = task.then(() => {}, () => {});
+    return task;
+  };
+  const run = (task: Promise<unknown>, area: MessageArea = 'identity') => { void task.catch(error => {
+    const detail = error instanceof Error ? error.message : '';
+    const text = /[\u4e00-\u9fff]/.test(detail) ? detail : /quota/i.test(detail) ? '本地存储空间不足，原设置已保留。' : /permission|denied/i.test(detail) ? '尚未获得权限，请重新授权。' : '操作未完成，请重试。';
+    message(text, area, true); render();
+  }); };
+  const retainControlFocus = () => {
+    const control = document.activeElement as HTMLElement | null;
+    return () => {
+      if (!control || !control.matches('button,input,select') || !control.isConnected || control.closest('[hidden]') || control.closest<HTMLDialogElement>('dialog')?.open === false) return;
+      if (document.activeElement === document.body || document.activeElement === control) control.focus({ preventScroll: true });
+    };
+  };
   function identity(): void {
     document.title = normalizeTitle(values['native.title']) || defaultTabTitle(language, browser);
     const chosen = normalizeIcon(values['native.icon']);
@@ -44,22 +85,39 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
     favicon.type = chosen.kind === 'upload' ? 'image/png' : 'image/svg+xml';
     if (favicon.href !== href) favicon.href = href;
     const input = byId<HTMLInputElement>('tab-title');
-    if (document.activeElement !== input) input.value = normalizeTitle(values['native.title']);
+    // A draft survives tab navigation, blur, bookmark refreshes and external preference events.
+    if (!titleDirty) input.value = normalizeTitle(values['native.title']);
     input.placeholder = defaultTabTitle(language, browser);
-    const mode = byId<HTMLSelectElement>('tab-icon'); if (document.activeElement !== mode) mode.value = chosen.kind;
-    byId('tab-identity-mode').textContent = !normalizeTitle(values['native.title']) && chosen.kind === 'browser' ? '遵从浏览器新标签页风格' : '自定义标签页身份';
+    byId('tab-title-form').setAttribute('aria-busy', String(titleSaving));
+    const submit = byId('tab-title-form').querySelector<HTMLButtonElement>('button[type="submit"]'); if (submit) submit.disabled = titleSaving;
+    const mode = byId<HTMLSelectElement>('tab-icon'); mode.value = chosen.kind; mode.disabled = iconSaving;
+    byId<HTMLButtonElement>('tab-upload-again').disabled = iconSaving;
+    byId<HTMLButtonElement>('tab-identity-reset').disabled = titleSaving || iconSaving;
+    const identityMode = document.getElementById('tab-identity-mode');
+    if (identityMode) identityMode.textContent = !normalizeTitle(values['native.title']) && chosen.kind === 'browser' ? '浏览器默认' : '自定义';
+    const previewTitle = document.getElementById('settings-tab-preview-title');
+    if (previewTitle) previewTitle.textContent = titleDirty ? normalizeTitle(input.value) || defaultTabTitle(language, browser) : document.title;
+    const previewIcon = document.getElementById('settings-tab-preview-icon') as HTMLImageElement | null;
+    if (previewIcon && previewIcon.src !== href) previewIcon.src = href;
   }
   function render(): void {
     identity();
     const pref = bookmarkPreference(values['native.bookmarks']);
-    const select = byId<HTMLSelectElement>('bookmark-preference'); if (document.activeElement !== select) select.value = pref;
-    byId('bookmark-connect').textContent = granted ? '撤销书签权限' : '授权读取浏览器书签';
-    const migrate = byId<HTMLButtonElement>('bookmark-migrate'); migrate.disabled = !granted || !options.shortcuts().length || !bars.some(bar => !bar.unmodifiable);
-    byId('legacy-count').textContent = `${options.shortcuts().length} 个旧快捷项完整保留在本机；迁移不会删除它们。`;
+    const select = byId<HTMLSelectElement>('bookmark-preference'); select.value = pref; select.disabled = preferenceSaving;
+    const connect = byId<HTMLButtonElement>('bookmark-connect'); connect.textContent = granted ? '撤销权限' : '允许访问'; connect.disabled = permissionChanging;
+    const permissionLabel = document.getElementById('bookmark-permission-label'); if (permissionLabel) permissionLabel.textContent = granted ? '已授权' : '未授权';
+    const legacyAvailable = options.legacyAvailable?.() ?? true;
+    const shortcuts = legacyAvailable ? options.shortcuts() : [];
+    const migrate = byId<HTMLButtonElement>('bookmark-migrate'); migrate.disabled = migrating || !legacyAvailable || !granted || !shortcuts.length || !migrationFolders.length;
+    byId('legacy-count').textContent = legacyAvailable ? `${shortcuts.length} 个快捷网站` : '';
     const destination = byId<HTMLSelectElement>('bookmark-destination'), selected = destination.value;
-    destination.replaceChildren(...bars.filter(bar => !bar.unmodifiable).map(bar => el('option', { value: bar.id }, [bar.title || '书签栏'])));
-    if ([...destination.options].some(option => option.value === selected)) destination.value = selected;
-    destination.hidden = destination.options.length < 2;
+    const nextDestinationKey = JSON.stringify(migrationFolders);
+    if (destinationKey !== nextDestinationKey) {
+      destinationKey = nextDestinationKey;
+      destination.replaceChildren(...migrationFolders.map(folder => el('option', { value: folder.id }, [folder.title])));
+      if ([...destination.options].some(option => option.value === selected)) destination.value = selected;
+    }
+    destination.hidden = !granted || !destination.options.length; destination.disabled = migrating;
     const home = byId('bookmarks-home');
     const key = JSON.stringify([pref, granted, bookmarkError, bookmarkRevision]);
     // Catalog refreshes and identity edits must not rebuild a settled bookmark row.
@@ -96,59 +154,108 @@ export function initNativeExperience(options: { shortcuts: () => WebsiteShortcut
       if (allowed) listen(); // Observe mutations before the initial tree read resolves.
       const tree = allowed ? await chrome.bookmarks.getTree() : [];
       if (sequence !== epoch) return;
-      granted = allowed; bars = allowed ? bookmarkBars(tree) : []; bookmarkError = ''; bookmarkRevision++; if (allowed) listen();
-    } catch { if (sequence !== epoch) return; bars = []; granted = await chrome.permissions.contains({ permissions: ['bookmarks'] }).catch(() => false); bookmarkError = '书签暂时不可读取；原始书签未被改动。'; bookmarkRevision++; }
+      granted = allowed; bars = allowed ? bookmarkBars(tree) : []; migrationFolders = allowed ? bookmarkMigrationDestinations(tree) : []; bookmarkError = ''; bookmarkRevision++; if (allowed) listen();
+    } catch { if (sequence !== epoch) return; bars = []; migrationFolders = []; granted = await chrome.permissions.contains({ permissions: ['bookmarks'] }).catch(() => false); bookmarkError = '书签暂时不可读取；原始书签未被改动。'; bookmarkRevision++; message(bookmarkError, 'bookmarks', true); }
     if (sequence === epoch) options.preserve(render);
   }
   async function migrate(): Promise<void> {
+    if (migrating || !(options.legacyAvailable?.() ?? true)) return;
+    const restoreFocus = retainControlFocus();
+    migrating = true;
+    const targetId = byId<HTMLSelectElement>('bookmark-destination').value;
+    const shortcuts = [...options.shortcuts()].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+    render();
+    try {
     await navigator.locks.request('vaiwl-native-bookmark-migration', async () => {
       if (!await chrome.permissions.contains({ permissions: ['bookmarks'] })) throw Error('请先授权读取书签。');
       const tree = await chrome.bookmarks.getTree();
-      const target = bookmarkBars(tree).find(bar => bar.id === byId<HTMLSelectElement>('bookmark-destination').value && !bar.unmodifiable);
-      if (!target) throw Error('目标书签栏已改变，请重新选择。');
+      const target = bookmarkMigrationDestinations(tree).find(folder => folder.id === targetId);
+      if (!target) throw Error('目标文件夹已改变，请重新选择。');
       const urls = new Set<string>();
       const visit = (node: BookmarkNode) => { const url = safeBookmarkUrl(node.url); if (url) urls.add(url); node.children?.forEach(visit); }; tree.forEach(visit);
       let added = 0, existing = 0, invalid = 0;
       try {
-        for (const site of [...options.shortcuts()].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))) {
+        for (const site of shortcuts) {
+          if (!(options.legacyAvailable?.() ?? true)) throw Error('旧快捷网站已关闭。');
           const url = safeBookmarkUrl(site.url); if (!url) { invalid++; continue; }
           if (urls.has(url) || (await chrome.bookmarks.search({ url })).some(node => safeBookmarkUrl(node.url) === url)) { existing++; continue; }
           await chrome.bookmarks.create({ parentId: target.id, title: site.label, url }); urls.add(url); added++;
         }
-        message(`已加入 ${added} 项，跳过已有 ${existing} 项、无效 ${invalid} 项。所有旧快捷项保留。`);
+        message(`已加入 ${added} 项，跳过已有 ${existing} 项${invalid ? `、无效 ${invalid} 项` : ''}。旧快捷网站已保留。`, 'migration');
       } catch { throw Error(`已加入 ${added} 项后迁移中断。旧快捷项全部保留；再次迁移会跳过已加入项。`); }
     });
     await refreshBookmarks();
+    } finally { migrating = false; render(); restoreFocus(); }
   }
-  byId('tab-title-form').addEventListener('submit', event => { event.preventDefault(); run(Promise.resolve().then(() => save({ 'native.title': validTitle(byId<HTMLInputElement>('tab-title').value) })).then(() => message('标签页名称已保存。'))); });
+  byId('tab-title').addEventListener('input', () => { titleDirty = true; titleVersion++; identity(); });
+  byId('tab-title-form').addEventListener('submit', event => {
+    event.preventDefault(); if (titleSaving) return;
+    const input = byId<HTMLInputElement>('tab-title'), version = titleVersion;
+    let title: string;
+    try { title = validTitle(input.value); } catch (error) { message((error as Error).message, 'identity', true); input.focus(); return; }
+    const restoreFocus = retainControlFocus(); titleSaving = true; identity();
+    run(save({ 'native.title': title }).then(() => {
+      if (version === titleVersion) titleDirty = false;
+      message('名称已保存。');
+    }).finally(() => { titleSaving = false; identity(); restoreFocus(); }));
+  });
+  function saveIcon(kind: string): void {
+    const sequence = ++iconEpoch, restoreFocus = retainControlFocus(); iconSaving = true;
+    byId<HTMLSelectElement>('tab-icon').disabled = true; byId<HTMLButtonElement>('tab-upload-again').disabled = true;
+    run(save({ 'native.icon': { kind } }, () => sequence === iconEpoch).then(saved => { if (saved && sequence === iconEpoch) message('图标已保存。'); }).finally(() => { if (sequence === iconEpoch) iconSaving = false; identity(); restoreFocus(); }));
+  }
   byId('tab-icon').addEventListener('change', event => {
-    iconEpoch++; const kind = (event.target as HTMLSelectElement).value;
-    if (kind === 'upload') { byId<HTMLInputElement>('tab-icon-upload').click(); return; }
-    run(save({ 'native.icon': { kind } }).then(() => message('标签页图标已保存。')));
+    const kind = (event.target as HTMLSelectElement).value;
+    if (kind === 'upload') { ++iconEpoch; identity(); byId<HTMLInputElement>('tab-icon-upload').click(); return; }
+    saveIcon(kind);
   });
-  byId('tab-upload-again').addEventListener('click', () => { byId<HTMLInputElement>('tab-icon-upload').click(); });
+  byId('tab-upload-again').addEventListener('click', () => { ++iconEpoch; byId<HTMLInputElement>('tab-icon-upload').click(); });
+  byId('tab-icon-upload').addEventListener('cancel', () => { byId<HTMLInputElement>('tab-icon-upload').value = ''; identity(); });
   byId('tab-icon-upload').addEventListener('change', event => {
-    const input = event.target as HTMLInputElement, file = input.files?.[0], sequence = ++iconEpoch; if (!file) { render(); return; }
-    run(sanitizeIcon(file).then(data => sequence === iconEpoch ? save({ 'native.icon': { kind: 'upload', data } }) : undefined).then(() => message('上传图标仅保存在本机。')).finally(() => { input.value = ''; render(); }));
+    const input = event.target as HTMLInputElement, file = input.files?.[0], sequence = ++iconEpoch; if (!file) { identity(); return; }
+    const restoreFocus = retainControlFocus(); iconSaving = true; identity(); message('正在处理图片…');
+    run(sanitizeIcon(file).then(data => save({ 'native.icon': { kind: 'upload', data } }, () => sequence === iconEpoch)).then(saved => {
+      if (saved && sequence === iconEpoch) message('图标已保存。');
+    }).finally(() => { input.value = ''; if (sequence === iconEpoch) iconSaving = false; identity(); restoreFocus(); }));
   });
-  byId('tab-identity-reset').addEventListener('click', () => { iconEpoch++; run(save({ 'native.title': '', 'native.icon': { kind: 'browser' } }).then(() => message('已恢复浏览器新标签页风格。'))); });
-  byId('bookmark-preference').addEventListener('change', event => { run(save({ 'native.bookmarks': bookmarkPreference((event.target as HTMLSelectElement).value) })); });
+  byId('tab-identity-reset').addEventListener('click', () => {
+    const sequence = ++iconEpoch, version = titleVersion, restoreFocus = retainControlFocus(); iconSaving = true; titleSaving = true; identity();
+    run(save({ 'native.title': '', 'native.icon': { kind: 'browser' } }).then(() => {
+      if (version === titleVersion) titleDirty = false;
+      message('已恢复默认名称与图标。');
+    }).finally(() => { if (sequence === iconEpoch) iconSaving = false; titleSaving = false; identity(); restoreFocus(); }));
+  });
+  byId('bookmark-preference').addEventListener('change', event => {
+    const select = event.target as HTMLSelectElement, pref = bookmarkPreference(select.value), restoreFocus = retainControlFocus(); preferenceSaving = true; select.disabled = true;
+    run(save({ 'native.bookmarks': pref }).then(() => message('显示方式已保存。', 'bookmarks')).finally(() => { preferenceSaving = false; render(); restoreFocus(); }), 'bookmarks');
+  });
   document.addEventListener('click', event => {
     const target = (event.target as Element)?.closest('button'); if (!target) return;
-    if (target.id === 'bookmark-retry') run(refreshBookmarks());
+    if (target.id === 'bookmark-retry') run(refreshBookmarks(), 'bookmarks');
     if (target.id === 'bookmark-connect') {
-      if (!event.isTrusted) return;
+      if (!event.isTrusted || permissionChanging) return;
+      const removing = granted, restoreFocus = retainControlFocus();
       // Call request in the original gesture turn, before any asynchronous work.
-      const operation = granted ? chrome.permissions.remove({ permissions: ['bookmarks'] }) : chrome.permissions.request({ permissions: ['bookmarks'] });
-      run(operation.then(async accepted => { if (!accepted) message('未获得书签权限，工作空间及旧快捷项不受影响。'); await refreshBookmarks(); }));
+      const operation = removing ? chrome.permissions.remove({ permissions: ['bookmarks'] }) : chrome.permissions.request({ permissions: ['bookmarks'] });
+      permissionChanging = true; render();
+      run(operation.then(async accepted => {
+        await refreshBookmarks();
+        if (bookmarkError) message(bookmarkError, 'bookmarks', true);
+        else if (removing) message(granted ? '权限未撤销，请重试。' : '书签权限已撤销。', 'bookmarks', granted);
+        else message(accepted && granted ? '已允许访问浏览器书签。' : '未获得书签权限。', 'bookmarks', !granted);
+      }).finally(() => { permissionChanging = false; render(); restoreFocus(); }), 'bookmarks');
     }
-    if (target.id === 'bookmark-migrate' && event.isTrusted && confirm('将旧快捷网站加入所选原生书签栏？已有网址会跳过；原有书签和旧快捷项都不会删除。')) run(migrate());
+    if (target.id === 'bookmark-migrate' && event.isTrusted && !migrating && (options.legacyAvailable?.() ?? true) && confirm('将旧快捷网站加入所选书签文件夹？已有网址会跳过，原有书签和旧快捷网站都会保留。')) run(migrate(), 'migration');
   });
-  chrome.permissions.onAdded.addListener(change => { if (change.permissions?.includes('bookmarks')) run(refreshBookmarks()); });
-  chrome.permissions.onRemoved.addListener(change => { if (!change.permissions?.includes('bookmarks')) return; ++epoch; bars = []; granted = false; render(); run(refreshBookmarks()); });
-  chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && NATIVE_KEYS.some(key => key in changes)) run(chrome.storage.local.get([...NATIVE_KEYS]).then(data => { values = data; options.preserve(render); })); });
+  chrome.permissions.onAdded.addListener(change => { if (change.permissions?.includes('bookmarks')) run(refreshBookmarks().then(() => { if (granted && !bookmarkError) message('已允许访问浏览器书签。', 'bookmarks'); }), 'bookmarks'); });
+  chrome.permissions.onRemoved.addListener(change => { if (!change.permissions?.includes('bookmarks')) return; ++epoch; bars = []; migrationFolders = []; granted = false; message('书签权限已撤销。', 'bookmarks'); render(); run(refreshBookmarks(), 'bookmarks'); });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !NATIVE_KEYS.some(key => key in changes)) return;
+    for (const key of NATIVE_KEYS) if (key in changes) { preferenceVersions[key] = (preferenceVersions[key] || 0) + 1; values[key] = changes[key]!.newValue; }
+    options.preserve(render);
+  });
   window.addEventListener('focus', () => { run(refreshBookmarks()); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) run(refreshBookmarks()); });
-  run(chrome.storage.local.get([...NATIVE_KEYS]).then(async data => { values = data; render(); await refreshBookmarks(); document.documentElement.dataset.nativeReady = 'true'; }));
+  run(chrome.storage.local.get([...NATIVE_KEYS]).then(async data => { values = { ...data, ...values }; render(); await refreshBookmarks(); document.documentElement.dataset.nativeReady = 'true'; }));
   return { refresh: () => render() };
 }

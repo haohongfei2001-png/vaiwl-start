@@ -84,6 +84,7 @@ async function launch() {
 }
 async function capture(enabled) {
   await start.locator('#settings-trigger').click();
+  if (await start.locator('#settings-nav-workspace').count()) await start.locator('#settings-nav-workspace').click();
   await start.locator('#capture-enabled').setChecked(enabled);
   await until(async () => (await command('SNAPSHOT')).settings.captureEnabled === enabled, 'Capture setting did not settle');
   await start.locator('#settings-dialog [data-close]').first().click();

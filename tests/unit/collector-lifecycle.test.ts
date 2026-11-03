@@ -195,8 +195,13 @@ test('collector cancels only the selected capture and removes its picker without
     await eventually(() => settled, 'capture-scoped cancellation response');
     assert.deepEqual(await pending, { ok: false, code: 'PROBE_CANCELLED' });
     assert.equal(h.dom.window.document.querySelector('[data-vaiwl-owned="source-check"]'), null);
-    h.route(URL2); await eventually(() => h.statuses().length === 2, 'normal collector survives cancellation');
+    // Cancellation restarts observation itself. Let that read finish before
+    // testing a later route so the test does not abort its own recovery read.
+    await eventually(() => h.statuses().length === 2, 'normal observation resumes automatically after capture cancellation');
     assert.equal(h.statuses()[1]!.payload.code, 'current-context-unproven');
+    const resumedStatuses = h.statuses().length;
+    h.route(URL2); await eventually(() => h.statuses().length === resumedStatuses + 1, 'normal collector observes the subsequent route');
+    assert.equal(h.statuses()[resumedStatuses]!.payload.code, 'current-context-unproven');
   } finally { await h.close(); }
 });
 

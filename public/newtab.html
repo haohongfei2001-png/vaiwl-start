@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light">
-<title>New Tab</title><link id="tab-favicon" rel="icon" href="tab-chrome.svg" type="image/svg+xml"><link rel="stylesheet" href="newtab.css"><link rel="stylesheet" href="bookmarks.css"><link rel="stylesheet" href="life.css"><script type="module" src="newtab.js"></script>
+<title>New Tab</title><link id="tab-favicon" rel="icon" href="tab-chrome.svg" type="image/svg+xml"><link rel="stylesheet" href="newtab.css"><link rel="stylesheet" href="bookmarks.css"><link rel="stylesheet" href="life.css"><link rel="stylesheet" href="settings.css"><script type="module" src="newtab.js"></script>
 </head>
 <body>
 <svg aria-hidden="true" width="0" height="0" class="icon-definitions"><defs>
@@ -61,54 +61,102 @@
  <div class="search-options" id="search-options"><button aria-pressed="true" data-search-filter="all">全部</button><button aria-pressed="false" data-search-filter="project">项目</button><button aria-pressed="false" data-search-filter="none">最近</button><span>全部日期</span></div>
  <div class="search-results" id="search-results"></div><div class="search-footer"><span>仅搜索所选资料库</span><span>↑ ↓ 选择 · Enter 打开</span></div>
 </dialog>
-<dialog id="sites-dialog" aria-labelledby="sites-title">
- <div class="dialog-head"><h2 id="sites-title">旧快捷网站（本地保留）</h2><button class="icon-button" data-close="sites-dialog" aria-label="关闭网站整理"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+<dialog class="settings-detail-dialog" id="sites-dialog" aria-labelledby="sites-title">
+ <div class="dialog-head"><h2 id="sites-title">旧快捷网站</h2><button class="icon-button" data-close="sites-dialog" aria-label="关闭网站整理"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
  <div class="dialog-body"> <section class="site-section" aria-label="旧快捷网站预览">
   <div class="section-line"><button class="site-toggle" id="site-toggle" aria-expanded="true" aria-controls="site-strip"><svg aria-hidden="true"><use href="#i-down"/></svg>常用网站</button><button class="text-button" id="site-edit">整理</button></div>
   <div class="site-strip" id="site-strip"><p class="sites-empty">把常用的网站放在这里。</p><button class="add-site" id="add-site" aria-label="添加网站"><svg aria-hidden="true"><use href="#i-plus"/></svg></button></div>
  </section>
-<p>这是旧快捷项兼容区，原有数据继续保留。固定的网站在收起后仍然显示。拖动调整顺序，也可以使用上下按钮。</p><div id="site-editor" class="site-editor"></div>
+<p>拖动或使用上下按钮调整顺序。</p><div id="site-editor" class="site-editor"></div>
   <form id="add-site-form"><label class="field-label" for="site-name">名称</label><input class="field-input" id="site-name" maxlength="64" placeholder="例如：MDN" required><label class="field-label" for="site-url">网址</label><input class="field-input" id="site-url" type="url" maxlength="8192" placeholder="https://…" required><p class="field-error" id="site-error" role="alert" hidden></p><div class="dialog-foot"><button class="text-button" id="cancel-site-edit" type="button" hidden>取消编辑</button><button class="secondary" id="save-site" type="submit">添加网站</button><button class="primary" data-close="sites-dialog" type="button">完成</button></div></form>
  </div>
 </dialog>
-<dialog id="settings-dialog" aria-labelledby="settings-title">
- <div class="dialog-head"><h2 id="settings-title">设置</h2><button class="icon-button" data-close="settings-dialog" aria-label="关闭设置"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
- <div class="dialog-body">
-
-  <section class="native-settings" aria-labelledby="tab-identity-heading">
-   <h3 id="tab-identity-heading">标签页身份</h3><p class="field-help" id="tab-identity-mode">遵从浏览器新标签页风格</p>
-   <form id="tab-title-form"><label class="field-label" for="tab-title">标签页名称</label><div class="native-input-row"><input id="tab-title" class="field-input" maxlength="160" autocomplete="off"><button type="submit" class="secondary">保存名称</button></div><p class="field-help">留空采用浏览器界面语言的默认名称。名称与图标可分别设置。</p></form>
-   <label class="field-label" for="tab-icon">标签页图标</label><select id="tab-icon" class="field-input"><option value="browser">浏览器默认风格</option><option value="product">产品图标</option><option value="upload">上传本地图片…</option></select><button id="tab-upload-again" class="text-button" type="button">上传／更换本地图片</button><input id="tab-icon-upload" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-   <p class="field-help">默认图标为本地近似样式，不调用浏览器内部图标。图片限 1 MB、2048 × 2048；转为 PNG 后仅保存在本机。不改变扩展安装图标或页面 Logo。</p><button id="tab-identity-reset" class="text-button">恢复默认</button>
-  </section>
-  <section class="native-settings" aria-labelledby="browser-appearance-heading"><h3 id="browser-appearance-heading">浏览器外观</h3><p class="field-help" id="browser-footer-help">如 Chrome 底部显示产品名和“自定义 Chrome”，在底部栏上点右键，选择“隐藏新标签页页脚”；也可在“自定义 Chrome”→“页脚”中关闭。这是浏览器自己的界面，Start 无法自动隐藏。受管理的浏览器可能不提供此开关。</p><p class="field-help">主题与原生外观仍可在浏览器菜单 → 设置 → 外观中调整。</p></section>
-  <section class="native-settings" aria-labelledby="bookmark-heading"><h3 id="bookmark-heading">浏览器书签</h3>
-   <label class="field-label" for="bookmark-preference">你的书签栏显示习惯</label><select id="bookmark-preference" class="field-input"><option value="ask">选择一次显示方式</option><option value="always">所有网页常驻书签栏 — Start 不重复显示</option><option value="newtab">仅新标签页需要书签 — 在 Start 显示</option><option value="hidden">我隐藏书签栏 — Start 也不显示</option></select>
-   <p class="field-help">扩展不能可靠读取原生书签栏显示模式，由你选择并记住。若浏览器仍显示原生书签栏，请选择不重复显示。</p><button id="bookmark-connect" class="secondary">授权读取浏览器书签</button>
-   <div data-workspace-only><p class="field-help" id="legacy-count"></p><select id="bookmark-destination" class="field-input" aria-label="旧快捷项迁入的书签栏" hidden></select><button id="bookmark-migrate" class="secondary" disabled>将旧快捷网站加入原生书签</button><button id="legacy-sites" class="text-button">查看旧快捷网站</button></div>
-  </section>
-  <p id="native-status" class="field-help" role="status" aria-live="polite"></p>
-  <section class="native-settings"><h3>生活与工作空间</h3><p class="field-help">切换后，新打开的标签页会沿用所选模式。已打开的其他标签页保持原样。</p><p class="field-help">生活首页由 VAIWL Start 提供，保留书签与浏览器默认搜索；不是浏览器内置的新标签页。</p></section>
-  <div data-workspace-only id="workspace-settings">
-  <div class="setting-row"><div><strong>ChatGPT 连接</strong><small id="connection-label">仅在连接后申请观察 ChatGPT 会话导航的权限。</small></div><button class="secondary" id="connect-chatgpt">连接</button></div>
-  <div class="setting-row"><div><label for="capture-enabled"><strong>继续收录会话链接</strong></label><small>只收录允许的链接与标题；不读取聊天正文。关闭后保留已有目录。</small></div><input id="capture-enabled" type="checkbox" aria-label="继续收录会话链接"></div>
-  <div class="setting-row"><div><strong>浏览器历史</strong><small>导入浏览器当前可读取的 ChatGPT 记录。历史时间不计作主动打开。</small></div><button class="secondary" id="settings-import">导入</button><button class="text-button" id="revoke-history" hidden>撤销权限</button></div>
-  <div class="setting-row"><div><strong>历史区间</strong><small>每次包含 30 个当地日历日；空区间也可以继续翻页。</small></div><span class="status-text">30 天</span></div>
-  <form id="timezone-form"><label class="field-label" for="time-zone">资料库时区</label><input class="field-input" id="time-zone" required placeholder="Asia/Shanghai"><p class="field-help">旅行不会自动改变时区。修改只重算显示位置，已有每日活动记录保留原时区。</p><div class="dialog-foot"><button class="secondary" type="submit">保存时区</button></div></form>
-  <div class="setting-row"><div><strong>本地副本</strong><small>关闭标签、退出 ChatGPT 或清除浏览历史都不会删除这里的目录。卸载扩展可能丢失本机数据。</small></div></div>
-  <div class="setting-row"><div><strong>当前能力</strong><small id="source-description">正在读取状态…</small><details class="technical-details"><summary>查看来源状态与构建</summary><pre id="source-details"></pre><a href="source-check.html" target="_blank" rel="noopener">受控来源核验</a></details></div></div>
-  </div>
-  <div class="setting-row"><div><strong>新标签页入口</strong><small>如浏览器策略或其他扩展占用新标签页，可点击扩展图标打开 Start。在浏览器扩展管理中选择新标签页提供者。</small></div></div>
-  <div class="dialog-foot"><button class="text-button" data-workspace-only id="show-removed">恢复收录</button><button class="text-button danger" data-workspace-only id="clear-local">清除本地数据</button><button class="primary" data-close="settings-dialog">完成</button></div>
+<dialog id="settings-dialog" class="settings-center" aria-labelledby="settings-title">
+ <div class="settings-shell">
+  <header class="settings-header"><h2 id="settings-title">设置</h2><button class="icon-button" data-close="settings-dialog" aria-label="关闭设置" autofocus><svg aria-hidden="true"><use href="#i-close"/></svg></button></header>
+  <nav class="settings-nav" aria-label="设置分类">
+   <button id="settings-nav-newtab" data-settings-page="newtab" aria-current="page"><svg aria-hidden="true"><use href="#i-grid"/></svg><span>新标签页</span></button>
+   <button id="settings-nav-workspace" data-settings-page="workspace"><svg aria-hidden="true"><use href="#i-chat"/></svg><span>AI 工作空间</span></button>
+   <button id="settings-nav-data" data-settings-page="data"><svg aria-hidden="true"><use href="#i-archive"/></svg><span>数据与隐私</span></button>
+   <button id="settings-nav-about" data-settings-page="about"><svg aria-hidden="true"><use href="#i-info"/></svg><span>帮助与关于</span></button>
+   <span class="settings-nav-brand" aria-hidden="true">VAIWL Start</span>
+  </nav>
+  <main class="settings-main">
+   <div class="settings-page-heading"><button id="settings-back" class="icon-button" aria-label="返回上一级设置" hidden><svg aria-hidden="true"><use href="#i-chevron"/></svg></button><h3 id="settings-page-title" tabindex="-1">新标签页</h3></div>
+   <div id="settings-scroll" class="settings-scroll">
+    <div id="settings-loading" class="settings-loading" role="status" hidden>正在读取设置…</div>
+    <div id="settings-load-error" class="settings-empty" hidden><p>暂时无法读取设置，已有数据仍保留。</p><button id="settings-load-retry" class="secondary">重试</button></div>
+    <div id="settings-panels">
+     <section id="settings-panel-newtab" class="settings-panel" aria-labelledby="settings-page-title">
+      <section class="settings-group" aria-labelledby="tab-identity-heading">
+       <h4 id="tab-identity-heading">标签页</h4>
+       <div class="settings-tab-preview" aria-label="标签页预览"><img id="settings-tab-preview-icon" src="tab-chrome.svg" alt="" width="16" height="16"><span id="settings-tab-preview-title">新标签页</span><svg aria-hidden="true"><use href="#i-close"/></svg></div>
+       <span id="tab-identity-mode" class="sr"></span>
+       <form id="tab-title-form" class="settings-row settings-field-row"><label for="tab-title">名称</label><div class="settings-field"><div class="settings-input-action"><input id="tab-title" class="field-input" maxlength="160" autocomplete="off" aria-label="标签页名称"><button type="submit" class="secondary">保存</button></div></div></form>
+       <div class="settings-row"><label for="tab-icon">图标</label><div class="settings-controls"><select id="tab-icon" class="field-input" aria-label="标签页图标"><option value="browser">浏览器风格</option><option value="product">VAIWL Start</option><option value="upload">自定义图片</option></select><button id="tab-upload-again" class="text-button" type="button">更换图片</button><input id="tab-icon-upload" type="file" accept="image/png,image/jpeg,image/webp" hidden></div></div>
+       <div class="settings-group-foot"><p id="tab-identity-status" class="settings-feedback" role="status" aria-live="polite"></p><button id="tab-identity-reset" class="text-button">恢复名称与图标</button></div>
+      </section>
+      <section class="settings-group" aria-labelledby="bookmark-heading">
+       <h4 id="bookmark-heading">浏览器书签</h4>
+       <div class="settings-row"><label for="bookmark-preference">书签栏习惯</label><select id="bookmark-preference" class="field-input"><option value="ask">选择显示方式</option><option value="always">所有网页显示 · Start 不重复显示</option><option value="newtab">仅新标签页显示</option><option value="hidden">隐藏</option></select></div>
+       <div class="settings-row"><div class="settings-label"><span>书签访问</span><small id="bookmark-permission-label">未授权</small></div><button id="bookmark-connect" class="secondary">允许访问</button></div>
+       <p id="bookmark-status" class="settings-feedback" role="status" aria-live="polite"></p>
+       <button id="settings-legacy-link" class="settings-link-row" data-settings-page="legacy"><span>旧快捷网站</span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      </section>
+     </section>
+     <section id="settings-panel-workspace" class="settings-panel" aria-labelledby="settings-page-title" hidden>
+      <div id="workspace-settings">
+       <section class="settings-group" aria-labelledby="settings-chatgpt-heading"><h4 id="settings-chatgpt-heading">ChatGPT</h4>
+        <div class="settings-row"><div class="settings-label"><span>连接 ChatGPT</span><small id="connection-label">未连接</small></div><button class="secondary" id="connect-chatgpt">连接</button></div>
+        <p id="chatgpt-permission-note" class="settings-note">连接后可读取会话链接与标题，不读取聊天正文。</p>
+        <div class="settings-row"><div class="settings-label"><label for="capture-enabled">继续收录会话</label><small id="capture-label">请先连接 ChatGPT</small></div><input id="capture-enabled" class="settings-switch" type="checkbox" role="switch" aria-label="继续收录会话链接" disabled></div>
+        <p id="workspace-status" class="settings-feedback" role="status" aria-live="polite"></p>
+       </section>
+       <section class="settings-group" aria-labelledby="settings-history-heading"><h4 id="settings-history-heading">浏览器历史</h4>
+        <div class="settings-row"><div class="settings-label"><span>导入 ChatGPT 会话</span><small id="history-import-label">找回浏览过的会话</small></div><button class="secondary" id="settings-import">导入</button></div>
+        <div id="history-permission-row" class="settings-row" hidden><div class="settings-label"><span>历史记录权限</span><small id="history-permission-label">已授权</small></div><button class="text-button" id="revoke-history" hidden>撤销权限</button></div>
+       </section>
+       <section class="settings-group" aria-labelledby="settings-region-heading"><h4 id="settings-region-heading">日期与时间</h4>
+        <form id="timezone-form" class="settings-row settings-field-row"><label for="time-zone">资料库时区</label><div class="settings-field"><div class="settings-input-action"><input class="field-input" id="time-zone" list="settings-timezones" required placeholder="Asia/Shanghai" autocomplete="off"><datalist id="settings-timezones"><option value="Asia/Shanghai">中国标准时间</option><option value="Asia/Hong_Kong">香港</option><option value="Asia/Tokyo">东京</option><option value="Asia/Singapore">新加坡</option><option value="Europe/London">伦敦</option><option value="Europe/Paris">巴黎</option><option value="America/New_York">纽约</option><option value="America/Los_Angeles">洛杉矶</option><option value="UTC">协调世界时</option></datalist><button class="secondary" type="submit">保存</button></div><p id="timezone-status" class="settings-feedback" role="status" aria-live="polite"></p></div></form>
+       </section>
+      </div>
+     </section>
+     <section id="settings-panel-data" class="settings-panel" aria-labelledby="settings-page-title" hidden>
+      <section class="settings-group" aria-labelledby="settings-local-heading"><h4 id="settings-local-heading">本地资料库</h4>
+       <div class="settings-row"><div class="settings-label"><span>已移除的会话</span><small id="removed-count">从首页移除的会话</small></div><button class="secondary" id="show-removed">恢复</button></div>
+       <p class="settings-note">资料保存在当前浏览器。卸载扩展或清除浏览器的扩展数据可能导致丢失。</p>
+      </section>
+      <section class="settings-group settings-danger-zone" aria-labelledby="settings-clear-heading"><h4 id="settings-clear-heading">清除数据</h4><div class="settings-row"><div class="settings-label"><span>清除 Start 本地数据</span><small>包括会话目录、活动、旧快捷网站和设置。</small></div><button class="secondary danger" id="clear-local">清除…</button></div><p class="settings-note">ChatGPT 会话、浏览器历史和原生书签不受影响。</p></section>
+     </section>
+     <section id="settings-panel-about" class="settings-panel" aria-labelledby="settings-page-title" hidden>
+      <section class="settings-about"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><div><h4>VAIWL Start</h4><p id="settings-version">0.1.0</p></div></section>
+      <section class="settings-group" aria-label="浏览器帮助">
+       <details class="settings-help"><summary>隐藏 Chrome 新标签页页脚<svg aria-hidden="true"><use href="#i-chevron"/></svg></summary><p id="browser-footer-help">右键点击页脚，选择“隐藏新标签页页脚”；或在“自定义 Chrome”→“页脚”中关闭。受管理的浏览器可能不提供此选项。</p><p>主题仍可在浏览器菜单 → 设置 → 外观中调整。</p></details>
+       <details class="settings-help"><summary>新标签页没有打开 Start<svg aria-hidden="true"><use href="#i-chevron"/></svg></summary><p>在浏览器的扩展管理中检查是否有其他扩展接管新标签页。也可以点击浏览器工具栏中的 Start 图标打开。</p></details>
+       <details class="settings-help"><summary>自定义图标没有出现在标签栏<svg aria-hidden="true"><use href="#i-chevron"/></svg></summary><p>Edge 的原生新标签页可能保留浏览器图标。通过扩展图标打开 Start，可使用自定义图标。</p><p>可上传 PNG、JPG 或 WebP，大小不超过 1 MB、尺寸不超过 2048 × 2048。</p></details>
+       <button id="settings-diagnostics-link" class="settings-link-row" data-settings-page="diagnostics"><span>技术诊断</span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      </section>
+     </section>
+     <section id="settings-panel-legacy" class="settings-panel" aria-labelledby="settings-page-title" hidden>
+      <section class="settings-group"><h4>管理旧快捷网站</h4><div class="settings-row"><div class="settings-label"><span>本地快捷网站</span><small id="legacy-count"></small></div><button id="legacy-sites" class="secondary">整理</button></div></section>
+      <section class="settings-group"><h4>加入浏览器书签</h4><div class="settings-row"><label for="bookmark-destination">目标文件夹</label><select id="bookmark-destination" class="field-input" aria-label="旧快捷项迁入的书签文件夹"></select></div><p class="settings-note">跳过已有网址，保留全部旧快捷网站。</p><div class="settings-group-foot"><p id="bookmark-migration-status" class="settings-feedback" role="status" aria-live="polite"></p><button id="bookmark-migrate" class="secondary" disabled>加入书签</button></div></section>
+     </section>
+     <section id="settings-panel-diagnostics" class="settings-panel" aria-labelledby="settings-page-title" hidden>
+      <section class="settings-group"><h4>来源与构建</h4><p id="source-description" class="settings-note"></p><pre id="source-details" class="settings-diagnostics"></pre><a href="source-check.html" target="_blank" rel="noopener" class="secondary settings-diagnostic-link">受控来源核验<svg aria-hidden="true"><use href="#i-external"/></svg></a></section>
+     </section>
+    </div>
+    <p id="settings-status" class="settings-feedback" role="status" aria-live="polite"></p><p id="native-status" class="sr"></p>
+   </div>
+  </main>
  </div>
 </dialog>
 <dialog id="project-dialog" aria-labelledby="project-title"><div class="dialog-head"><h2 id="project-title">项目</h2><button class="icon-button" data-close="project-dialog" aria-label="关闭项目操作"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p>打开原生项目后，继续使用 ChatGPT 自己的项目功能。</p><div class="context-links"><a id="project-native"><svg aria-hidden="true"><use href="#i-external"/></svg>在 ChatGPT 中打开项目</a><a id="project-new"><svg aria-hidden="true"><use href="#i-plus"/></svg>打开项目以新建对话</a><button id="project-find"><svg aria-hidden="true"><use href="#i-search"/></svg>搜索这个项目的会话</button></div></div></dialog>
 <dialog id="record-dialog" aria-labelledby="record-title"><div class="dialog-head"><h2 id="record-title">会话详情</h2><button class="icon-button" data-close="record-dialog" aria-label="关闭会话详情"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><dl id="record-details" class="record-details"></dl><div class="dialog-foot"><button class="secondary" id="remove-record">从首页移除</button><button class="primary" data-close="record-dialog">完成</button></div></div></dialog>
-<dialog id="import-dialog" aria-labelledby="import-title">
- <div class="dialog-head"><h2 id="import-title">找回浏览过的 ChatGPT 会话</h2><button class="icon-button" data-close="import-dialog" aria-label="关闭历史导入"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
- <div class="dialog-body"><p>仅保存 ChatGPT 会话链接和标题。浏览器的历史权限覆盖全部网站，扩展会先筛选，只保存匹配的 ChatGPT 会话记录。</p><label class="field-label" for="import-range">导入范围</label><select class="field-input" id="import-range"><option value="recent90">最近 90 天</option><option value="all">浏览器当前可读取的全部范围</option></select><label class="checkbox-field"><input type="checkbox" id="include-synced">包含从其他设备同步的浏览记录</label><p class="field-help">仅导入浏览器当前可读取的记录，不会增加主动打开日期。</p><div class="import-progress" id="import-progress" aria-live="polite"></div><div class="dialog-foot"><button class="secondary" data-close="import-dialog">暂时跳过</button><button class="primary" id="confirm-import">授权并导入</button></div></div>
+<dialog class="settings-detail-dialog" id="import-dialog" aria-labelledby="import-title">
+ <div class="dialog-head"><h2 id="import-title" tabindex="-1">导入浏览器历史</h2><button class="icon-button" data-close="import-dialog" aria-label="关闭历史导入"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+ <div class="dialog-body"><div id="import-options"><p id="import-permission-note">浏览器将申请历史记录权限。Start 只保存 ChatGPT 会话链接与标题。</p><label class="field-label" for="import-range">导入范围</label><select class="field-input" id="import-range"><option value="recent90">最近 90 天</option><option value="all">全部可读取的历史</option></select><label class="checkbox-field"><input type="checkbox" id="include-synced">包含浏览器可读取的同步历史</label></div><p id="import-status" class="settings-feedback" role="status" aria-live="polite"></p><div class="import-progress" id="import-progress" aria-live="polite"></div><div class="dialog-foot"><button class="secondary" data-close="import-dialog">关闭</button><button class="primary" id="confirm-import">授权并导入</button></div></div>
 </dialog>
-<dialog id="removed-dialog" aria-labelledby="removed-title"><div class="dialog-head"><h2 id="removed-title">恢复收录</h2><button class="icon-button" data-close="removed-dialog" aria-label="关闭恢复收录"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p>恢复后，再次导入或观察该会话时可重新收录；不会操作 ChatGPT 中的会话。</p><div id="removed-list"></div></div></dialog>
-<dialog id="clear-dialog" aria-labelledby="clear-title"><div class="dialog-head"><h2 id="clear-title">清除本地数据？</h2><button class="icon-button" data-close="clear-dialog" aria-label="取消清除"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p>清除本浏览器中的全部 Start 会话目录、活动、网站快捷项和设置。ChatGPT 会话与浏览器历史不受影响。此操作不能撤销。</p><div class="dialog-foot"><button class="secondary" data-close="clear-dialog">取消</button><button class="primary" id="confirm-clear">清除全部 Start 本地数据</button></div></div></dialog>
+<dialog class="settings-detail-dialog" id="removed-dialog" aria-labelledby="removed-title"><div class="dialog-head"><h2 id="removed-title">恢复已移除的会话</h2><button class="icon-button" data-close="removed-dialog" aria-label="关闭恢复收录"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p>恢复到 Start 本地目录，不修改 ChatGPT 中的会话。</p><div id="removed-list"></div></div></dialog>
+<dialog class="settings-detail-dialog" id="clear-dialog" aria-labelledby="clear-title"><div class="dialog-head"><h2 id="clear-title">清除本地数据？</h2><button class="icon-button" data-close="clear-dialog" aria-label="取消清除"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p>清除本浏览器中的全部 Start 会话目录、活动、网站快捷项和设置。ChatGPT 会话、浏览器历史和原生书签不受影响。此操作不能撤销。</p><p id="clear-status" class="settings-feedback" role="status" aria-live="polite"></p><div class="dialog-foot"><button class="secondary" data-close="clear-dialog">取消</button><button class="primary danger" id="confirm-clear">清除全部 Start 本地数据</button></div></div></dialog>
 <noscript>VAIWL Start 需要启用扩展脚本。请在浏览器扩展管理页重新加载。</noscript>
 </body></html>

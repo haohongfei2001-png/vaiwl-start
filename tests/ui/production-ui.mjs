@@ -30,6 +30,7 @@ async function installTestFont(page) {
 }
 async function openLegacy(page) {
   await page.locator('#settings-trigger').click();
+  await page.locator('#settings-legacy-link').click();
   await page.locator('#legacy-sites').click();
 }
 const check = (id, condition, observed) => { assert.ok(condition, `${id}: ${observed}`); checks.push({ id, status: 'PASS', observed }); };
@@ -80,6 +81,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.edit-site-name')?.textContent === 'First edited');
   check('UI-native-drag-order', (await page.locator('.edit-site-name').allTextContents()).join('|') === 'First edited|Second', 'Native pointer drag moves the first website after the second through the production drop handler.');
   await page.locator('#sites-dialog [data-close]').first().click();
+  await page.locator('#settings-dialog [data-close]').first().click();
   const slashModifiers = await page.evaluate(() => {
     const cancelled = [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { shiftKey: true }].map(modifiers => {
       const event = new KeyboardEvent('keydown', { key: '/', ...modifiers, bubbles: true, cancelable: true }); document.dispatchEvent(event); return event.defaultPrevented;
@@ -117,6 +119,7 @@ try {
   check('UI-website-native-open-no-activity', shortcutActivity.intents === 0 && shortcutActivity.days === 0, 'Both HTTP and HTTPS shortcuts open their exact controlled native-browser targets; neither creates a ChatGPT intent or OpenDay.');
 
   await page.locator('#sites-dialog [data-close]').first().click();
+  await page.locator('#settings-dialog [data-close]').first().click();
   const scope = `scope:${'a'.repeat(64)}`;
   const otherScope = `scope:${'b'.repeat(64)}`;
   const now = new Date(Date.now() - 600000);
@@ -293,11 +296,13 @@ try {
   await page.waitForFunction(key => !document.querySelector(`#workspace-content [data-record-key="${key}"]`) || !document.getElementById('toast').hidden, removeKey);
   check('UI-remove-conversation', await page.locator(`#workspace-content [data-record-key="${removeKey}"]`).count() === 0, `Local remove after keyboard open: ${await page.locator('#toast').textContent()}`);
   await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.locator('#settings-nav-data').click();
   await page.locator('#show-removed').click();
   check('UI-restore-entry-visible', await page.locator(`[data-restore-record="${removeKey}"]`).isVisible(), 'The current-scope tombstone is reachable in Restore.');
   await page.locator(`[data-restore-record="${removeKey}"]`).click();
   await page.waitForFunction(key => !!document.querySelector(`#workspace-content [data-record-key="${key}"]`), removeKey);
   await page.locator('#removed-dialog [data-close]').first().click();
+  await page.locator('#settings-dialog [data-close]').first().click();
   check('UI-restore-conversation', await page.locator(`#workspace-content [data-record-key="${removeKey}"]`).count() === 1, 'Explicit restore returns exactly one local entry.');
   await page.locator('#search-trigger').click(); await page.locator('#search-input').fill('<img src=x onerror=window.__xss=1>');
   check('UI-unknown-text-only', await page.locator('#search-results').getByText('<img src=x onerror=window.__xss=1>', { exact: true }).isVisible() && !await page.evaluate(() => window.__xss), 'An undated HTML-looking native title is searchable and rendered as plain text.');
@@ -408,8 +413,11 @@ try {
   check('UI-ime-revision-safe-point', !!imeAfter.evidence.imeEnd && imeAfter.evidence.imeApplied >= imeAfter.evidence.imeEnd.at && imeAfter.evidence.imeApplied - imeAfter.evidence.imeEnd.at <= 1000 && imeAfter.focus === 'search-input' && imeAfter.query === '设计讨论' && Math.abs(imeAfter.offset - imeBefore.offset) <= 1, `Real Chromium CDP composition start is trusted; the browser-generated end has isTrusted=${imeAfter.evidence.imeEnd?.trusted}. Other-tab revision waits through composition and applies in ${Math.round(imeAfter.evidence.imeApplied - imeAfter.evidence.imeEnd.at)} ms, preserving the input buffer, focus and same record anchor. No DOM event is synthesized by the test.`);
   await ime.detach(); await page.keyboard.press('Escape');
   await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.locator('#settings-nav-about').click();
+  await page.locator('#settings-diagnostics-link').click();
+  await page.locator('#source-description').waitFor({state:'visible'});
   const sourceDescription = await page.locator('#source-description').textContent();
-  check('UI-source-limit-visible', sourceDescription.includes('本地历史可按日期浏览') && sourceDescription.includes('浏览日期不计活跃') && sourceDescription.includes('已有目录和本地项目继续保留') && sourceDescription.includes('完整账号空间认证与全量同步尚未完成') && sourceDescription.includes('连接 ChatGPT 并开启继续收录后'), 'Settings disclose preserved local Project capability separately from incomplete account/Workspace certification and full sync; disconnected capture does not promise new activity.');
+  check('UI-source-limit-visible', sourceDescription.includes('会话目录与已观察到的项目关系保存在本机') && sourceDescription.includes('完整账号空间认证和全量同步尚未完成') && (await page.locator('#source-details').textContent()).includes(buildInfo.sha), 'The explicit diagnostic detail preserves truthful local Project capability, incomplete account certification and full sync status, and the exact running build SHA.');
   await page.locator('#settings-dialog [data-close]').first().click();
   for (const width of [320, 400, 720, 1000, 1440, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
@@ -426,9 +434,12 @@ try {
     await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); }); db.close();
   });
   await page.reload(); await page.waitForSelector('html[data-start-ready="true"]');
-  await page.locator('#settings-trigger').click(); await page.locator('#settings-import').click();
-  check('UI-resume-persisted-batch', await page.locator('[data-import-resume="synthetic-pending-batch"]').isVisible(), 'A paused checkpoint remains resumable when its last interval is exhausted but persisted candidates remain.');
+  await page.locator('#settings-trigger').click(); await page.locator('#settings-nav-workspace').click(); await page.locator('#settings-import').click();
+  const historyAllowed = await page.evaluate(() => chrome.permissions.contains({ permissions: ['history'] }));
+  const recoveryAttribute = historyAllowed ? 'data-import-resume' : 'data-import-authorize-resume';
+  check('UI-resume-persisted-batch', await page.locator(`[${recoveryAttribute}="synthetic-pending-batch"]`).isVisible() && await page.locator('#confirm-import').isHidden(), 'A paused checkpoint remains resumable under its original ID when only persisted candidates remain; missing actual history permission selects authorization before Resume, without offering a competing new job.');
   await page.locator('#import-dialog [data-close]').first().click();
+  await page.locator('#settings-dialog [data-close]').first().click();
   // A new tab starts with independent 5-row view limits, while reading the same real IDB.
   const reviewPage = await context.newPage();
   reviewPage.on('pageerror', error => errors.push(error.message));

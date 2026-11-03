@@ -130,12 +130,13 @@ try {
  await command(page,'SHORTCUT_UPSERT',{shortcut:{label:'Legacy new',url:'https://legacy.example/'}});
  await command(page,'SHORTCUT_UPSERT',{shortcut:{label:'Legacy duplicate',url:'https://legacy.example/'}});
  const legacyBefore=(await command(page,'SNAPSHOT')).shortcuts;
- await page.locator('#settings-trigger').click();await page.locator('#bookmark-migrate').waitFor({state:'visible'});
+ await page.locator('#settings-trigger').click();await page.locator('#settings-legacy-link').click();await page.locator('#bookmark-migrate').waitFor({state:'visible'});
+ await page.locator('#bookmark-destination').selectOption(ids.folder);
  page.once('dialog',dialog=>dialog.dismiss());await page.locator('#bookmark-migrate').click();
  assert.deepEqual(await worker.evaluate(()=>chrome.bookmarks.getTree()),treeBeforeUI);check('N-migration-cancel-no-write',true,'Cancelling explicit migration does not alter the native tree.');
  page.once('dialog',dialog=>dialog.accept());await page.locator('#bookmark-migrate').click();await page.waitForFunction(()=>document.querySelector('#native-status').textContent.includes('已加入 1 项'));
  const migrated=await worker.evaluate(()=>chrome.bookmarks.search({url:'https://legacy.example/'}));
- check('N-explicit-deduplicated-migration',migrated.length===1,'Duplicate legacy URLs and existing native URLs are skipped.');
+ check('N-explicit-deduplicated-migration',migrated.length===1&&migrated[0].parentId===ids.folder,'Duplicate legacy URLs and existing native URLs are skipped; the new bookmark is created in the explicitly selected native subfolder.');
  assert.deepEqual((await command(page,'SNAPSHOT')).shortcuts,legacyBefore);check('N-legacy-all-preserved',true,'Every old shortcut and field remains after migration.');
  page.once('dialog',dialog=>dialog.accept());await page.locator('#bookmark-migrate').click();await page.waitForFunction(()=>document.querySelector('#native-status').textContent.includes('已加入 0 项'));
  check('N-migration-idempotent',(await worker.evaluate(()=>chrome.bookmarks.search({url:'https://legacy.example/'}))).length===1,'Retry cannot duplicate already migrated items.');
@@ -176,7 +177,7 @@ try {
  context=await launch(profile,harness);({worker,page,id}=await ready(context));
  await page.locator('#settings-trigger').click();
  if(!await worker.evaluate(()=>chrome.permissions.contains({permissions:['bookmarks']}))) {await page.locator('#bookmark-connect').click();await page.waitForFunction(()=>document.querySelector('#bookmark-connect').textContent.includes('撤销'));}
- await page.locator('#bookmark-connect').click();await page.waitForFunction(()=>document.querySelector('#bookmark-connect').textContent.includes('授权'));
+ await page.locator('#bookmark-connect').click();await page.waitForFunction(()=>document.querySelector('#bookmark-permission-label').textContent==='未授权'&&document.querySelector('#bookmark-connect').textContent==='允许访问');
  check('N-real-optional-revocation',!await worker.evaluate(()=>chrome.permissions.contains({permissions:['bookmarks']}))&&await page.locator('.native-bookmark').count()===0,'Real permissions.remove revokes previously pregranted permission and clears in-memory links.');
  assert.deepEqual((await command(page,'SNAPSHOT')).shortcuts,legacyBefore);check('N-revocation-keeps-legacy-and-workspace',(await command(page,'SNAPSHOT')).conversations.length===5,'Revoking bookmarks preserves saved shortcuts and conversations.');
  check('N-no-page-errors',errors.length===0,JSON.stringify(errors));
