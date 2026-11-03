@@ -73,12 +73,17 @@ try {
   const granted = await worker.evaluate(() => chrome.permissions.getAll());
   check('IMPORT-B-no-chatgpt-source-authority', granted.permissions.includes('history') && !granted.permissions.includes('scripting') && !granted.permissions.includes('webNavigation') && granted.origins.length === 0, 'The isolated harness has history only; no account, ChatGPT observation or source authority is enabled.');
   await worker.evaluate(async urls => { for (const url of urls) await chrome.history.addUrl({ url }); }, urls);
-  // onVisited is genuine production discovery. Wait for it to finish, then clear
-  // only extension data so the following records must come from the import job.
-  await waitForAsync(page, async count => {
-    const response = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} });
-    return response.ok && response.data.conversations.length === count;
-  }, COUNT, { timeout: 30000 });
+  // Seeding browser history is independent from authorizing automatic capture.
+  // Prove the real history data exists without relying on the old pause bypass.
+  const seedProof = await worker.evaluate(async urls => {
+    const history = await chrome.history.search({ text: '', startTime: 0, maxResults: 10000 });
+    const visits = await Promise.all(urls.map(url => chrome.history.getVisits({ url })));
+    return { count: urls.filter(url => history.some(item => item.url === url)).length, localVisits: visits.filter(items => items.some(item => item.isLocal)).length };
+  }, urls);
+  await page.waitForTimeout(300);
+  const beforeImport = await command(page, 'SNAPSHOT');
+  check('IMPORT-B-history-only-no-automatic-capture', seedProof.count === COUNT && seedProof.localVisits === COUNT && !beforeImport.settings.captureEnabled && beforeImport.capabilities.history && !beforeImport.capabilities.chatgpt && beforeImport.conversations.length === 0,
+    'Real search/getVisits confirm all 257 local synthetic entries; no automatic row is admitted while capture is disabled and ChatGPT is disconnected.');
   await command(page, 'CLEAR_LOCAL');
   check('IMPORT-B-clean-catalog-real-history', (await command(page, 'SNAPSHOT')).conversations.length === 0, '257 synthetic real browser history entries remain, while the independent extension catalog starts empty.');
   const started = await command(page, 'IMPORT_START', { range: 'all', includeSynced: false });

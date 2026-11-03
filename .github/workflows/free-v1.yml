@@ -46,6 +46,7 @@ jobs:
       - run: npm run build
       - run: npm run test:browser
       - run: node tests/browser/import-recovery.mjs
+      - run: node tests/browser/automatic-history.mjs
       - run: node tests/browser/privacy-boundaries.mjs
       - run: node tests/browser/source-recovery.mjs
       - run: node tests/browser/project-observation.mjs
@@ -67,6 +68,8 @@ jobs:
           path: |
             artifacts/browser-validation.json
             artifacts/import-recovery-validation.json
+            artifacts/automatic-history-validation.json
+            artifacts/automatic-history-baseline-validation.json
             artifacts/privacy-boundaries-validation.json
             artifacts/source-recovery-validation.json
             artifacts/project-observation-validation.json

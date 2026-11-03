@@ -66,8 +66,14 @@ try {
   ({ worker, page } = await ready(context));
   const urls = [1, 2, 3].map(i => `https://chatgpt.com/c/00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
   await worker.evaluate(async urls => { for (const url of [...urls, 'https://example.invalid/?chatgpt.com', 'https://chatgpt.com/share/synthetic']) await chrome.history.addUrl({ url }); }, urls);
-  // Wait for the real onVisited discovery to settle, then clear only extension data.
-  for (let i = 0; i < 20; i++) { if ((await command(page, 'SNAPSHOT')).conversations.length >= 3) break; await page.waitForTimeout(50); }
+  const seedProof = await worker.evaluate(async urls => {
+    const history = await chrome.history.search({ text: '', startTime: 0, maxResults: 10000 });
+    return { present: urls.every(url => history.some(item => item.url === url)), visits: (await Promise.all(urls.map(url => chrome.history.getVisits({ url })))).every(visits => visits.some(visit => visit.isLocal)) };
+  }, urls);
+  await page.waitForTimeout(300);
+  const beforeImport = await command(page, 'SNAPSHOT');
+  check('B-history-only-does-not-enable-automatic-capture', seedProof.present && seedProof.visits && !beforeImport.settings.captureEnabled && beforeImport.capabilities.history && !beforeImport.capabilities.chatgpt && beforeImport.conversations.length === 0,
+    'Actual search/getVisits prove all three synthetic browser entries exist, while history permission alone leaves the paused/disconnected extension catalog empty.');
   await command(page, 'CLEAR_LOCAL');
   await page.reload(); await page.waitForSelector('html[data-start-ready="true"]');
   await page.getByRole('button', { name: '导入浏览历史', exact: true }).click();

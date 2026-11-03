@@ -8,9 +8,9 @@ const specification = await readFile('docs/free-v1/06-ACCEPTANCE.md', 'utf8');
 const U='unit-validation', B='browser-validation', I='import-recovery-validation', P='privacy-boundaries-validation', N='source-recovery-validation', F='storage-faults-validation', V='ui-validation', R='review-validation';
 const X='native-experience-validation', G='native-upgrade-validation';
 const LP='native-project-grouping-validation';
-const PS='project-startup-validation', LB='life-bookmarks-validation';
+const PS='project-startup-validation', LB='life-bookmarks-validation', AH='automatic-history-validation';
 const evidence={};
-for(const name of [U,B,I,P,N,F,V,R,X,G,LP,PS,LB,'privacy-audit','performance-validation']){
+for(const name of [U,B,I,P,N,F,V,R,X,G,LP,PS,LB,AH,'privacy-audit','performance-validation']){
   try{const result=JSON.parse(await readFile('artifacts/'+name+'.json','utf8'));if(result.buildSha===build.sha&&result.dirty===build.dirty)evidence[name]=result;}catch{/* Other-build or missing evidence never passes. */}
 }
 // Each full claim names actual predicates. File-level success alone is insufficient.
@@ -125,8 +125,8 @@ for(const line of specification.split('\n')){
   limitations:['Row PASS never implies Free V1 acceptance or real Mac/Edge compatibility.',...(id==='D10'?['Current v1 initial-schema recovery and same-version reopen; quota is injected into a real browser transaction, not physical disk exhaustion or a nonexistent legacy migration.']:[])]});
 }
 for(let n=1;n<=4;n++)records.push({id:'JOURNEY-'+n,status:'BLOCKED',buildSha:build.sha,browserVersion:null,environment:'Real Mac Chrome and Edge',steps:'Continuous journey '+n+' with local-first amendment',observed:'Actual device journey and authenticated native context/PROJECT/NONE remain unverified. This does not block tested local history and Start navigation activity.',artifactRefs:['M0_SOURCE_GATE.md'],limitations:['Synthetic browser tests do not replace this journey.']});
-const engineeringGates=[U,'privacy-audit',B,I,P,N,F,V,X,G,LP,PS,LB,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
+const engineeringGates=[U,'privacy-audit',B,I,P,N,F,V,X,G,LP,PS,LB,AH,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
 const evidenceFailures=Object.entries(evidence).filter(([,r])=>r.status==='FAIL'||r.checks?.some(c=>typeof c==='object'&&c.status==='FAIL')).map(([name])=>name+'.json');
 const status=records.some(r=>r.status==='FAIL')||evidenceFailures.length?'FAIL':engineeringGates.every(g=>g.status==='PASS')?'LOCAL_WORKSPACE_READY':'IMPLEMENTATION_READY_FOR_CI';
-await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status,sourceGate:build.sourceGate,amendment:build.amendment,nativeAttribution:'UNVERIFIED',nativeProjectLocalGrouping:evidence[LP]?.status||'NOT_RUN',accountWorkspaceCertification:'UNVERIFIED',fullProjectSync:'NOT_IMPLEMENTED',buildSha:build.sha,dirty:build.dirty,engineeringGates,evidenceFailures,records},null,2));
+await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status,sourceGate:build.sourceGate,amendment:build.amendment,nativeAttribution:'UNVERIFIED',nativeProjectLocalGrouping:evidence[LP]?.status||'NOT_RUN',automaticHistoryAuthorization:evidence[AH]?.status||'NOT_RUN',accountWorkspaceCertification:'UNVERIFIED',fullProjectSync:'NOT_IMPLEMENTED',buildSha:build.sha,dirty:build.dirty,engineeringGates,evidenceFailures,records},null,2));
 console.log(JSON.stringify({status,buildSha:build.sha,records:records.length,statuses:records.reduce((n,r)=>({...n,[r.status]:(n[r.status]||0)+1}),{}),engineeringGates}));

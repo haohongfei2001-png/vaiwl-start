@@ -13,6 +13,8 @@ export interface CatalogSnapshot { revision: number; settings: StartSettings; lo
 interface LocalProjectRow { key: string; value: LocalObservedProject }
 export interface LocalProjectContext { browserSessionId: string; documentId: string; identityGeneration: number; principalKey: string | null; sourceHref: string; routeEpoch: number }
 interface SettingsRow extends StartSettings { key: 'main'; localProfileKey: string }
+export interface AutomaticHistoryAuthorization { localProfileKey: string; generation: string; workerId: string }
+interface AutomaticHistoryRow extends AutomaticHistoryAuthorization { key: 'automaticHistory' }
 interface RevisionRow { key: 'main'; value: number; nextRank: number }
 type StoredConversation = ConversationRecord & { ownerKey: string; membershipState: Membership['state']; projectId?: string; lastActiveAt?: string; browserSource?: 'local' | 'synced' | 'unknown' };
 interface StoredTombstone extends Tombstone { record?: StoredConversation }
@@ -22,6 +24,7 @@ export interface IssueIntentInput { id?: string; browserSessionId: string; targe
 export interface ArrivalInput extends IntentBinding { intentId: string; browserSessionId: string; conversationId: string; canonicalUrl: string; scopeKey: string | null; evidenceId?: string; nativeTitle?: string | null; arrivalConfirmed: true; confirmationBasis?: 'browser-navigation' | 'metadata-arrival' }
 export interface ObservationInput { scope: AccountScope; witness: EvidenceWitness; documentId: string; routeEpoch: number; scopeEpoch: number; conversationUrl: string; nativeTitle: string | null; membership: Membership; project?: ProjectRecord }
 type MutationContext = { tx: IDBTransaction; revision: RevisionRow; settings: SettingsRow; changed: () => void; rank: () => number };
+type PreparedCandidate = { input: CandidateInput; identity: NonNullable<ReturnType<typeof parseConversationUrl>>; key: string };
 
 function defaults(timeZone: string, profile = crypto.randomUUID()): SettingsRow {
   return { key: 'main', localProfileKey: profile, schemaVersion: 1, libraryTimeZone: validateTimeZone(timeZone), shortcutSectionCollapsed: false, selectedScope: 'unassigned', currentSegment: 0, captureEnabled: false };
@@ -58,22 +61,79 @@ function newCandidate(key: string, profile: string, identity: NonNullable<Return
   return decorate({ key, provider: 'chatgpt', owner: { kind: 'unassigned', localProfileKey: profile, accountKey: null }, conversationId: identity.conversationId, canonicalUrl: identity.canonicalUrl, nativeTitle, titleBasis: nativeTitle ? input.titleBasis ?? 'browser-history' : 'unknown', titleObservedAt: nativeTitle ? now : null, availability: 'unverified', firstSeenAt: now, lastSeenAt: now, browserLastVisitAt: input.lastVisitAt ? iso(input.lastVisitAt) : null, activity: null, stableRank: rank, revision, membership: { state: 'UNKNOWN', projectId: null, reason: 'scope-unverified' } }, input.source ?? 'unknown');
 }
 
+async function prepareCandidates(inputs: CandidateInput[], profile: string): Promise<PreparedCandidate[]> {
+  if (!Array.isArray(inputs) || inputs.length > 200) throw Error('invalid-candidate-batch');
+  return Promise.all(inputs.map(async input => {
+    exactObject(input, ['url'], ['title', 'lastVisitAt', 'source', 'titleBasis']);
+    const identity = parseConversationUrl(input.url); if (!identity) throw Error('invalid-conversation-url');
+    title(input.title); if (input.lastVisitAt) iso(input.lastVisitAt);
+    if (input.source && !['local', 'synced', 'unknown'].includes(input.source)) throw Error('invalid-history-source');
+    if (input.titleBasis && !['browser-history', 'native-label', 'unknown'].includes(input.titleBasis)) throw Error('invalid-title-basis');
+    return { input, identity, key: await stagingKey(profile, identity.conversationId) };
+  }));
+}
+
+/** The same candidate merge is used by explicit imports and guarded automatic visits. */
+async function writeCandidates(ctx: MutationContext, prepared: PreparedCandidate[], now: string, current: () => void = () => {}): Promise<{ accepted: number; inserted: number }> {
+  const store = ctx.tx.objectStore('conversations'); let accepted = 0, inserted = 0;
+  for (const p of prepared) {
+    current();
+    const removed = await request(ctx.tx.objectStore('tombstones').get(p.key)); current();
+    if (removed) continue;
+    const previous = await request<StoredConversation | undefined>(store.get(p.key)); current();
+    const fresh = newCandidate(p.key, ctx.settings.localProfileKey, p.identity, p.input, now, previous?.stableRank ?? ctx.rank(), ctx.revision.value + 1);
+    if (previous) {
+      fresh.firstSeenAt = previous.firstSeenAt; fresh.activity = previous.activity; fresh.availability = previous.availability;
+      // A history refresh is metadata for the same staged entity, not a new
+      // ownership/membership decision. Keep identity-bearing state stable.
+      fresh.owner = previous.owner; fresh.membership = previous.membership;
+      fresh.canonicalUrl = previous.canonicalUrl; fresh.stableRank = previous.stableRank;
+      if (previous.localProjectCandidate) fresh.localProjectCandidate = previous.localProjectCandidate;
+      if (previous.localProject) fresh.localProject = previous.localProject;
+      Object.assign(fresh, chooseTitle(previous, fresh.nativeTitle, fresh.titleBasis, fresh.titleObservedAt ?? now));
+      if (!fresh.browserLastVisitAt || previous.browserLastVisitAt && instant(previous.browserLastVisitAt)! > instant(fresh.browserLastVisitAt)!) fresh.browserLastVisitAt = previous.browserLastVisitAt;
+    } else inserted++;
+    await request(store.put(decorate(fresh, p.input.source))); current(); accepted++; ctx.changed();
+  }
+  return { accepted, inserted };
+}
+
 export class Repository {
+  private readonly automaticHistoryTransactions = new Set<IDBTransaction>();
   constructor(private readonly db: IDBDatabase, private readonly clock: () => string) {}
-  close(): void { this.db.close(); }
+  close(): void { this.abortAutomaticHistory(); this.db.close(); }
   private now(): string { return iso(this.clock()); }
-  private async mutate<T>(fn: (ctx: MutationContext) => Promise<T>, expectedRevision?: number): Promise<T> {
+  private abortAutomaticHistory(): void {
+    for (const tx of this.automaticHistoryTransactions) { try { tx.abort(); } catch { /* Already completed or aborted. */ } }
+  }
+  private async rotateAutomaticHistory(ctx: MutationContext, workerId?: string): Promise<void> {
+    const store = ctx.tx.objectStore('settings');
+    const previous = await request<AutomaticHistoryRow | undefined>(store.get('automaticHistory'));
+    if (!previous && (workerId === undefined || !ctx.settings.captureEnabled)) return;
+    await request(store.put({ key: 'automaticHistory', localProfileKey: ctx.settings.localProfileKey,
+      generation: crypto.randomUUID(), workerId: workerId ?? previous!.workerId } satisfies AutomaticHistoryRow));
+    // Authorization bookkeeping is private; it does not change catalog revision
+    // or invalidate an unrelated, explicit history-import checkpoint.
+  }
+  private async mutate<T>(fn: (ctx: MutationContext) => Promise<T>, expectedRevision?: number, automaticCurrent?: () => void): Promise<T> {
     const tx = this.db.transaction([...STORE_NAMES], 'readwrite'); const done = transactionDone(tx);
+    if (automaticCurrent) this.automaticHistoryTransactions.add(tx);
     try {
+      automaticCurrent?.();
       const revision = await request<RevisionRow>(tx.objectStore('revisions').get('main'));
+      automaticCurrent?.();
       const settings = await request<SettingsRow>(tx.objectStore('settings').get('main'));
+      automaticCurrent?.();
       if (!revision || !settings) throw Error('database-not-initialized');
       if (expectedRevision !== undefined && nonnegative(expectedRevision) !== revision.value) throw Error('revision-conflict');
       let dirty = false;
       const result = await fn({ tx, revision, settings, changed: () => { dirty = true; }, rank: () => { dirty = true; return revision.nextRank++; } });
+      automaticCurrent?.();
       if (dirty) { revision.value++; await request(tx.objectStore('revisions').put(revision)); }
+      automaticCurrent?.();
       await done; return result;
     } catch (error) { try { tx.abort(); } catch {} await done.catch(() => {}); throw error; }
+    finally { this.automaticHistoryTransactions.delete(tx); }
   }
   async getSnapshot(selectedScope?: string): Promise<CatalogSnapshot> {
     const tx = this.db.transaction([...STORE_NAMES], 'readonly'); const done = transactionDone(tx);
@@ -87,7 +147,7 @@ export class Repository {
       request<RuntimeImportJob[]>(tx.objectStore('importJobs').getAll()),
       request<StoredTombstone[]>(tx.objectStore('tombstones').getAll()),
       request<CandidateResolution[]>(tx.objectStore('candidateLinks').getAll()),
-      request<Array<LocalProjectRow | SettingsRow>>(tx.objectStore('settings').getAll()),
+      request<Array<LocalProjectRow | SettingsRow | AutomaticHistoryRow>>(tx.objectStore('settings').getAll()),
     ]);
     await done;
     const selected = selectedScope ?? settings.selectedScope;
@@ -100,39 +160,56 @@ export class Repository {
   async discoverCandidates(inputs: CandidateInput[], expectedRevision?: number, checkpoint?: RuntimeImportJob): Promise<{ accepted: number; inserted: number }> {
     if (!Array.isArray(inputs) || inputs.length > 200) throw Error('invalid-candidate-batch');
     const initial = await this.getSnapshot('unassigned');
-    const prepared = await Promise.all(inputs.map(async input => {
-      exactObject(input, ['url'], ['title', 'lastVisitAt', 'source', 'titleBasis']);
-      const identity = parseConversationUrl(input.url); if (!identity) throw Error('invalid-conversation-url');
-      title(input.title); if (input.lastVisitAt) iso(input.lastVisitAt);
-      if (input.source && !['local', 'synced', 'unknown'].includes(input.source)) throw Error('invalid-history-source');
-      if (input.titleBasis && !['browser-history', 'native-label', 'unknown'].includes(input.titleBasis)) throw Error('invalid-title-basis');
-      return { input, identity, key: await stagingKey(initial.localProfileKey, identity.conversationId) };
-    }));
+    const prepared = await prepareCandidates(inputs, initial.localProfileKey);
     if (checkpoint) validateImportJob(checkpoint);
     const now = this.now();
     return this.mutate(async ctx => {
       if (ctx.settings.localProfileKey !== initial.localProfileKey) throw Error('profile-changed');
-      const store = ctx.tx.objectStore('conversations'); let accepted = 0, inserted = 0;
-      for (const p of prepared) {
-        if (await request(ctx.tx.objectStore('tombstones').get(p.key))) continue;
-        const previous = await request<StoredConversation | undefined>(store.get(p.key));
-        const fresh = newCandidate(p.key, ctx.settings.localProfileKey, p.identity, p.input, now, previous?.stableRank ?? ctx.rank(), ctx.revision.value + 1);
-        if (previous) {
-          fresh.firstSeenAt = previous.firstSeenAt; fresh.activity = previous.activity; fresh.availability = previous.availability;
-          // A history refresh is metadata for the same staged entity, not a new
-          // ownership/membership decision. Keep identity-bearing state stable.
-          fresh.owner = previous.owner; fresh.membership = previous.membership;
-          fresh.canonicalUrl = previous.canonicalUrl; fresh.stableRank = previous.stableRank;
-          if (previous.localProjectCandidate) fresh.localProjectCandidate = previous.localProjectCandidate;
-          if (previous.localProject) fresh.localProject = previous.localProject;
-          Object.assign(fresh, chooseTitle(previous, fresh.nativeTitle, fresh.titleBasis, fresh.titleObservedAt ?? now));
-          if (!fresh.browserLastVisitAt || previous.browserLastVisitAt && instant(previous.browserLastVisitAt)! > instant(fresh.browserLastVisitAt)!) fresh.browserLastVisitAt = previous.browserLastVisitAt;
-        } else inserted++;
-        await request(store.put(decorate(fresh, p.input.source))); accepted++; ctx.changed();
-      }
+      const result = await writeCandidates(ctx, prepared, now);
       if (checkpoint) { await request(ctx.tx.objectStore('importJobs').put(checkpoint)); ctx.changed(); }
-      return { accepted, inserted };
+      return result;
     }, expectedRevision);
+  }
+  /** Called once by a new service-worker instance, never by a late visit callback. */
+  async startAutomaticHistorySession(workerId: string): Promise<void> {
+    boundedString(workerId, 128); this.abortAutomaticHistory();
+    await this.mutate(ctx => this.rotateAutomaticHistory(ctx, workerId));
+  }
+  async beginAutomaticHistory(workerId: string): Promise<AutomaticHistoryAuthorization | null> {
+    boundedString(workerId, 128);
+    return this.mutate(async ctx => {
+      if (!ctx.settings.captureEnabled) return null;
+      const store = ctx.tx.objectStore('settings');
+      let row = await request<AutomaticHistoryRow | undefined>(store.get('automaticHistory'));
+      if (row && (row.workerId !== workerId || row.localProfileKey !== ctx.settings.localProfileKey)) return null;
+      if (!row) {
+        row = { key: 'automaticHistory', localProfileKey: ctx.settings.localProfileKey, generation: crypto.randomUUID(), workerId };
+        await request(store.put(row));
+      }
+      return { localProfileKey: row.localProfileKey, generation: row.generation, workerId: row.workerId };
+    });
+  }
+  /** Abort first, before queuing the persistent invalidation behind an IDB writer. */
+  async invalidateAutomaticHistory(): Promise<void> {
+    this.abortAutomaticHistory();
+    await this.mutate(ctx => this.rotateAutomaticHistory(ctx));
+  }
+  async commitAutomaticHistory(inputs: CandidateInput[], authorization: AutomaticHistoryAuthorization, isCurrent: () => boolean): Promise<{ accepted: number; inserted: number }> {
+    exactObject(authorization, ['localProfileKey', 'generation', 'workerId']);
+    for (const field of ['localProfileKey', 'generation', 'workerId'] as const) boundedString(authorization[field], 128);
+    const current = () => { if (!isCurrent()) throw Error('AUTOMATIC_HISTORY_STALE'); };
+    current();
+    const prepared = await prepareCandidates(inputs, authorization.localProfileKey);
+    current();
+    const now = this.now();
+    return this.mutate(async ctx => {
+      current();
+      const row = await request<AutomaticHistoryRow | undefined>(ctx.tx.objectStore('settings').get('automaticHistory'));
+      current();
+      if (!ctx.settings.captureEnabled || ctx.settings.localProfileKey !== authorization.localProfileKey || !row
+        || row.localProfileKey !== authorization.localProfileKey || row.generation !== authorization.generation || row.workerId !== authorization.workerId) throw Error('AUTOMATIC_HISTORY_STALE');
+      return writeCandidates(ctx, prepared, now, current);
+    }, undefined, current);
   }
   /** A bounded Project observation stays in the local Profile library. It never
    * grants ownership, creates AccountScope/Project assets, or writes activity. */
@@ -234,8 +311,10 @@ export class Repository {
     if (patch.libraryTimeZone !== undefined) validateTimeZone(patch.libraryTimeZone);
     if (patch.shortcutSectionCollapsed !== undefined && typeof patch.shortcutSectionCollapsed !== 'boolean' || patch.captureEnabled !== undefined && typeof patch.captureEnabled !== 'boolean') throw Error('invalid-settings');
     if (patch.currentSegment !== undefined) nonnegative(patch.currentSegment);
+    if (patch.captureEnabled !== undefined) this.abortAutomaticHistory();
     await this.mutate(async ctx => {
       if (patch.selectedScope !== undefined && patch.selectedScope !== 'unassigned' && !await request(ctx.tx.objectStore('scopes').get(patch.selectedScope))) throw Error('unknown-scope');
+      if (patch.captureEnabled !== undefined) await this.rotateAutomaticHistory(ctx);
       await request(ctx.tx.objectStore('settings').put({ ...ctx.settings, ...patch })); ctx.changed();
     }, expectedRevision);
   }
@@ -274,7 +353,7 @@ export class Repository {
     await this.mutate(async ctx => { const store = ctx.tx.objectStore('tombstones'); const removed = await request<StoredTombstone | undefined>(store.get(key)); if (!removed) return; if (removed.record) await request(ctx.tx.objectStore('conversations').put({ ...removed.record, revision: ctx.revision.value + 1 })); await request(store.delete(key)); ctx.changed(); }, expectedRevision);
   }
   async clearLocalData(expectedRevision?: number): Promise<void> {
-    const profile = crypto.randomUUID();
+    this.abortAutomaticHistory(); const profile = crypto.randomUUID();
     await this.mutate(async ctx => { for (const store of STORE_NAMES) if (store !== 'revisions') await request(ctx.tx.objectStore(store).clear()); await request(ctx.tx.objectStore('settings').put(defaults(ctx.settings.libraryTimeZone, profile))); ctx.revision.nextRank = 0; ctx.changed(); }, expectedRevision);
   }
   async issueIntent(input: IssueIntentInput): Promise<OpenIntent> {

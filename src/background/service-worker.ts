@@ -14,8 +14,39 @@ import { session, invalidateBindings, changeSession } from './session.js';
 import { openFromStart } from './open-broker.js';
 import { createHistoryJob, stepHistoryImport, type HistoryJob } from './import-history.js';
 
+const automaticHistoryWorkerId = crypto.randomUUID();
+let automaticHistoryEpoch = 0;
+let automaticHistoryBarrier: Promise<void> = Promise.resolve();
 let repositoryPromise: Promise<Repository> | null = null;
-function repository() { return repositoryPromise ||= createRepository().catch(error => { repositoryPromise = null; throw error; }); }
+let activeRepository: Repository | null = null;
+function repository() {
+  return repositoryPromise ||= createRepository().then(async repo => {
+    try { await repo.startAutomaticHistorySession(automaticHistoryWorkerId); }
+    catch (error) { repo.close(); throw error; }
+    activeRepository = repo;
+    return repo;
+  }).catch(error => { repositoryPromise = null; throw error; });
+}
+/** Invalidate in memory before any await, abort an active automatic transaction,
+ * then persist the new generation before admitting another automatic operation. */
+function fenceAutomaticHistory<T>(action: (repo: Repository) => Promise<T>): Promise<T> {
+  automaticHistoryEpoch++;
+  const invalidation = activeRepository ? activeRepository.invalidateAutomaticHistory()
+    : repository().then(repo => repo.invalidateAutomaticHistory());
+  const work = Promise.all([automaticHistoryBarrier, invalidation]).then(async () => action(await repository()));
+  automaticHistoryBarrier = work.then(() => {}, () => {});
+  return work;
+}
+function affectsAutomaticHistory(change: chrome.permissions.Permissions): boolean {
+  return !!(change.origins?.includes('https://chatgpt.com/*')
+    || change.permissions?.some(permission => ['history', 'scripting', 'webNavigation'].includes(permission)));
+}
+async function automaticHistoryPermissions(): Promise<boolean> {
+  const [connected, history] = await Promise.all([
+    chrome.permissions.contains(CONNECTION), chrome.permissions.contains({ permissions: ['history'] }),
+  ]);
+  return connected && history;
+}
 const reconcileCapture = createCaptureReconciler(async () => (await (await repository()).getSnapshot()).settings.captureEnabled);
 async function restoreCollection() {
   ensureListeners();
@@ -53,7 +84,10 @@ async function uiCommand(message: unknown, sender: chrome.runtime.MessageSender)
     }
     case 'SETTINGS_UPDATE':
       exact(p, ['patch']); exact(p.patch, [], ['libraryTimeZone', 'shortcutSectionCollapsed', 'selectedScope', 'currentSegment', 'captureEnabled']);
-      await repo.setSettings(p.patch, expectedRevision);
+      if ('captureEnabled' in p.patch) {
+        if (typeof p.patch.captureEnabled !== 'boolean') throw Error('INVALID_MESSAGE');
+        await fenceAutomaticHistory(current => current.setSettings(p.patch, expectedRevision));
+      } else await repo.setSettings(p.patch, expectedRevision);
       if ('captureEnabled' in p.patch) { await restoreCollection(); if (!p.patch.captureEnabled) await stopSourceCheck(); }
       break;
     case 'SHORTCUT_UPSERT': exact(p, ['shortcut']); exact(p.shortcut, ['label', 'url'], ['id', 'pinned']); await repo.saveShortcut(p.shortcut as any, expectedRevision); break;
@@ -61,7 +95,7 @@ async function uiCommand(message: unknown, sender: chrome.runtime.MessageSender)
     case 'SHORTCUT_REMOVE': exact(p, ['id']); bounded(p.id, 128); await repo.removeShortcut(p.id, expectedRevision); break;
     case 'RECORD_REMOVE': exact(p, ['recordKey']); bounded(p.recordKey, 128); await repo.removeConversation(p.recordKey, expectedRevision); break;
     case 'RECORD_RESTORE': exact(p, ['recordKey']); bounded(p.recordKey, 128); await repo.restoreConversation(p.recordKey, expectedRevision); break;
-    case 'CLEAR_LOCAL': exact(p, []); await repo.clearLocalData(expectedRevision); await chrome.storage.local.remove([...NATIVE_KEYS, HOME_MODE_KEY]); await restoreCollection(); await stopSourceCheck(); await chrome.storage.session.remove(['sourceStatus', 'sourceCheckRun']); break;
+    case 'CLEAR_LOCAL': exact(p, []); await fenceAutomaticHistory(current => current.clearLocalData(expectedRevision)); await chrome.storage.local.remove([...NATIVE_KEYS, HOME_MODE_KEY]); await restoreCollection(); await stopSourceCheck(); await chrome.storage.session.remove(['sourceStatus', 'sourceCheckRun']); break;
     case 'PERMISSIONS_SYNC': {
       exact(p, [], ['enableCapture']);
       if (p.enableCapture !== undefined && typeof p.enableCapture !== 'boolean') throw new Error('INVALID_MESSAGE');
@@ -183,20 +217,29 @@ function ensureListeners() {
   if (!historyRegistered && chrome.history?.onVisited) {
     chrome.history.onVisited.addListener(item => {
       if (!item.url || !parseConversationUrl(item.url)) return;
+      const epoch = automaticHistoryEpoch;
+      const isCurrent = () => epoch === automaticHistoryEpoch;
       void (async () => {
-        if (!await chrome.permissions.contains({ permissions: ['history'] })) return;
+        await automaticHistoryBarrier;
+        if (!isCurrent()) return;
         const repo = await repository();
+        const authorization = await repo.beginAutomaticHistory(automaticHistoryWorkerId);
+        if (!authorization || !isCurrent() || !await automaticHistoryPermissions() || !isCurrent()) return;
         const title = typeof item.title === 'string' ? [...item.title.replace(/[\u0000-\u001f\u007f]/g, ' ')].slice(0, 512).join('') || null : null;
         const visits = await chrome.history.getVisits({ url: item.url! });
+        if (!isCurrent() || !await automaticHistoryPermissions() || !isCurrent()) return;
         const source = visits.some(v => v.isLocal) ? 'local' : visits.length && visits.every(v => v.isLocal === false) ? 'synced' : 'unknown';
         if (source === 'synced') return;
-        await repo.discoverCandidates([{ url: item.url!, title, source, lastVisitAt: item.lastVisitTime && Number.isFinite(item.lastVisitTime) && item.lastVisitTime <= Date.now() ? new Date(item.lastVisitTime).toISOString() : null, titleBasis: 'browser-history' }]);
+        await repo.commitAutomaticHistory([{ url: item.url!, title, source, lastVisitAt: item.lastVisitTime && Number.isFinite(item.lastVisitTime) && item.lastVisitTime >= 0 && item.lastVisitTime <= Date.now() ? new Date(item.lastVisitTime).toISOString() : null, titleBasis: 'browser-history' }], authorization, isCurrent);
         await broadcast();
       })().catch(() => {});
     }); historyRegistered = true;
   }
 }
 ensureListeners();
+// Rotate only the private automatic-history lifetime. Existing document bindings,
+// user data and enabled collectors remain independent of ordinary worker wakeups.
+void repository().catch(() => {});
 chrome.action.onClicked.addListener(() => { void chrome.tabs.create({ url: chrome.runtime.getURL('newtab.html') }); });
 // Unpacked Reload is an update too. Dynamic registration alone does not revive
 // collectors in documents that were already open when the old context died.
@@ -207,17 +250,21 @@ chrome.runtime.onStartup.addListener(() => {
   void session().then(s => repository().then(r => r.expireIntents(s.id))).then(restoreCollection).catch(() => {});
 });
 chrome.permissions.onAdded.addListener(added => {
-  if (added.origins?.includes('https://chatgpt.com/*') || added.permissions?.some(p => p === 'scripting' || p === 'webNavigation')) {
-    void restoreCollection().catch(() => {});
+  if (affectsAutomaticHistory(added)) {
+    void fenceAutomaticHistory(async () => {
+      ensureListeners();
+      if (added.origins?.includes('https://chatgpt.com/*') || added.permissions?.some(p => p === 'scripting' || p === 'webNavigation')) await restoreCollection();
+    }).catch(() => {});
   }
 });
-chrome.permissions.onRemoved.addListener(() => {
-  void (async () => {
+chrome.permissions.onRemoved.addListener(removed => {
+  const reconcile = async () => {
     const repo = await repository(), caps = await capabilities();
     if (!caps.chatgpt) { await restoreCollection(); await stopSourceCheck(); }
     if (!caps.history) {
       for (const job of (await repo.getSnapshot()).importJobs) if (['running', 'paused', 'partial'].includes(job.state)) { job.state = 'permission-revoked'; await repo.saveImportJob(job); }
     }
     await broadcast();
-  })().catch(() => {});
+  };
+  void (affectsAutomaticHistory(removed) ? fenceAutomaticHistory(reconcile) : reconcile()).catch(() => {});
 });

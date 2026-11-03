@@ -1,6 +1,16 @@
 # Free V1 · 同提交验证与真实来源边界
 
-## 当前专项：首次自动恢复与 Chrome RC 集成（2026-11-03）
+## 当前专项：自动历史采集 P1（2026-11-03）
+
+审查基线5ad87bab的三个生产worker反例已作为回归固定：暂停且保留history、断开ChatGPT且保留history、getVisits挂起期间撤销history。在隔离旧源码快照上三项均明确FAIL（每项实际新增1、期望0）；当前生产worker+Repository专项15/15、存储事务专项9/9通过。本地完整 `npm run verify`：TypeScript、197/197单元、构建和隐私审计PASS。没有将本地dirty构建作为正式交付。
+
+新增 `automatic-history.mjs` 通过真实chrome.history.onVisited验证正反路径、实际可选权限撤销、显式UI导入和完整浏览器重启；同脚本要求干净5ad基线先在指定暂停断言失败，再验证当前候选。两份同SHA回执已接入CI及打包，自动历史PASS成为acceptance工程门。最终实装结论以提交后的CI和包内回执为准。
+
+本次本地执行环境没有可用Chromium；官方安装下载返回Site Unavailable，系统包准备也不可用。因此本地没有实装PASS，完整安装专项交由GitHub Actions隔离Chromium执行。未访问用户Mac或覆盖日常安装。三份反向源码审查均未发现本次生产差异剩余阻断；范围、代际/事务机制及回退限制见 [P1修复说明](P1_AUTOMATIC_HISTORY.md)。
+
+现有基础浏览器和导入恢复测试的准备条件曾依赖已确认的越权自动入库，现改为真实history.search/getVisits验证种子存在，并新增暂停/未连接时目录为空断言；原手动导入数量、恢复、去重、活动和持久化断言全部保留。
+
+## 前一专项：首次自动恢复与 Chrome RC 集成（2026-11-03）
 
 继承6bc0b29的真实Mac `REAL_NATIVE_PROJECT_PASS`（Chrome 156.0.8078.80 / macOS 27.0），本地回执已核对；不上传私人标题、项目ID、URL、正文或截图。D1/历史/活动/书签已有实机证据继续继承。下面较早阶段的“真实来源未核验”不是当前状态。
 

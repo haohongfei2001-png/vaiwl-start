@@ -44,6 +44,7 @@ npm run verify
 npx playwright install --with-deps chromium
 npm run test:browser
 node tests/browser/import-recovery.mjs
+node tests/browser/automatic-history.mjs
 node tests/browser/privacy-boundaries.mjs
 node tests/browser/source-recovery.mjs
 node tests/browser/project-observation.mjs

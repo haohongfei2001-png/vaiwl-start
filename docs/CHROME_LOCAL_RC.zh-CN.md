@@ -2,6 +2,10 @@
 
 本轮基线为 `6bc0b29b848edcf7e6b5293c24fd5d957f0b3515`，唯一分支 `codex/free-v1-implementation`，原 Draft PR #1。候选精确 SHA、dirty=false、运行文件哈希见包内 `vaiwl-start/build.json`；各门结果见同包 `verification/`，不引用另一构建的绿色结果。
 
+## 最新补充：自动历史收录 P1
+
+5ad87bab 的独立合并审查发现，自动 history 监听没有遵守暂停/ChatGPT断开/迟到撤权。本候选对这条路径增加独立授权上下文、worker与持久代际、即时中止以及最终IDB事务校验；手动导入保持独立。必须核对同SHA `automatic-history-validation.json` 和 `automatic-history-baseline-validation.json`，不能只用原Project暂停测试的PASS解除该项。修复及测试分层见 [P1_AUTOMATIC_HISTORY.md](P1_AUTOMATIC_HISTORY.md)。本次不覆盖用户Mac，回退6bc0b29会重新带回该P1。
+
 ## 首次自动生效：确认的缺陷与修复
 
 基线的收录恢复只由设置/连接操作触发。实际安装的基线扩展执行 Reload 后，已打开 Project 的旧内容脚本失效，新 worker 没有重新注入，迟到成员无法自动写入。这是确定性源码缺陷；不能据此断言它是用户此前首次缺卡的唯一原因。
