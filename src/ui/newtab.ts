@@ -155,7 +155,7 @@ function membershipLabel(record: ConversationRecord): string {
 function conversationRow(record: ConversationRecord): HTMLElement {
   const link = el('a', { class: 'conversation-open', href: record.canonicalUrl, 'data-record-key': record.key,
     'data-focus-key': `record:${record.key}`, 'aria-label': `在 ChatGPT 中打开：${title(record)}`, title: title(record) },
-  [icon('chat', 'chat-icon'), el('span', { class: 'conversation-title' }, [title(record)]), icon('arrow', 'enter-icon')]);
+  [el('span', { class: 'conversation-title' }, [title(record)])]);
   const menu = button('', { class: 'icon-button record-menu', 'data-record-menu': record.key, 'data-focus-key': `details:${record.key}`, 'aria-label': `${title(record)}的详情与移除` }, 'more');
   return el('div', { class: 'conversation-row' }, [link, menu]);
 }
@@ -385,6 +385,8 @@ function latestJob(): CatalogSnapshot['importJobs'][number] | undefined {
 
 function renderImport(): void {
   const area = byId('import-progress'); const job = latestJob();
+  const focused = area.contains(document.activeElement) ? document.activeElement as HTMLButtonElement : null;
+  const focusedAction = focused ? ['importPause', 'importResume', 'importCancel', 'importAuthorizeResume'].find(key => focused.dataset[key]) : undefined;
   byId('confirm-import').textContent = snapshot?.capabilities.history ? '开始导入' : '授权并导入';
   byId<HTMLButtonElement>('confirm-import').disabled = importStarting || job?.state === 'running';
   if (!job) { area.replaceChildren(); return; }
@@ -399,16 +401,22 @@ function renderImport(): void {
   if (job.state === 'running' || job.state === 'paused') actions.append(button('取消本次导入', { class: 'text-button', 'data-import-cancel': job.id }));
   if (job.state === 'permission-revoked') {
     area.append(el('p', {}, ['已导入的会话仍保留。授权后可继续剩余部分。']));
-    if (job.pendingIntervals.length || job.pendingCandidates?.length) actions.append(button('授权并继续', { class: 'secondary', 'data-import-authorize-resume': job.id }));
+    if (job.pendingIntervals.length || job.pendingCandidates?.length) actions.append(button('授权并继续', { class: 'secondary', 'data-import-authorize-resume': job.id, disabled: importStarting }));
   }
   area.append(actions);
+  if (focused && byId<HTMLDialogElement>('import-dialog').open && document.activeElement === document.body) {
+    const replacement = focusedAction ? [...actions.querySelectorAll<HTMLButtonElement>('button')].find(node => node.dataset[focusedAction] === focused.dataset[focusedAction]) : null;
+    (replacement || actions.querySelector<HTMLButtonElement>('button:not(:disabled)') || byId('import-title')).focus({ preventScroll: true });
+  }
 }
 
 function renderRemoved(): void {
   if (!snapshot) return;
   const list = byId('removed-list');
+  const restoreFocus = list.contains(document.activeElement);
   list.replaceChildren(...snapshot.tombstones.map(tombstone => el('div', { class: 'removed-row' }, [el('span', {}, [`已移除的会话 · ${dateTime(tombstone.removedAt, snapshot!.settings.libraryTimeZone)}`]), button('恢复收录', { class: 'secondary', 'data-restore-record': tombstone.key })])));
   if (!snapshot.tombstones.length) list.append(el('p', { class: 'field-help' }, ['当前资料库没有已移除的会话。']));
+  if (restoreFocus && byId<HTMLDialogElement>('removed-dialog').open && document.activeElement === document.body) (list.querySelector<HTMLButtonElement>('button') || byId('removed-dialog').querySelector<HTMLButtonElement>('[data-close]'))?.focus({ preventScroll: true });
 }
 
 function render(): void {
@@ -475,6 +483,20 @@ async function connectChatGPT(event: Event, disconnect = false, enableCapture = 
   finally { connectionBusy = false; renderSettings(); }
 }
 
+async function revokeHistory(event: Event): Promise<void> {
+  const control = byId<HTMLButtonElement>('revoke-history');
+  if (!event.isTrusted || control.disabled || !workspaceAccessAllowed()) return;
+  control.disabled = true; control.setAttribute('aria-busy', 'true');
+  settingsView.showStatus('', false, 'workspace-status');
+  try {
+    await chrome.permissions.remove({ permissions: ['history'] });
+    const stillGranted = await chrome.permissions.contains({ permissions: ['history'] });
+    await request('PERMISSIONS_SYNC', {}); await refresh(true);
+    if (workspaceAccessAllowed()) settingsView.showStatus(stillGranted ? '历史权限未撤销，请重试。' : '已撤销历史权限，已导入的会话仍保留。', stillGranted, 'workspace-status');
+  } catch (error) { fail(error, 'workspace-status'); }
+  finally { control.disabled = false; control.removeAttribute('aria-busy'); renderSettings(); }
+}
+
 async function startImport(event: Event): Promise<void> {
   if (!event.isTrusted || importStarting || !workspaceAccessAllowed()) return;
   importStarting = true; settingsView.showStatus('', false, 'import-status'); renderImport();
@@ -495,7 +517,7 @@ async function startImport(event: Event): Promise<void> {
 
 async function resumeImportPermission(event: Event, jobId: string): Promise<void> {
   if (!event.isTrusted || importStarting || !workspaceAccessAllowed()) return;
-  importStarting = true;
+  importStarting = true; settingsView.showStatus('', false, 'import-status');
   const epoch = modeEpoch;
   try {
     const grant = chrome.permissions.request({ permissions: ['history'] });
@@ -596,7 +618,7 @@ document.addEventListener('click', event => {
     case 'confirm-import': void startImport(event); break;
     case 'connect-chatgpt': void connectChatGPT(event, !!snapshot?.capabilities.chatgpt); break;
     case 'first-connect': void connectChatGPT(event, false, true); break;
-    case 'revoke-history': if (event.isTrusted) void chrome.permissions.remove({ permissions: ['history'] }).then(() => request('PERMISSIONS_SYNC', {})).then(() => refresh(true)).then(renderSettings).catch(fail); break;
+    case 'revoke-history': void revokeHistory(event); break;
     case 'remove-record': if (currentRecord) { const key = currentRecord.key; void mutate('RECORD_REMOVE', { recordKey: key }, () => { closeDialog('record-dialog'); toast('已从首页移除，ChatGPT 会话仍然保留。', { label: '恢复收录', run: () => { void mutate('RECORD_RESTORE', { recordKey: key }); } }); }); } break;
     case 'show-removed': renderRemoved(); showDialog('removed-dialog'); break;
     case 'clear-local': settingsView.showStatus('', false, 'clear-status'); showDialog('clear-dialog'); byId<HTMLButtonElement>('clear-dialog').querySelector<HTMLButtonElement>('.dialog-foot [data-close]')?.focus(); break;

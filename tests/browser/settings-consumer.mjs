@@ -277,9 +277,13 @@ try {
   await page.evaluate(async () => { const tab = await chrome.tabs.getCurrent(); await chrome.tabs.setZoom(tab.id, 1); });
   await section('newtab');
   await page.locator('#tab-title').focus();
-  let escapedFocus = false;
-  for (let n = 0; n < 64; n++) { await page.keyboard.press(n < 32 ? 'Tab' : 'Shift+Tab'); escapedFocus ||= !await page.evaluate(() => document.querySelector('#settings-dialog').contains(document.activeElement)); }
-  check('SC-keyboard-focus-contained', !escapedFocus, 'Native modal keyboard traversal keeps focus inside the settings surface.');
+  const escapedFocus = [];
+  for (let n = 0; n < 64; n++) {
+    const key = n < 32 ? 'Tab' : 'Shift+Tab'; await page.keyboard.press(key);
+    const focus = await page.evaluate(() => ({ contained: document.querySelector('#settings-dialog').contains(document.activeElement), tag: document.activeElement?.tagName, id: document.activeElement?.id, hasDocumentFocus: document.hasFocus() }));
+    if (!focus.contained) escapedFocus.push({ step: n + 1, key, ...focus });
+  }
+  check('SC-keyboard-focus-contained', escapedFocus.length === 0, { description: 'Modal keyboard traversal keeps focus inside the settings surface.', escapedFocus });
   const unnamed = await page.locator('#settings-dialog').evaluate(root => [...root.querySelectorAll('button,input:not([type="hidden"]):not([type="file"]),select')].filter(n => n.getBoundingClientRect().width > 0 && !n.disabled).filter(n => {
     const labelled = (n.getAttribute('aria-label') || '') + (n.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ') + [...(n.labels || [])].map(label => label.textContent).join(' ') + (n.tagName === 'BUTTON' ? n.textContent : '');
     return !labelled.trim();
@@ -378,6 +382,30 @@ try {
   await shot('after-history-cancelled');
   await page.locator('#import-dialog [data-close]').first().click();
 
+  // Explicit state fixture: the browser grant remains real and present; only a
+  // retained checkpoint is marked permission-revoked to cover its recovery UI.
+  const revokedCheckpoint = await worker.evaluate(async () => {
+    const db = await new Promise(resolve => { const r = indexedDB.open('vaiwl-start'); r.onsuccess = () => resolve(r.result); });
+    const tx = db.transaction('importJobs', 'readwrite'), store = tx.objectStore('importJobs');
+    const jobs = await new Promise(resolve => { const r = store.getAll(); r.onsuccess = () => resolve(r.result); });
+    const job = jobs.find(item => item.state === 'cancelled'); if (!job?.pendingIntervals.length && !job?.pendingCandidates?.length) throw Error('Cancelled checkpoint must retain work');
+    job.state = 'permission-revoked'; store.put(job);
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); }); db.close(); return job;
+  });
+  await section('workspace'); await page.locator('#settings-import').click();
+  await page.locator('[data-import-authorize-resume]').waitFor();
+  await page.evaluate(() => { window.__settingsRealRequest = chrome.permissions.request.bind(chrome.permissions); window.__settingsCommands = []; chrome.permissions.request = async () => false; });
+  await page.locator('[data-import-authorize-resume]').click();
+  await page.waitForFunction(() => document.querySelector('#import-status').textContent.includes('未授予') && !document.querySelector('[data-import-authorize-resume]').disabled);
+  assert.deepEqual((await raw()).values.importJobs.find(job => job.id === revokedCheckpoint.id), revokedCheckpoint);
+  check('SC-import-reauthorize-refusal-preserves-checkpoint', !await page.evaluate(() => window.__settingsCommands.some(name => ['IMPORT_START', 'IMPORT_RESUME'].includes(name))), 'An explicitly injected permission refusal preserves the same checkpoint ID, pending intervals, candidates and counts, and dispatches neither Start nor Resume.');
+  await shot('after-history-reauthorize-refusal');
+  await page.evaluate(() => { chrome.permissions.request = window.__settingsRealRequest; window.__settingsCommands = []; });
+  await page.locator('[data-import-authorize-resume]').click();
+  await waitForAsync(page, async id => { const r = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} }); return r.ok && r.data.importJobs.find(job => job.id === id)?.state === 'complete'; }, revokedCheckpoint.id);
+  check('SC-import-reauthorize-resumes-same-job', (await command('SNAPSHOT')).importJobs.length === 3 && await page.evaluate(() => window.__settingsCommands.includes('IMPORT_RESUME') && !window.__settingsCommands.includes('IMPORT_START')), 'With the actual browser grant still present, the recovery button calls real IMPORT_RESUME for the original job and does not replace it with a new import.');
+  await page.locator('#import-dialog [data-close]').first().click();
+
   // A life-page import is allowed only during the deliberate work-settings visit.
   const moreUrls = Array.from({ length: 257 }, (_, n) => `https://chatgpt.com/c/80000000-0000-4000-8001-${String(n + 1).padStart(12, '0')}`);
   await worker.evaluate(async urls => { for (const url of urls) await chrome.history.addUrl({ url }); }, moreUrls); historyUrls.push(...moreUrls);
@@ -424,7 +452,7 @@ try {
   check('SC-confirmed-clear-removes-only-start-state', cleared.version === 1 && cleared.stores.length === 12 && Object.entries(cleared.values).filter(([name]) => !['settings', 'revisions'].includes(name)).every(([, rows]) => rows.length === 0) && Object.keys(nativeAfterClear).length === 0, 'Confirmed Clear empties Start catalog, activity, old shortcuts, removed records and native identity/mode preferences while retaining the existing v1 schema.');
   const externalAfterClear = await worker.evaluate(async urls => ({ bookmarks: await chrome.bookmarks.getTree(), history: (await chrome.history.search({ text: '', startTime: 0, maxResults: 1000 })).filter(item => urls.includes(item.url)) }), historyUrls);
   assert.deepEqual(externalAfterClear, externalBeforeClear);
-  check('SC-clear-retains-real-bookmarks-and-history', true, 'Every native bookmark node and the five actual browser-history entries remain exactly unchanged by confirmed Start data deletion.');
+  check('SC-clear-retains-real-bookmarks-and-history', true, 'Every native bookmark node and all 262 actual synthetic browser-history entries remain exactly unchanged by confirmed Start data deletion.');
   await shot('after-clear-completed');
   await section('workspace');
   await page.locator('#revoke-history').click();

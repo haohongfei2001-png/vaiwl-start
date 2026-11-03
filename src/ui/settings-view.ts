@@ -58,6 +58,19 @@ export function initSettingsView(options: {
     options.onClose();
     byId('settings-trigger').focus({ preventScroll: true });
   });
+  // Native dialogs make the rest of the document inert; explicitly cycle the
+  // endpoints so Tab cannot leave an extension modal for the browser chrome.
+  for (const surface of [dialog, ...document.querySelectorAll<HTMLDialogElement>('.settings-detail-dialog')]) {
+    surface.addEventListener('keydown', event => {
+      if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+      const controls = [...surface.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled):not([type=hidden]),select:not(:disabled),textarea:not(:disabled),summary,[tabindex]:not([tabindex="-1"])')]
+        .filter(node => node.tabIndex >= 0 && node.getClientRects().length && !node.closest('[hidden],[inert]') && getComputedStyle(node).visibility !== 'hidden');
+      if (!controls.length) return;
+      const index = controls.indexOf(document.activeElement as HTMLElement);
+      if (event.shiftKey && index <= 0) { event.preventDefault(); controls.at(-1)!.focus(); }
+      else if (!event.shiftKey && (index === controls.length - 1 || index < 0)) { event.preventDefault(); controls[0].focus(); }
+    });
+  }
   // Arrow keys supplement ordinary tab navigation without creating a custom focus trap.
   byId('settings-nav-newtab').parentElement!.addEventListener('keydown', event => {
     if (!(event instanceof KeyboardEvent) || !['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
