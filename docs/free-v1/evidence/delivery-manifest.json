@@ -1,0 +1,193 @@
+{
+  "contract": "VAIWL-START-FREE/1.0",
+  "status": "DESIGN_READY",
+  "sourceSha": "1903b00f774b4fd7f3d15b3669878c32e2c7a9c8",
+  "targetBaseSha": "ebd6cd5705a1a56a3cafae3eda27537379098c81",
+  "branch": "design/free-v1-20261102",
+  "prototypeTests": {
+    "pass": 34,
+    "fail": 0,
+    "scope": "design-prototype-only"
+  },
+  "timeVectorTests": {
+    "pass": 9,
+    "fail": 0,
+    "scope": "fixed-upstream-pure-functions"
+  },
+  "typescriptCheck": "Node24 strip-types syntax load; not full tsc",
+  "relativeLinkErrors": [],
+  "jsonFilesParsed": 6,
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 1406,
+      "sha256": "42bf69b4d580bb42f8f3cea5de6bc9a9080725e1d6f8991c9f9afb3c62e04c1e",
+      "gitBlobSha": "53aab8200c8e5f265a9d209513aa0fda349809a2"
+    },
+    {
+      "path": "contracts/free-v1.ts",
+      "bytes": 8599,
+      "sha256": "76e806fca52d443011dd22701e68467c11821be4a64068b263fdd1d1f223d813",
+      "gitBlobSha": "435aa86ccfb1945e376c8db8831e48b23b764143"
+    },
+    {
+      "path": "contracts/manifest.example.json",
+      "bytes": 729,
+      "sha256": "3f991103c160c11ff794886e596724169374e109e3dc4904efd96682ccb20010",
+      "gitBlobSha": "fcf5e07dfe2dda584de862626c23cb041d2076a1"
+    },
+    {
+      "path": "contracts/time-vectors.json",
+      "bytes": 2467,
+      "sha256": "55290a402f94ddfb824166120742425a46578b933e3303c67c87c12254f65395",
+      "gitBlobSha": "ce3c377a19ee0a0fb5a1f678ea9514f8b8de93f4"
+    },
+    {
+      "path": "design/free-v1/desktop.png",
+      "bytes": 108156,
+      "sha256": "cc42e8b0c4b19585aeab2a7979db49fce1ef7b4c1039bfd4f0e2c4500b7d343f",
+      "gitBlobSha": "7e8f00a35bf0c393139b77bb54456c2d40d7e505"
+    },
+    {
+      "path": "design/free-v1/first-install.png",
+      "bytes": 44938,
+      "sha256": "6fd1cb2aadac84feac73ac9f78c6fa310b325a084e87c978b61ad931708d3659",
+      "gitBlobSha": "081a09b7570527da3872a8e5725bc778456ef1da"
+    },
+    {
+      "path": "design/free-v1/history-import.png",
+      "bytes": 64500,
+      "sha256": "17346348292702ef1d22fef5711d26f650df6cc3e372c2d675226b02af2fa825",
+      "gitBlobSha": "3865445a19a8fab7b6252d8e1eedaeff7f8c9e56"
+    },
+    {
+      "path": "design/free-v1/narrow.png",
+      "bytes": 48405,
+      "sha256": "4f533b37e757fd2e6827b28e1eb23821a82cbdf1a67bde41680ca961192c640e",
+      "gitBlobSha": "734e14f2c3329b601c855f2f94d071b80a4555a4"
+    },
+    {
+      "path": "design/free-v1/prototype-validation.json",
+      "bytes": 3861,
+      "sha256": "535596c6519842e61ecf24398dbf208ea54ed79b82eaaa971547926b08d91afb",
+      "gitBlobSha": "2f4696504134d1ccd373d9182a684884675366de"
+    },
+    {
+      "path": "design/free-v1/prototype.html",
+      "bytes": 50749,
+      "sha256": "3bd9600a67c979fad2d8419df92fa2782364ee3152365be4072649a7bf90838c",
+      "gitBlobSha": "89dc31e9074eaa4f64dcd648edf097f5741d3a89"
+    },
+    {
+      "path": "design/free-v1/search.png",
+      "bytes": 144303,
+      "sha256": "04315745078cd62aa99a73745ba1af7c5a3627b84e27d07cac7ac45eb50ffa2d",
+      "gitBlobSha": "077b934e26c2d0f6e9b98d405782334bcfd1d38f"
+    },
+    {
+      "path": "design/free-v1/vertical-tabs-width.png",
+      "bytes": 103800,
+      "sha256": "15036f0f472025ba6510b2574844bfb0c0eb7ceee3dfdaf8396d6906ba36af64",
+      "gitBlobSha": "45bcdce71aa203e2b42808bdfc84105147fe2d94"
+    },
+    {
+      "path": "docs/free-v1/00-READ-ME-FIRST.md",
+      "bytes": 3703,
+      "sha256": "7121ef798121b784bde329d8912f10b57e45450e418cf74e7104bcc716b2fc2e",
+      "gitBlobSha": "202d6089d17aeb318d87a7286947d3697fc28139"
+    },
+    {
+      "path": "docs/free-v1/01-PRODUCT-SPEC.md",
+      "bytes": 10351,
+      "sha256": "76969c9e6051a50313a9126f9b0139bc5b0749646733a2010da84a840f8f506b",
+      "gitBlobSha": "ed3aec7bbf57640d1494a262ea0e819a717f6dbe"
+    },
+    {
+      "path": "docs/free-v1/02-INTERACTION-DESIGN.md",
+      "bytes": 15849,
+      "sha256": "7fb2410dd7b8a849735636a39ec44fcc416c5b83f8f945fc6e634e3bb8c73b18",
+      "gitBlobSha": "fee781a8d88ac34ac1dc64bd00e00a40f7e252a2"
+    },
+    {
+      "path": "docs/free-v1/03-DATA-CONTRACT.md",
+      "bytes": 11961,
+      "sha256": "fe8586ee581628e0311e69ba8004e827418755cbf70bc59e15065fa909ce2769",
+      "gitBlobSha": "24fd52c8f499346ea89b541d9d789cc6786f23bc"
+    },
+    {
+      "path": "docs/free-v1/04-SOURCE-RELIABILITY.md",
+      "bytes": 10392,
+      "sha256": "ed97349882ddfd81e8e036bced4713a45c6c4f94391d572e786956361ee3c8c6",
+      "gitBlobSha": "ecc0dcfd8fe869c4040868852dd08eda51603d37"
+    },
+    {
+      "path": "docs/free-v1/05-ARCHITECTURE-AND-REUSE.md",
+      "bytes": 9244,
+      "sha256": "304baf2014359db054ef0a0d7cdc7e545f00c2cbfbe80a12e2056c99a1916183",
+      "gitBlobSha": "e43a1d58a7071bcafba6c8b407e27fba16506c96"
+    },
+    {
+      "path": "docs/free-v1/06-ACCEPTANCE.md",
+      "bytes": 9787,
+      "sha256": "1115348c345d6cd02a622014ab9f2317ab50cb21cd076c32f64563e637da9248",
+      "gitBlobSha": "15906406e9e7610baf108822f2f152bb49ea7509"
+    },
+    {
+      "path": "docs/free-v1/07-CODEX-START.md",
+      "bytes": 6282,
+      "sha256": "9d5dc38517501ef8b89905602549255dedb2563c9c520a41e3c8c7c2d1c92f72",
+      "gitBlobSha": "a6b9c6958cfae32ff3b384821ba53a8ced948b4c"
+    },
+    {
+      "path": "docs/free-v1/08-EVIDENCE-REGISTER.md",
+      "bytes": 4096,
+      "sha256": "c47ddb3a9f37b8943b279028254851db3456d1f281aa1089eb4e207de2602c66",
+      "gitBlobSha": "7f16e97b85dc7dda9f664f64dadf055b466f1b7a"
+    },
+    {
+      "path": "docs/free-v1/09-DECISIONS.md",
+      "bytes": 2050,
+      "sha256": "9634eea0b22a3e921a58619881bed9ac755170ec306f50c2d72599f8098c8814",
+      "gitBlobSha": "aaa7337b9bded0e76ec9e093bcd579872dd1a1a2"
+    },
+    {
+      "path": "docs/free-v1/evidence/contract-review-browser.md",
+      "bytes": 7029,
+      "sha256": "73ed7aaafff5b85be9ca82e0f655f1bc64b622ae81f9fa68a83d055611141905",
+      "gitBlobSha": "422fe4b4eb825a2e55f607d5d13c7483aa914654"
+    },
+    {
+      "path": "docs/free-v1/evidence/contract-review-source-closure-sha256.json",
+      "bytes": 429,
+      "sha256": "b3f7a81b699406cef6ce6e023f6cbe0db42b7e83a4cf25cdaee03e059caa73c4",
+      "gitBlobSha": "0fa1410581a2efecb7f4828257d04668c72ae498"
+    },
+    {
+      "path": "docs/free-v1/evidence/contract-review-source.md",
+      "bytes": 8066,
+      "sha256": "c39103d25add8f7072e215e2b5d727310b7d1a5fb948583494b62c9e78e5d77f",
+      "gitBlobSha": "efad91fa0c742eab264816a34d981989c95d9770"
+    },
+    {
+      "path": "docs/free-v1/evidence/source-inheritance.md",
+      "bytes": 17689,
+      "sha256": "738c325bb0eb466fd024b36f107fdb4563d1671aacfd8a57c6f48d12b8ece90c",
+      "gitBlobSha": "44c6a1c99b9766cf3fc67deeae5164034b34e853"
+    },
+    {
+      "path": "docs/free-v1/evidence/source-manifest.json",
+      "bytes": 15648,
+      "sha256": "2d632afbe5ed5726cf50373ddded0a896b6024a3e2335d959c7c8d26d8173716",
+      "gitBlobSha": "8b1c895549fddb597d8d0d2fa6ed72fc798ee0e1"
+    },
+    {
+      "path": "docs/free-v1/evidence/time-vector-verification.json",
+      "bytes": 2095,
+      "sha256": "974811341a6f4603bb94fc224f6eb8bc4af79af45150ff8e05995728b9ad8810",
+      "gitBlobSha": "aac46eda93f6a063fe94184510e14a014114548b"
+    }
+  ],
+  "manifestExcludesSelf": true,
+  "productionExtensionImplemented": false,
+  "liveDataGate": "NOT_RUN"
+}

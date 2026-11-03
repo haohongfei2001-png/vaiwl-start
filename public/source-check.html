@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VAIWL Start · 受控来源核验</title><link rel="stylesheet" href="source-check.css"><script type="module" src="source-check.js"></script></head>
+<body><main><header><a href="newtab.html">返回 Start</a><h1>受控来源核验</h1><p>仅使用你自己准备的合成测试对象。每步采样一次，整轮 30 分钟；结构观察不代表来源已通过。</p></header>
+<section><h2>1 · 开始</h2><p>先在 Start 设置中连接 ChatGPT，并打开测试标签。P 内有会话 C；Q 内有另一个同名会话；N 明确没有原生 Project。不要在私人内容区域选取控件。</p><p id="connection" role="status"></p><button id="begin">开始本轮核验</button><button id="refresh">刷新标签列表与状态</button><p class="technical" id="build"></p></section>
+<section><h2>2 · 一次性采样</h2><label for="target">选择测试标签</label><select id="target"></select><button id="show-target">查看所选标签</button><p>列表仅显示标签编号与页面类型。需要选取结构时，采样会打开测试标签；自然打开原生菜单，把鼠标停在控件上，再按 <kbd>Option / Alt + Shift + M</kbd>。没有明确状态就点“跳过”，不要猜。</p>
+<label for="step">本次步骤</label><select id="step"></select><p id="instruction"></p><label class="check"><input id="pick" type="checkbox">同时选取一个原生元数据控件的结构（不读取文字）</label><button id="capture">采集这一步</button><p id="message" role="status" aria-live="polite"></p><ol id="results"></ol></section>
+<section><h2>3 · 结束与导出</h2><p>结构不支持、没有明确状态、账号不可切换时，可以保留阻断直接结束。不要反复刷新重新取证。报告不包含正文、标题、链接、原始账号 ID、邮箱、session、token 或盐；它不能开启任何可信来源能力。</p><button id="end">结束核验</button><button id="export">导出脱敏报告</button><p id="status">四项来源均保持 BLOCKED。</p></section></main></body></html>

@@ -1,0 +1,105 @@
+{
+  "kind": "design-time-vectors-against-fixed-source",
+  "sourceSha": "1903b00f774b4fd7f3d15b3669878c32e2c7a9c8",
+  "contract": "VAIWL-START-FREE/1.0",
+  "pass": 9,
+  "fail": 0,
+  "results": [
+    {
+      "id": "shanghai-current-start",
+      "pass": true,
+      "observed": {
+        "segment": 0,
+        "window": {
+          "start": "2026-10-04",
+          "endExclusive": "2026-11-03"
+        }
+      }
+    },
+    {
+      "id": "shanghai-previous-end",
+      "pass": true,
+      "observed": {
+        "segment": 1,
+        "window": {
+          "start": "2026-09-04",
+          "endExclusive": "2026-10-04"
+        }
+      }
+    },
+    {
+      "id": "shanghai-older-start",
+      "pass": true,
+      "observed": {
+        "segment": 1,
+        "window": {
+          "start": "2026-09-04",
+          "endExclusive": "2026-10-04"
+        }
+      }
+    },
+    {
+      "id": "shanghai-older-before",
+      "pass": true,
+      "observed": {
+        "segment": 2,
+        "window": {
+          "start": "2026-08-05",
+          "endExclusive": "2026-09-04"
+        }
+      }
+    },
+    {
+      "id": "future-day",
+      "pass": true,
+      "observed": {
+        "segment": null,
+        "window": null
+      }
+    },
+    {
+      "id": "dst-current-start",
+      "pass": true,
+      "observed": {
+        "segment": 0,
+        "window": {
+          "start": "2026-02-08",
+          "endExclusive": "2026-03-10"
+        }
+      }
+    },
+    {
+      "id": "dst-previous-edge",
+      "pass": true,
+      "observed": {
+        "segment": 1,
+        "window": {
+          "start": "2026-01-09",
+          "endExclusive": "2026-02-08"
+        }
+      }
+    },
+    {
+      "id": "leap-year-current",
+      "pass": true,
+      "observed": {
+        "segment": 0,
+        "window": {
+          "start": "2024-02-01",
+          "endExclusive": "2024-03-02"
+        }
+      }
+    },
+    {
+      "id": "leap-year-previous",
+      "pass": true,
+      "observed": {
+        "segment": 1,
+        "window": {
+          "start": "2024-01-02",
+          "endExclusive": "2024-02-01"
+        }
+      }
+    }
+  ]
+}

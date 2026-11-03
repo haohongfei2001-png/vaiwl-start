@@ -1,0 +1,158 @@
+{
+  "prototype": "prototype.html",
+  "prototypeSHA256": "3bd9600a67c979fad2d8419df92fa2782364ee3152365be4072649a7bf90838c",
+  "screenshotSHA256": {
+    "desktop.png": "cc42e8b0c4b19585aeab2a7979db49fce1ef7b4c1039bfd4f0e2c4500b7d343f",
+    "search.png": "04315745078cd62aa99a73745ba1af7c5a3627b84e27d07cac7ac45eb50ffa2d",
+    "first-install.png": "6fd1cb2aadac84feac73ac9f78c6fa310b325a084e87c978b61ad931708d3659",
+    "history-import.png": "17346348292702ef1d22fef5711d26f650df6cc3e372c2d675226b02af2fa825",
+    "vertical-tabs-width.png": "15036f0f472025ba6510b2574844bfb0c0eb7ceee3dfdaf8396d6906ba36af64",
+    "narrow.png": "4f533b37e757fd2e6827b28e1eb23821a82cbdf1a67bde41680ca961192c640e"
+  },
+  "kind": "design-prototype-only",
+  "browser": "156.0.8078.4",
+  "font": "Noto Sans CJK SC injected for screenshot renderer only; prototype uses system font stack",
+  "checkedAt": "2026-11-01T20:30:08.464Z",
+  "pass": 34,
+  "fail": 0,
+  "tests": [
+    {
+      "name": "Initial project cards",
+      "pass": true
+    },
+    {
+      "name": "Newest period has no up button",
+      "pass": true
+    },
+    {
+      "name": "1440px no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "Page preserves native Ctrl/Cmd K and L events",
+      "pass": true
+    },
+    {
+      "name": "Modified slash does not open page search",
+      "pass": true
+    },
+    {
+      "name": "Unmodified slash opens page search",
+      "pass": true
+    },
+    {
+      "name": "Slash preserves text editing and contenteditable",
+      "pass": true
+    },
+    {
+      "name": "Public fixture excludes personal research and recruiting clues",
+      "pass": true
+    },
+    {
+      "name": "Older project conversations expand inline",
+      "pass": true
+    },
+    {
+      "name": "Expansion preserves project card count",
+      "pass": true
+    },
+    {
+      "name": "Adjacent older period",
+      "pass": true
+    },
+    {
+      "name": "Older period has up button",
+      "pass": true
+    },
+    {
+      "name": "Empty period is not skipped",
+      "pass": true
+    },
+    {
+      "name": "Navigation continues after empty period",
+      "pass": true
+    },
+    {
+      "name": "Unknown accessible without NONE",
+      "pass": true
+    },
+    {
+      "name": "Unknown not displayed as NONE date window",
+      "pass": true
+    },
+    {
+      "name": "Search finds current and older project conversations",
+      "pass": true
+    },
+    {
+      "name": "Search empty state",
+      "pass": true
+    },
+    {
+      "name": "Folded websites retain pinned items",
+      "pass": true
+    },
+    {
+      "name": "Pin does not change website order",
+      "pass": true
+    },
+    {
+      "name": "Website ordering changes",
+      "pass": true
+    },
+    {
+      "name": "Newly pinned website survives folding",
+      "pass": true
+    },
+    {
+      "name": "Website pin preference persists locally",
+      "pass": true
+    },
+    {
+      "name": "First install state has actionable entry",
+      "pass": true
+    },
+    {
+      "name": "History import retains UNKNOWN accessible entries",
+      "pass": true
+    },
+    {
+      "name": "History import creates no fake Project cards",
+      "pass": true
+    },
+    {
+      "name": "1000px no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "720px no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "400px no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "320px no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "Current conversation preview is five rows",
+      "pass": true
+    },
+    {
+      "name": "Show more adds twelve rows",
+      "pass": true
+    },
+    {
+      "name": "No JavaScript page errors",
+      "pass": true
+    },
+    {
+      "name": "No network requests",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "externalRequests": []
+}
