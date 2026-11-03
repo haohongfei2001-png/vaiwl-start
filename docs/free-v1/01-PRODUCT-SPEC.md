@@ -1,5 +1,7 @@
 # Free V1 冻结产品规格
 
+> **当前最高优先修订：[原生 Project 本地稳定组织](13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)。** 直接观察的原生关系可在独立本地状态形成项目卡，不等待 Workspace 全局认证；下方只允许单次观察候选的旧限制已替换。完整账号认证和全量同步独立保留。
+
 > 当前优先修订：[2026-11-03 原生体验与统一工作空间](11-NATIVE-EXPERIENCE-AMENDMENT.md)。废止可见来源分组，首页快捷入口改为原生书签；下文冲突处以本修订为准。
 
 > **当前有效修订：2026-11-02-local-first，用户已批准。** [统一修订合同](10-LOCAL-FIRST-AMENDMENT.md)覆盖原 M0 全局前置门：本地时间组织、Start 主动打开与局部候选项目可独立运行；账号隔离及正式原生归属证明仍保留。`LOCAL_WORKSPACE_READY` 不等于 `FREE_V1_ACCEPTED`。

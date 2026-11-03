@@ -49,6 +49,7 @@ jobs:
       - run: node tests/browser/privacy-boundaries.mjs
       - run: node tests/browser/source-recovery.mjs
       - run: node tests/browser/project-observation.mjs
+      - run: node tests/browser/native-project-grouping.mjs
       - run: node tests/browser/storage-faults.mjs
       - run: node tests/ui/production-ui.mjs
       - run: node tests/browser/native-experience.mjs
@@ -68,6 +69,8 @@ jobs:
             artifacts/privacy-boundaries-validation.json
             artifacts/source-recovery-validation.json
             artifacts/project-observation-validation.json
+            artifacts/native-project-grouping-validation.json
+            artifacts/native-project-grouping.png
             artifacts/storage-faults-validation.json
             artifacts/native-experience-validation.json
             artifacts/life-bookmarks-validation.json

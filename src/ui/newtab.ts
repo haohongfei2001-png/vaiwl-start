@@ -2,7 +2,7 @@ import { initNativeExperience } from './native-experience.js';
 import { HOME_MODE_KEY, homeMode as normalizeHomeMode, type HomeMode } from '../domain/home-mode.js';
 import type { ConversationRecord, ProjectRecord, WebsiteShortcut, OpenDisposition, ImportCheckpoint } from '../../contracts/free-v1.js';
 import type { CatalogSnapshot } from '../storage/repository.js';
-import { projectCatalog, searchCatalog, type PendingDateGroup, type CandidateProjectCard } from '../domain/projection.js';
+import { projectCatalog, searchCatalog, type PendingDateGroup, type CandidateProjectCard, type LocalObservedProjectCard } from '../domain/projection.js';
 import { createFreeViewSession, freeWindowFor, dayLabel } from '../domain/time.js';
 import { request, subscribeRevision } from '../shared/client.js';
 import { element as el, icon, byId, button, isEditing, allowedWebsiteUrl, dateTime } from './dom.js';
@@ -110,6 +110,11 @@ async function mutate(command: string, payload: Record<string, unknown>, after?:
 
 function title(record: ConversationRecord): string { return record.nativeTitle || '未命名会话'; }
 function membershipLabel(record: ConversationRecord): string {
+  if (record.owner.kind === 'unassigned' && record.localProject?.state === 'conflicting') return '原生项目关系冲突 · 待归属';
+  if (record.owner.kind === 'unassigned' && record.localProject?.state === 'observed') {
+    const project = snapshot?.localProjects?.find(p => p.key === record.localProject!.projectKey && p.boundaryKey === record.localProject!.boundaryKey);
+    if (project) return `${project.nativeTitle || '未命名项目'} · 本地已观察，账号空间未认证`;
+  }
   if (record.owner.kind === 'unassigned') return '本地历史 · 账号未绑定／归属待确认';
   if (record.membership.state === 'NONE') return '无项目';
   if (record.membership.state === 'UNKNOWN') return '归属待确认';
@@ -165,6 +170,31 @@ function candidateProjectCard(card: CandidateProjectCard): HTMLElement {
     el('header', { class: 'project-head' }, [el('span', { class: 'project-symbol' }, [icon('folder')]),
       el('h3', { id: `candidate-project-${project.key}`, title: project.nativeTitle }, [project.nativeTitle]),
       el('a', { class: 'icon-button', href: project.canonicalUrl, 'aria-label': `在 ChatGPT 中打开候选项目：${project.nativeTitle}`, title: '在 ChatGPT 中打开项目' }, [icon('external')])]), body]);
+}
+
+function localProjectCard(card: LocalObservedProjectCard): HTMLElement {
+  const project = card.project, key = project.key, name = project.nativeTitle || '未命名项目';
+  const expanded = view.older.includes(key), limit = view.limits[key] || 5;
+  const provenance = project.identityBasis === 'principal'
+    ? '来自已观察的原生项目关系；按账号主体隔离，当前 Workspace 尚未认证。'
+    : '来自此文档中已观察的原生项目关系；账号未确认，不与其他文档自动合并。';
+  const body = el('div', { class: 'project-body' }, [el('p', { class: 'project-note', title: provenance }, ['原生项目 · 本地已观察'])]);
+  if (card.recent.length) {
+    const rows = el('div', { class: 'conversation-list' }, card.recent.slice(0, limit).map(conversationRow));
+    if (card.recent.length > limit) rows.append(button('显示更多', { class: 'more-rows', 'data-more': key, 'data-focus-key': `more:${key}` }));
+    body.append(rows);
+  }
+  if (card.older.length) {
+    body.append(button('较早会话', { class: 'history-disclosure', 'data-older': key, 'aria-expanded': String(expanded), 'aria-controls': `older-${key}`, 'data-focus-key': `older:${key}` }, 'chevron'));
+    const older = el('div', { class: 'old-list', id: `older-${key}` }, [el('div', { class: 'conversation-list' }, card.older.map(conversationRow))]);
+    older.hidden = !expanded; body.append(older);
+  }
+  if (card.undated.length) body.append(el('p', { class: 'project-undated-label' }, ['尚无可用日期']), el('div', { class: 'conversation-list' }, card.undated.map(conversationRow)));
+  if (!card.recent.length && !card.older.length && !card.undated.length) body.append(el('p', { class: 'project-note' }, ['尚未观察到会话，可以打开原生项目。']));
+  return el('article', { class: 'project local-observed-project', 'data-local-project': key, 'data-identity-basis': project.identityBasis, 'aria-labelledby': `local-project-${key}` }, [
+    el('header', { class: 'project-head' }, [el('span', { class: 'project-symbol' }, [icon('folder')]),
+      el('h3', { id: `local-project-${key}`, title: name }, [name]),
+      el('a', { class: 'icon-button', href: project.canonicalUrl, 'aria-label': `在 ChatGPT 中打开项目：${name}`, title: '在 ChatGPT 中打开项目' }, [icon('external')])]), body]);
 }
 
 function dateLabel(date: string): string {
@@ -224,19 +254,20 @@ function firstUse(): HTMLElement {
 function renderWorkspace(): void {
   if (homeMode !== 'workspace' || !snapshot || !calendar) return;
   const content = byId('workspace-content'); content.setAttribute('aria-busy', 'false');
-  if (!snapshot.conversations.length && !snapshot.projects.length && !snapshot.importJobs.length && !snapshot.scopes.length) {
+  if (!snapshot.conversations.length && !snapshot.projects.length && !snapshot.localProjects?.length && !snapshot.importJobs.length && !snapshot.scopes.length) {
     content.replaceChildren(firstUse()); byId('history-rail').hidden = true; return;
   }
   const projection = projectCatalog(snapshot, { ...calendar, k: view.k, selectedScope: selectedScope || 'unassigned' });
   content.replaceChildren(workspaceHeading());
   if (selectedScope === 'unassigned' && snapshot.conversations.length) {
-    content.append(el('div', { class: 'import-note' }, [icon('info'), el('div', {}, ['会话已保存在本机', el('p', {}, ['已确认的项目会在这里展开；其他会话仍可直接打开。'])]), button('导入更多', { class: 'text-button', id: 'import-more' })]));
+    content.append(el('div', { class: 'import-note' }, [icon('info'), el('div', {}, ['会话已保存在本机', el('p', {}, ['已观察的原生项目会在这里展开；其他会话仍可直接打开。'])]), button('导入更多', { class: 'text-button', id: 'import-more' })]));
   }
   const showProjects = view.filter === 'all' || view.filter === 'project';
   const showNone = view.filter === 'all' || view.filter === 'none';
   const showPending = view.filter === 'all' || view.filter === 'unknown';
   const showCandidates = showProjects || showPending;
   if (showProjects && projection.projects.length) content.append(el('section', { 'aria-label': '原生项目' }, [el('div', { class: 'project-grid' }, projection.projects.map(projectCard))]));
+  if (showProjects && projection.localProjects.length) content.append(el('section', { 'aria-label': '本地已观察的原生项目' }, [el('div', { class: 'project-grid' }, projection.localProjects.map(localProjectCard))]));
   if (showCandidates && projection.candidateProjects.length) content.append(el('section', { 'aria-label': '本地候选项目／原生归属待确认' }, [el('div', { class: 'project-grid' }, projection.candidateProjects.map(candidateProjectCard))]));
   if (showNone && projection.dates.length) content.append(el('section', { class: 'date-section', 'aria-label': '无项目会话' }, [
     el('div', { class: 'section-heading' }, [el('h2', {}, ['无项目'])]), el('div', { class: 'date-grid' }, projection.dates.map(group => el('article', { class: 'date-window' }, [
@@ -244,15 +275,17 @@ function renderWorkspace(): void {
   if (showPending && projection.pendingDates.length) content.append(pendingDateSection(projection.pendingDates));
   if (showProjects && projection.undatedProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无可用日期的项目' }, [
     el('h2', {}, ['项目 · 尚无可用日期']), el('div', { class: 'project-grid' }, projection.undatedProjects.map(projectCard))]));
+  if (showProjects && projection.undatedLocalProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无日期的本地原生项目' }, [
+    el('h2', {}, ['原生项目 · 尚无可用日期']), el('div', { class: 'project-grid' }, projection.undatedLocalProjects.map(localProjectCard))]));
   if (showCandidates && projection.undatedCandidateProjects.length) content.append(el('section', { class: 'undated-section', 'aria-label': '尚无日期的本地候选项目' }, [
     el('h2', {}, ['本地候选项目 · 尚无可用日期']), el('div', { class: 'project-grid' }, projection.undatedCandidateProjects.map(candidateProjectCard))]));
   if (showNone && projection.undatedNone.length) content.append(el('section', { class: 'undated-section' }, [el('h2', {}, ['无项目 · 尚无可用日期']), el('div', { class: 'unknown-grid' }, projection.undatedNone.map(conversationRow))]));
   // Undated entries are independent of k. Keeping them reachable must not make
   // an otherwise empty 30-day segment appear occupied or suppress its hint.
-  const hasDatedRecords = (showProjects && projection.projects.length) || (showCandidates && projection.candidateProjects.length)
+  const hasDatedRecords = (showProjects && (projection.projects.length || projection.localProjects.length)) || (showCandidates && projection.candidateProjects.length)
     || (showNone && projection.dates.length) || (showPending && projection.pendingDates.length);
   if (!hasDatedRecords) {
-    content.append(el('section', { class: 'period-empty' }, [el('h2', {}, ['这一段没有记录']), el('p', {}, [view.filter === 'project' ? '还没有已确认项目归属的会话，也可以继续查看相邻 30 天。' : view.filter === 'none' ? '这一段没有已确认无项目的会话。' : '可以继续向前翻，也可以搜索全部本地会话。']), button('搜索全部已知', { class: 'text-button', id: 'empty-search' }, 'search')]));
+    content.append(el('section', { class: 'period-empty' }, [el('h2', {}, ['这一段没有记录']), el('p', {}, [view.filter === 'project' ? '这一段没有带日期的项目会话，也可以继续查看相邻 30 天。' : view.filter === 'none' ? '这一段没有已确认无项目的会话。' : '可以继续向前翻，也可以搜索全部本地会话。']), button('搜索全部已知', { class: 'text-button', id: 'empty-search' }, 'search')]));
   }
   if (showPending && projection.unknown.length) content.append(unknownSection(projection.unknown, view.filter === 'unknown' || selectedScope === 'unassigned'));
   renderRail();
@@ -305,19 +338,25 @@ function renderSearch(): void {
   const conditions = JSON.stringify([selectedScope, query, searchFilter, searchProjectId]);
   if (conditions !== searchConditions) { searchVisibleLimit = SEARCH_PAGE_SIZE; searchConditions = conditions; }
   const results = searchCatalog(snapshot, query, selectedScope || 'unassigned').filter(result =>
-    (!searchProjectId || result.project?.projectId === searchProjectId) && (searchFilter === 'all' || (searchFilter === 'project' ? result.record.membership.state === 'PROJECT' || result.candidateProject !== null : searchFilter === 'none' ? result.record.membership.state === 'NONE' : result.record.membership.state === 'UNKNOWN')));
+    (!searchProjectId || result.project?.projectId === searchProjectId) && (searchFilter === 'all' || (searchFilter === 'project' ? result.record.membership.state === 'PROJECT' || result.localProject !== null || result.candidateProject !== null : searchFilter === 'none' ? result.record.membership.state === 'NONE' : result.record.membership.state === 'UNKNOWN' && !result.localProject)));
   // An empty native project remains reachable even when it has no conversation rows.
   const foundProjectIds = new Set(results.map(result => result.project?.projectId));
   const emptyProjects = searchFilter === 'all' || searchFilter === 'project' ? snapshot.projects.filter(project =>
     project.scopeKey === selectedScope && !foundProjectIds.has(project.projectId) && (!searchProjectId || project.projectId === searchProjectId) &&
     (!query || `${project.nativeTitle || ''} ${project.canonicalUrl}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))) : [];
-  const total = results.length + emptyProjects.length;
+  const foundLocalKeys = new Set(results.map(result => result.localProject?.key));
+  const emptyLocalProjects = !searchProjectId && selectedScope === 'unassigned' && (searchFilter === 'all' || searchFilter === 'project')
+    ? (snapshot.localProjects ?? []).filter(project => project.localProfileKey === snapshot!.localProfileKey && !foundLocalKeys.has(project.key)
+      && (!query || `${project.nativeTitle || ''} ${project.canonicalUrl}`.normalize('NFKC').toLocaleLowerCase().includes(query.normalize('NFKC').toLocaleLowerCase()))) : [];
+  const projectResults = [...emptyProjects.map(project => ({ project, path: '原生项目 · 打开 ChatGPT' })),
+    ...emptyLocalProjects.map(project => ({ project, path: '原生项目 · 本地已观察 · 打开 ChatGPT' }))];
+  const total = results.length + projectResults.length;
   const list = byId('search-results');
   // Query the entire scoped catalog; only materialize the requested slice into DOM.
   const shownConversations = results.slice(0, searchVisibleLimit);
-  const shownProjects = emptyProjects.slice(0, Math.max(0, searchVisibleLimit - results.length));
-  list.replaceChildren(...shownConversations.map(({ record, path }) => el('a', { class: 'search-result', href: record.canonicalUrl, 'data-record-key': record.key, 'data-focus-key': `search:${record.key}` }, [icon(record.membership.state === 'PROJECT' ? 'folder' : record.membership.state === 'NONE' ? 'chat' : 'info'), el('span', {}, [el('strong', {}, [title(record)]), el('small', {}, [path])]), icon('arrow', 'enter-icon')])));
-  for (const project of shownProjects) list.append(el('a', { class: 'search-result', href: project.canonicalUrl }, [icon('folder'), el('span', {}, [el('strong', {}, [project.nativeTitle || '未命名项目']), el('small', {}, ['原生项目 · 打开 ChatGPT'])]), icon('arrow', 'enter-icon')]));
+  const shownProjects = projectResults.slice(0, Math.max(0, searchVisibleLimit - results.length));
+  list.replaceChildren(...shownConversations.map(({ record, path, localProject }) => el('a', { class: 'search-result', href: record.canonicalUrl, 'data-record-key': record.key, 'data-focus-key': `search:${record.key}` }, [icon(record.membership.state === 'PROJECT' || localProject ? 'folder' : record.membership.state === 'NONE' ? 'chat' : 'info'), el('span', {}, [el('strong', {}, [title(record)]), el('small', {}, [path])]), icon('arrow', 'enter-icon')])));
+  for (const { project, path } of shownProjects) list.append(el('a', { class: 'search-result', href: project.canonicalUrl }, [icon('folder'), el('span', {}, [el('strong', {}, [project.nativeTitle || '未命名项目']), el('small', {}, [path])]), icon('arrow', 'enter-icon')]));
   list.dataset.totalMatches = String(total);
   list.dataset.visibleMatches = String(shownConversations.length + shownProjects.length);
   if (!total) list.append(el('div', { class: 'search-empty' }, [query ? `没有找到“${query}”` : '没有符合条件的本地会话', el('p', { class: 'field-help' }, ['试试原会话标题、项目名称或保存的网址。']), el('div', { class: 'context-links' }, [button('清空条件', { id: 'clear-search' }), el('a', { href: 'https://chatgpt.com/' }, ['前往 ChatGPT 使用原生搜索', icon('external')])])]));
@@ -346,8 +385,8 @@ function renderSettings(): void {
     ? '从 Start 主动打开会话并完成目标导航后记录当天活动；刷新、恢复和后台加载不计入。'
     : '连接 ChatGPT 并开启继续收录后，才会记录新的主动打开活动。';
   const projects = capture && snapshot.capabilities.localProjectCandidates === true
-    ? '项目可随正常浏览收录为本地候选；账号与原生归属仍待确认。'
-    : '已有目录与候选项目继续保留，账号与原生归属仍待确认。';
+    ? '直接观察到的原生项目与会话关系会稳定保存在本机；完整账号空间认证和全量同步独立处理。'
+    : '已有目录和本地项目继续保留；重新连接后继续观察原生关系。';
   byId('source-description').textContent = `本地历史可按日期浏览，浏览日期不计活跃。${activity}${projects}`;
   byId('source-details').textContent = [snapshot.capabilities.sourceGate, ...(snapshot.capabilities.reasons || []), snapshot.capabilities.sourceStatus?.code || '', `构建：${snapshot.build.sha}`, `版本：${snapshot.build.version}`, `适配器：${snapshot.build.adapterVersion}`].filter(Boolean).join('\n');
 }

@@ -1,5 +1,7 @@
 # 数据合同与状态转换
 
+> **当前本地项目数据规则见[第13号修订](13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)。** LocalObservedProject 与 ConversationRecord.localProject 是独立的已观察关系；不调用 confirmObservation、不伪装正式 PROJECT/NONE。数据库 v1/12 stores 不变，原目录/活动不迁移，完整认证规则继续有效。
+
 > **当前有效修订：2026-11-02-local-first，用户已批准。** [统一修订合同](10-LOCAL-FIRST-AMENDMENT.md)覆盖原 M0 全局前置门：本地时间组织、Start 主动打开与局部候选项目可独立运行；账号隔离及正式原生归属证明仍保留。`LOCAL_WORKSPACE_READY` 不等于 `FREE_V1_ACCEPTED`。
 
 规范类型见 `contracts/free-v1.ts`。TypeScript 不能替代运行时校验：跨上下文消息、未来备份文件和网页字段全部要精确字段白名单、长度/URL/日期限制、判别联合校验。未知额外字段拒绝；输入不能自己声明 verified、scope、source authority。

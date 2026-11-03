@@ -1,4 +1,4 @@
-import type { AccountScope, CandidateResolution, ConfirmedOpenDay, ConversationRecord, EvidenceWitness, ImportCheckpoint, Membership, OpenDisposition, OpenIntent, OpenIntentEvidence, ProjectRecord, StartSettings, Tombstone, WebsiteShortcut } from '../../contracts/free-v1.js';
+import type { AccountScope, CandidateResolution, ConfirmedOpenDay, ConversationRecord, EvidenceWitness, ImportCheckpoint, LocalObservedProject, Membership, OpenDisposition, OpenIntent, OpenIntentEvidence, ProjectRecord, StartSettings, Tombstone, WebsiteShortcut } from '../../contracts/free-v1.js';
 import { conversationKey, parseConversationUrl, parseProjectUrl, projectKey, scopeKey, stagingKey, tupleHash, validateWebsiteUrl } from '../domain/ids.js';
 import { parseLocalProjectCandidate } from '../collectors/chatgpt/project-candidate.js';
 import { activitySummary, upsertOpenDay } from '../domain/open-activity.js';
@@ -9,7 +9,9 @@ import { openDatabase, request, STORE_NAMES, transactionDone } from './db.js';
 
 export interface CandidateInput { url: string; title?: string | null; lastVisitAt?: string | null; source?: 'local' | 'synced' | 'unknown'; titleBasis?: 'browser-history' | 'native-label' | 'unknown' }
 export interface RuntimeImportJob extends ImportCheckpoint { includeSynced?: boolean; seenKeys?: string[]; errorCode?: string; pendingCandidates?: CandidateInput[]; failureCode?: 'history-api-failed' | 'saturated-time-slice' | null }
-export interface CatalogSnapshot { revision: number; settings: StartSettings; localProfileKey: string; scopes: AccountScope[]; conversations: ConversationRecord[]; projects: ProjectRecord[]; shortcuts: WebsiteShortcut[]; importJobs: RuntimeImportJob[]; tombstones: Tombstone[] }
+export interface CatalogSnapshot { revision: number; settings: StartSettings; localProfileKey: string; scopes: AccountScope[]; conversations: ConversationRecord[]; projects: ProjectRecord[]; localProjects?: LocalObservedProject[]; shortcuts: WebsiteShortcut[]; importJobs: RuntimeImportJob[]; tombstones: Tombstone[] }
+interface LocalProjectRow { key: string; value: LocalObservedProject }
+export interface LocalProjectContext { browserSessionId: string; documentId: string; identityGeneration: number; principalKey: string | null; sourceHref: string; routeEpoch: number }
 interface SettingsRow extends StartSettings { key: 'main'; localProfileKey: string }
 interface RevisionRow { key: 'main'; value: number; nextRank: number }
 type StoredConversation = ConversationRecord & { ownerKey: string; membershipState: Membership['state']; projectId?: string; lastActiveAt?: string; browserSource?: 'local' | 'synced' | 'unknown' };
@@ -25,7 +27,7 @@ function defaults(timeZone: string, profile = crypto.randomUUID()): SettingsRow 
   return { key: 'main', localProfileKey: profile, schemaVersion: 1, libraryTimeZone: validateTimeZone(timeZone), shortcutSectionCollapsed: false, selectedScope: 'unassigned', currentSegment: 0, captureEnabled: false };
 }
 function decorate(record: ConversationRecord, browserSource?: StoredConversation['browserSource']): StoredConversation {
-  const out: StoredConversation = { ...record, ownerKey: record.owner.kind === 'scoped' ? record.owner.scopeKey : `unassigned:${record.owner.localProfileKey}`, membershipState: record.membership.state };
+  const out: StoredConversation = { ...record, ownerKey: record.owner.kind === 'scoped' ? record.owner.scopeKey : record.localProject ? `local:${record.localProject.boundaryKey}` : `unassigned:${record.owner.localProfileKey}`, membershipState: record.membership.state };
   if (record.membership.state === 'PROJECT') out.projectId = record.membership.projectId;
   if (record.activity) out.lastActiveAt = record.activity.lastConfirmedOpenAt;
   if (browserSource) out.browserSource = browserSource;
@@ -75,7 +77,7 @@ export class Repository {
   }
   async getSnapshot(selectedScope?: string): Promise<CatalogSnapshot> {
     const tx = this.db.transaction([...STORE_NAMES], 'readonly'); const done = transactionDone(tx);
-    const [settings, revision, scopes, records, projects, shortcuts, importJobs, tombstones, links] = await Promise.all([
+    const [settings, revision, scopes, records, projects, shortcuts, importJobs, tombstones, links, localRows] = await Promise.all([
       request<SettingsRow>(tx.objectStore('settings').get('main')),
       request<RevisionRow>(tx.objectStore('revisions').get('main')),
       request<AccountScope[]>(tx.objectStore('scopes').getAll()),
@@ -85,13 +87,15 @@ export class Repository {
       request<RuntimeImportJob[]>(tx.objectStore('importJobs').getAll()),
       request<StoredTombstone[]>(tx.objectStore('tombstones').getAll()),
       request<CandidateResolution[]>(tx.objectStore('candidateLinks').getAll()),
+      request<Array<LocalProjectRow | SettingsRow>>(tx.objectStore('settings').getAll()),
     ]);
     await done;
     const selected = selectedScope ?? settings.selectedScope;
     if (selected !== 'unassigned' && !scopes.some(s => s.key === selected)) throw Error('unknown-scope');
     const removed = new Set(tombstones.map(t => t.key));
     const resolvedCandidates = new Set(links.map(link => link.candidateRecordKey));
-    return { revision: revision.value, settings: settingsValue(settings), localProfileKey: settings.localProfileKey, scopes, conversations: records.filter(r => !removed.has(r.key) && (selected === 'unassigned' ? r.owner.kind === 'unassigned' && !resolvedCandidates.has(r.key) : r.owner.kind === 'scoped' && r.owner.scopeKey === selected)).map(publicRecord), projects: projects.filter(p => p.scopeKey === selected), shortcuts: shortcuts.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)), importJobs, tombstones: tombstones.filter(t => t.record && (selected === 'unassigned' ? t.record.owner.kind === 'unassigned' : t.record.owner.kind === 'scoped' && t.record.owner.scopeKey === selected)).map(({ key, removedAt, reason }) => ({ key, removedAt, reason })) };
+    const localProjects = localRows.filter((row): row is LocalProjectRow => row.key.startsWith('localProject:') && 'value' in row).map(row => row.value).filter(p => p.localProfileKey === settings.localProfileKey);
+    return { revision: revision.value, settings: settingsValue(settings), localProfileKey: settings.localProfileKey, scopes, conversations: records.filter(r => !removed.has(r.key) && (selected === 'unassigned' ? r.owner.kind === 'unassigned' && !resolvedCandidates.has(r.key) : r.owner.kind === 'scoped' && r.owner.scopeKey === selected)).map(publicRecord), projects: projects.filter(p => p.scopeKey === selected), localProjects: selected === 'unassigned' ? localProjects : [], shortcuts: shortcuts.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)), importJobs, tombstones: tombstones.filter(t => t.record && (selected === 'unassigned' ? t.record.owner.kind === 'unassigned' : t.record.owner.kind === 'scoped' && t.record.owner.scopeKey === selected)).map(({ key, removedAt, reason }) => ({ key, removedAt, reason })) };
   }
   async discoverCandidates(inputs: CandidateInput[], expectedRevision?: number, checkpoint?: RuntimeImportJob): Promise<{ accepted: number; inserted: number }> {
     if (!Array.isArray(inputs) || inputs.length > 200) throw Error('invalid-candidate-batch');
@@ -120,6 +124,7 @@ export class Repository {
           fresh.owner = previous.owner; fresh.membership = previous.membership;
           fresh.canonicalUrl = previous.canonicalUrl; fresh.stableRank = previous.stableRank;
           if (previous.localProjectCandidate) fresh.localProjectCandidate = previous.localProjectCandidate;
+          if (previous.localProject) fresh.localProject = previous.localProject;
           Object.assign(fresh, chooseTitle(previous, fresh.nativeTitle, fresh.titleBasis, fresh.titleObservedAt ?? now));
           if (!fresh.browserLastVisitAt || previous.browserLastVisitAt && instant(previous.browserLastVisitAt)! > instant(fresh.browserLastVisitAt)!) fresh.browserLastVisitAt = previous.browserLastVisitAt;
         } else inserted++;
@@ -135,6 +140,7 @@ export class Repository {
     exactObject(context, ['browserSessionId', 'bindingId', 'observationId', 'sourceHref']);
     boundedString(context.browserSessionId, 128); boundedString(context.bindingId, 128); boundedString(context.observationId, 128);
     const candidate = parseLocalProjectCandidate(value, context.sourceHref);
+    if (!candidate.nativeTitle) return 0; // Legacy observation-only shape needs a title.
     const initial = await this.getSnapshot('unassigned');
     const candidateKey = await tupleHash('local-project', initial.localProfileKey, context.browserSessionId, context.bindingId, context.observationId, candidate.projectId);
     const prepared = await Promise.all(candidate.members.map(async member => ({ member, key: await stagingKey(initial.localProfileKey, member.conversationId) })));
@@ -145,10 +151,74 @@ export class Repository {
       for (const { member, key } of prepared) {
         if (await request(ctx.tx.objectStore('tombstones').get(key))) continue;
         const old = await request<StoredConversation | undefined>(conversations.get(key));
-        if (old && (old.owner.kind !== 'unassigned' || old.owner.localProfileKey !== ctx.settings.localProfileKey || old.membership.state !== 'UNKNOWN')) continue;
+        if (old && (old.owner.kind !== 'unassigned' || old.owner.localProfileKey !== ctx.settings.localProfileKey || old.membership.state !== 'UNKNOWN' || old.localProject)) continue;
         const record = old ?? newCandidate(key, ctx.settings.localProfileKey, parseConversationUrl(member.canonicalUrl)!, { url: member.canonicalUrl, title: member.nativeTitle, titleBasis: 'native-label' }, now, ctx.rank(), ctx.revision.value + 1);
-        record.localProjectCandidate = { key: candidateKey, projectId: candidate.projectId, nativeTitle: candidate.nativeTitle, canonicalUrl: candidate.canonicalUrl, observedAt: now, basis: 'local-project-observation' };
-        record.nativeTitle = member.nativeTitle; record.titleBasis = 'native-label'; record.titleObservedAt = now;
+        record.localProjectCandidate = { key: candidateKey, projectId: candidate.projectId, nativeTitle: candidate.nativeTitle!, canonicalUrl: candidate.canonicalUrl, observedAt: now, basis: 'local-project-observation' };
+        Object.assign(record, chooseTitle(record, member.nativeTitle, 'native-label', now));
+        record.lastSeenAt = now; record.revision = ctx.revision.value + 1;
+        await request(conversations.put(decorate(record, old?.browserSource))); accepted++; ctx.changed();
+      }
+      return accepted;
+    });
+  }
+  /** Incremental local relationship admission. No AccountScope, formal PROJECT,
+   * NONE, availability or activity is asserted by this separate path. */
+  async observeLocalProject(value: unknown, context: LocalProjectContext): Promise<number> {
+    exactObject(context, ['browserSessionId', 'documentId', 'identityGeneration', 'principalKey', 'sourceHref', 'routeEpoch']);
+    boundedString(context.browserSessionId, 128); boundedString(context.documentId, 128);
+    nonnegative(context.identityGeneration); nonnegative(context.routeEpoch);
+    if (context.principalKey !== null && !/^principal:[a-f0-9]{64}$/.test(context.principalKey)) throw Error('invalid-local-principal');
+    const observed = parseLocalProjectCandidate(value, context.sourceHref);
+    const initial = await this.getSnapshot('unassigned'), profile = initial.localProfileKey;
+    const identityBasis = context.principalKey ? 'principal' : 'document';
+    const boundaryKey = context.principalKey
+      ? await tupleHash('local-boundary', profile, 'principal', context.principalKey)
+      : await tupleHash('local-boundary', profile, 'document', context.browserSessionId, context.documentId, String(context.identityGeneration));
+    const key = await tupleHash('observed-project', boundaryKey, observed.projectId);
+    const documentKey = await tupleHash('local-document', context.browserSessionId, context.documentId);
+    const prepared = await Promise.all(observed.members.map(async member => ({ member,
+      staging: await stagingKey(profile, member.conversationId),
+      local: await tupleHash('local-conversation', boundaryKey, member.conversationId) })));
+    const now = this.now();
+    return this.mutate(async ctx => {
+      if (!ctx.settings.captureEnabled || ctx.settings.localProfileKey !== profile) throw Error('PERMISSION_REQUIRED');
+      const settings = ctx.tx.objectStore('settings'), conversations = ctx.tx.objectStore('conversations');
+      const rowKey = `localProject:${key}`, previous = await request<LocalProjectRow | undefined>(settings.get(rowKey));
+      const project: LocalObservedProject = { key, localProfileKey: profile, boundaryKey, identityBasis,
+        projectId: observed.projectId, nativeTitle: observed.nativeTitle ?? previous?.value.nativeTitle ?? null,
+        canonicalUrl: observed.canonicalUrl, firstObservedAt: previous?.value.firstObservedAt ?? now,
+        observedAt: now, relationBasis: observed.relationBasis,
+        source: { href: context.sourceHref, documentKey, routeEpoch: context.routeEpoch },
+        trust: 'native-relation-observed', membershipCoverage: 'observed-only',
+        stableRank: previous?.value.stableRank ?? ctx.rank(), revision: ctx.revision.value + 1 };
+      // Empty/partial observations update metadata but never subtract members.
+      await request(settings.put({ key: rowKey, value: project } satisfies LocalProjectRow)); ctx.changed();
+      let accepted = 0;
+      for (const item of prepared) {
+        // A user removal is not undone by a new observer or account boundary.
+        const removedStage = await request<StoredTombstone | undefined>(ctx.tx.objectStore('tombstones').get(item.staging));
+        if (removedStage && (!removedStage.record?.localProject || removedStage.record.localProject.boundaryKey === boundaryKey)
+          || await request(ctx.tx.objectStore('tombstones').get(item.local))) continue;
+        const staged = await request<StoredConversation | undefined>(conversations.get(item.staging));
+        const local = await request<StoredConversation | undefined>(conversations.get(item.local));
+        const canReuse = staged && staged.owner.kind === 'unassigned' && staged.membership.state === 'UNKNOWN'
+          && (!staged.localProject || staged.localProject.boundaryKey === boundaryKey);
+        const old = local ?? (canReuse ? staged : undefined);
+        if (old && (old.owner.kind !== 'unassigned' || old.owner.localProfileKey !== profile || old.membership.state !== 'UNKNOWN'
+          || old.membership.reason === 'conflicting-evidence' || old.membership.reason === 'source-revoked')) continue;
+        const recordKey = old?.key ?? (staged || removedStage ? item.local : item.staging);
+        const record = old ?? newCandidate(recordKey, profile, parseConversationUrl(item.member.canonicalUrl)!,
+          { url: item.member.canonicalUrl, title: item.member.nativeTitle, titleBasis: 'native-label' }, now, ctx.rank(), ctx.revision.value + 1);
+        if (record.localProject && (record.localProject.state === 'conflicting' || record.localProject.projectKey !== key)) {
+          // Two live documents can disagree; their delivery order is not a
+          // source revision. Preserve the directory and expose the conflict.
+          record.localProject = { ...record.localProject, state: 'conflicting',
+            conflictingProjectKeys: [...new Set([...(record.localProject.conflictingProjectKeys ?? []), record.localProject.projectKey, key])].slice(0, 16) };
+        } else {
+          record.localProject = { projectKey: key, boundaryKey, identityBasis, relationBasis: observed.relationBasis, observedAt: now, state: 'observed' };
+        }
+        delete record.localProjectCandidate;
+        Object.assign(record, chooseTitle(record, item.member.nativeTitle, 'native-label', now));
         record.lastSeenAt = now; record.revision = ctx.revision.value + 1;
         await request(conversations.put(decorate(record, old?.browserSource))); accepted++; ctx.changed();
       }
@@ -205,7 +275,7 @@ export class Repository {
   }
   async clearLocalData(expectedRevision?: number): Promise<void> {
     const profile = crypto.randomUUID();
-    await this.mutate(async ctx => { for (const store of STORE_NAMES) if (!['settings', 'revisions'].includes(store)) await request(ctx.tx.objectStore(store).clear()); await request(ctx.tx.objectStore('settings').put(defaults(ctx.settings.libraryTimeZone, profile))); ctx.revision.nextRank = 0; ctx.changed(); }, expectedRevision);
+    await this.mutate(async ctx => { for (const store of STORE_NAMES) if (store !== 'revisions') await request(ctx.tx.objectStore(store).clear()); await request(ctx.tx.objectStore('settings').put(defaults(ctx.settings.libraryTimeZone, profile))); ctx.revision.nextRank = 0; ctx.changed(); }, expectedRevision);
   }
   async issueIntent(input: IssueIntentInput): Promise<OpenIntent> {
     exactObject(input, ['browserSessionId', 'targetRecordKey', 'evidence', 'disposition', 'sourceTabId', 'sourceScopeEpoch'], ['id']);
@@ -298,6 +368,7 @@ export class Repository {
         if (!scope || scope.state !== 'ready' || !witness || witness.revoked || witness.scopeKey !== scope.key || witness.documentId !== input.targetDocumentId || witness.routeEpoch !== input.routeEpoch || witness.scopeEpoch !== input.scopeEpoch) return reject('scope-mismatch');
         if (!record) record = decorate({ ...publicRecord(requested), key, owner: { kind: 'scoped', scopeKey: input.scopeKey }, membership: { state: 'UNKNOWN', projectId: null, reason: 'no-membership-source' }, activity: null, nativeTitle: title(input.nativeTitle), titleBasis: input.nativeTitle ? 'native-label' : 'unknown', titleObservedAt: input.nativeTitle ? now : null, browserLastVisitAt: null, firstSeenAt: now, lastSeenAt: now, stableRank: ctx.rank(), revision: ctx.revision.value + 1 });
         delete record.localProjectCandidate; // A local observation never migrates into an account asset.
+        delete record.localProject;
         if (requested.owner.kind === 'unassigned') await request(ctx.tx.objectStore('candidateLinks').put({ candidateRecordKey: requested.key, scopedRecordKey: key, evidenceId: witness.id, confirmedAt: now } satisfies CandidateResolution));
       }
       if (!record) return reject('target-mismatch');

@@ -11,7 +11,7 @@ const fingerprint = JSON.parse(await readFile('dist/build.json', 'utf8'));
 const checks = [], limitations = [
   'Actual unchanged production JavaScript is installed in an isolated Chromium Profile. A temporary manifest pre-grants the existing optional ChatGPT/scripting/webNavigation permissions; native prompt acceptance is not tested.',
   'Every HTTPS document and both existing session-only endpoints are intercepted synthetic fixtures. This does not certify current ChatGPT DOM, an actual account/workspace, Project membership, positive NONE, Mac Chrome or Edge.',
-  'Missing members and empty Project observations are partial visibility, not authoritative removal. Existing directory records are preserved. An empty local candidate does not create a certified Project entity.',
+  'Missing members and empty Project observations are partial visibility, not authoritative removal. An empty local observed Project is saved independently; no certified Project entity is created.',
 ];
 const check = (id, condition, observed) => { assert.ok(condition, `${id}: ${observed}`); checks.push({ id, status: 'PASS', observed }); };
 const ORIGIN = 'https://chatgpt.com';
@@ -29,6 +29,7 @@ const shell = '<!doctype html><meta charset="utf-8"><title>Synthetic metadata fi
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let context, otherContext, browserVersion = null, sessionRequests = 0, persona = 'a';
 const requests = [];
+const localProjectFor = (snapshot, record) => snapshot.localProjects?.find(project => project.key === record?.localProject?.projectKey);
 
 async function waitUntil(probe, reason, timeout = 10000) {
   const deadline = Date.now() + timeout;
@@ -83,7 +84,7 @@ async function bindingFor(worker, href) {
   return worker.evaluate(async href => { const tabs = await chrome.tabs.query({ url: href }); const tab = tabs[0]; if (!tab) return null; return (await chrome.storage.session.get('browserSession')).browserSession.bindings[String(tab.id)]; }, href);
 }
 async function oldObservation(worker, tabId, binding, project, members) {
-  const [result] = await worker.evaluate(async ({ tabId, binding, project, members }) => chrome.scripting.executeScript({ target: { tabId }, world: 'ISOLATED', func: ({ binding, project, members }) => chrome.runtime.sendMessage({ protocol: 'vaiwl-start-collector/1', operationId: crypto.randomUUID(), command: 'OBSERVE', payload: { bindingId: binding.id, routeEpoch: binding.routeEpoch, candidates: members.map(m => ({ url: m.canonicalUrl, title: m.nativeTitle })), projectCandidate: { state: 'candidate', relationBasis: 'linked-native-panel', projectId: project, nativeTitle: 'Stale forged title', canonicalUrl: `https://chatgpt.com/g/${project}/project`, members } } }), args: [{ binding, project, members }] }), { tabId, binding, project, members });
+  const [result] = await worker.evaluate(async ({ tabId, binding, project, members }) => chrome.scripting.executeScript({ target: { tabId }, world: 'ISOLATED', func: ({ binding, project, members }) => chrome.runtime.sendMessage({ protocol: 'vaiwl-start-collector/1', operationId: crypto.randomUUID(), command: 'OBSERVE', payload: { bindingId: binding.id, routeEpoch: binding.routeEpoch, identityToken: binding.localIdentity?.token, candidates: members.map(m => ({ url: m.canonicalUrl, title: m.nativeTitle })), projectCandidate: { state: 'candidate', relationBasis: 'linked-native-panel', projectId: project, nativeTitle: 'Stale forged title', canonicalUrl: `https://chatgpt.com/g/${project}/project`, members } } }), args: [{ binding, project, members }] }), { tabId, binding, project, members });
   return result.result;
 }
 
@@ -103,35 +104,34 @@ try {
   // This one bounded delay deliberately exceeds the old cumulative 2.22 s sampling window.
   await sleep(2600);
   check('PROJECT-B-no-source-no-guess', (await command(start, 'SNAPSHOT')).conversations.length === 0, 'A supported route without a proven native panel does not invent a Project, title or member.');
-  await fill(native, projectMarkup([])); await sleep(350);
-  check('PROJECT-B-empty-project', (await command(start, 'SNAPSHOT')).projects.length === 0 && (await command(start, 'SNAPSHOT')).conversations.length === 0, 'An empty structurally valid Project does not invent a member or a certified Project; this store assertion alone is not positive extraction evidence.');
+  await fill(native, projectMarkup([])); await snapshotWith(start, s => s.localProjects?.length === 1, 'Empty local Project was not saved');
+  check('PROJECT-B-empty-project', (await command(start, 'SNAPSHOT')).localProjects.length === 1 && (await command(start, 'SNAPSHOT')).projects.length === 0 && (await command(start, 'SNAPSHOT')).conversations.length === 0, 'An empty structurally valid Project creates its local observed entity without inventing a member or a certified Project.');
   await native.locator('ol').evaluate((node, markup) => { node.insertAdjacentHTML('beforeend', markup); }, memberMarkup(1));
-  const first = await snapshotWith(start, s => s.conversations.some(c => c.conversationId === cid(1) && c.localProjectCandidate?.projectId === P), 'Late-hydrated Project member was not collected');
+  const first = await snapshotWith(start, s => s.conversations.some(c => c.conversationId === cid(1) && localProjectFor(s, c)?.projectId === P), 'Late-hydrated Project member was not collected');
   const firstRecord = first.conversations.find(c => c.conversationId === cid(1));
-  check('PROJECT-B-late-hydration-single-member', firstRecord.nativeTitle === 'Synthetic conversation 1' && firstRecord.localProjectCandidate.nativeTitle === PROJECT_TITLE && !first.conversations.some(c => c.conversationId === cid(99)), 'After the old sampling window expires, an empty Project subsequently gains one member; only its bounded title leaf and true panel link are collected.');
-  check('PROJECT-B-title-separation', firstRecord.nativeTitle !== firstRecord.localProjectCandidate.nativeTitle && firstRecord.membership.state === 'UNKNOWN', 'Project name and conversation title remain distinct fields and the locally observed relation remains UNKNOWN.');
-  await start.locator('.candidate-project').getByRole('heading', { name: PROJECT_TITLE, exact: true }).waitFor();
-  check('PROJECT-B-Start-candidate-card', await start.locator(`.candidate-project a[data-record-key="${firstRecord.key}"]`).count() === 1 && await start.locator('[data-project]').count() === 0, 'The actual Start page renders the observed name and member once in a marked candidate card; it does not present a certified Project card.');
+  check('PROJECT-B-late-hydration-single-member', firstRecord.nativeTitle === 'Synthetic conversation 1' && localProjectFor(first, firstRecord).nativeTitle === PROJECT_TITLE && !first.conversations.some(c => c.conversationId === cid(99)), 'After the old sampling window expires, an empty Project subsequently gains one member; only its bounded title leaf and true panel link are collected.');
+  check('PROJECT-B-title-separation', firstRecord.nativeTitle !== localProjectFor(first, firstRecord).nativeTitle && firstRecord.membership.state === 'UNKNOWN', 'Project name and conversation title remain distinct fields and the locally observed relation remains UNKNOWN.');
+  await start.locator('.local-observed-project').getByRole('heading', { name: PROJECT_TITLE, exact: true }).waitFor();
+  check('PROJECT-B-Start-candidate-card', await start.locator(`.local-observed-project a[data-record-key="${firstRecord.key}"]`).count() === 1 && await start.locator('[data-project]').count() === 0, 'The actual Start page renders the observed name and member once in a marked locally observed native Project card; it does not present a certified Project card.');
 
-  const stableSessionRequests = sessionRequests;
   await native.locator('ol').evaluate((node, markup) => { node.insertAdjacentHTML('beforeend', markup); }, memberMarkup(2, 'Same conversation title') + memberMarkup(3, 'Same conversation title'));
-  const added = await snapshotWith(start, s => [1, 2, 3].every(n => s.conversations.some(c => c.conversationId === cid(n) && c.localProjectCandidate?.projectId === P)), 'Member additions were not collected incrementally');
-  check('PROJECT-B-member-additions-and-same-title', added.conversations.length === 3 && new Set(added.conversations.map(c => c.key)).size === 3 && new Set(added.conversations.map(c => c.localProjectCandidate.key)).size === 1, 'A later multi-member panel updates the three ID-keyed records; equal titles do not merge different conversations.');
+  const added = await snapshotWith(start, s => [1, 2, 3].every(n => s.conversations.some(c => c.conversationId === cid(n) && localProjectFor(s, c)?.projectId === P)), 'Member additions were not collected incrementally');
+  check('PROJECT-B-member-additions-and-same-title', added.conversations.length === 3 && new Set(added.conversations.map(c => c.key)).size === 3 && new Set(added.conversations.map(c => c.localProject.projectKey)).size === 1, 'A later multi-member panel updates the three ID-keyed records; equal titles do not merge different conversations.');
   await native.locator('h1 span').evaluate((node, title) => { node.textContent = title; }, RENAMED_PROJECT);
-  const renamed = await snapshotWith(start, s => s.conversations.length === 3 && s.conversations.every(c => c.localProjectCandidate?.nativeTitle === RENAMED_PROJECT), 'Project rename was not observed');
-  check('PROJECT-B-project-rename', renamed.conversations.find(c => c.conversationId === cid(1)).nativeTitle === firstRecord.nativeTitle && renamed.conversations.find(c => c.conversationId === cid(1)).key === firstRecord.key, 'A live Project title change updates candidate names while preserving the conversation identity and title.');
+  const renamed = await snapshotWith(start, s => s.conversations.length === 3 && s.localProjects.some(p => p.nativeTitle === RENAMED_PROJECT), 'Project rename was not observed');
+  check('PROJECT-B-project-rename', renamed.conversations.find(c => c.conversationId === cid(1)).nativeTitle === firstRecord.nativeTitle && renamed.conversations.find(c => c.conversationId === cid(1)).key === firstRecord.key, 'A live Project title change updates the persistent local Project name while preserving the conversation identity and title.');
   await native.locator('ol li').first().locator('a > div > div').first().evaluate(node => { node.textContent = 'Renamed conversation only'; });
   const memberRenamed = await snapshotWith(start, s => s.conversations.some(c => c.conversationId === cid(1) && c.nativeTitle === 'Renamed conversation only'), 'Conversation title rename was not observed');
-  check('PROJECT-B-member-rename', memberRenamed.conversations.find(c => c.conversationId === cid(1)).localProjectCandidate.nativeTitle === RENAMED_PROJECT, 'A member label change updates only its conversation title, leaving the Project name intact.');
+  check('PROJECT-B-member-rename', localProjectFor(memberRenamed, memberRenamed.conversations.find(c => c.conversationId === cid(1))).nativeTitle === RENAMED_PROJECT, 'A member label change updates only its conversation title, leaving the Project name intact.');
 
-  const stable = await command(start, 'SNAPSHOT');
+  const stable = await command(start, 'SNAPSHOT'), requestsBeforeDuplicate = sessionRequests;
   await native.locator('ol').evaluate(node => { node.prepend(node.lastElementChild); });
   await native.locator('[data-preview]').first().evaluate(node => { node.textContent = 'Different private preview'; });
   await native.locator('h1 span').evaluate(node => { node.textContent = node.textContent; });
   await sleep(700);
   const duplicate = await command(start, 'SNAPSHOT');
   check('PROJECT-B-duplicate-and-reorder-no-write', duplicate.revision === stable.revision && JSON.stringify(duplicate.conversations) === JSON.stringify(stable.conversations), 'Repeated identical title observations, member reordering and preview-only changes do not rewrite the saved metadata or churn candidate grouping.');
-  check('PROJECT-B-no-session-polling-on-mutation', sessionRequests === stableSessionRequests, 'Project metadata mutations do not trigger additional session/account requests.');
+  check('PROJECT-B-no-session-polling-on-mutation', sessionRequests === requestsBeforeDuplicate, 'Identical metadata, reordering and preview-only mutations do not repeat identity reads; changed accepted observations may recheck the existing session-only endpoint.');
 
   const beforeRemoval = duplicate.conversations.find(c => c.conversationId === cid(1));
   await native.locator(`a[href="/c/${cid(1)}"]`).evaluate(node => node.parentElement.remove());
@@ -149,10 +149,10 @@ try {
   await native.evaluate(href => { history.pushState({}, '', href); }, projectUrl(Q));
   await waitUntil(async () => (await bindingFor(worker, projectUrl(Q)))?.href === projectUrl(Q) && sessionRequests > beforeSwitchRequests, 'SPA Project switch was not rebound');
   await sleep(600);
-  check('PROJECT-B-SPA-old-panel-not-new-Project', !(await command(start, 'SNAPSHOT')).conversations.some(c => c.localProjectCandidate?.projectId === Q), 'A changed Project URL alone does not relabel the known unchanged prior panel and its plain conversation links as the next Project.');
+  check('PROJECT-B-SPA-old-panel-not-new-Project', !(await command(start, 'SNAPSHOT')).localProjects.some(p => p.projectId === Q), 'A changed Project URL alone does not relabel the known unchanged prior panel and its plain conversation links as the next Project.');
   await fill(native, projectMarkup([memberMarkup(4)], RENAMED_PROJECT));
-  const secondProject = await snapshotWith(start, s => s.conversations.some(c => c.conversationId === cid(4) && c.localProjectCandidate?.projectId === Q), 'Second Project was not collected');
-  check('PROJECT-B-SPA-different-project-ID-same-name', secondProject.conversations.length === 4 && secondProject.conversations.find(c => c.conversationId === cid(4)).localProjectCandidate.key !== removed.conversations.find(c => c.conversationId === cid(2)).localProjectCandidate.key && secondProject.projects.length === 0 && secondProject.scopes.length === 0, 'A same-document switch to a different Project ID with the same name creates a separate candidate observation. Changed session principal/roster is never promoted to an account workspace.');
+  const secondProject = await snapshotWith(start, s => s.conversations.some(c => c.conversationId === cid(4) && localProjectFor(s, c)?.projectId === Q), 'Second Project was not collected');
+  check('PROJECT-B-SPA-different-project-ID-same-name', secondProject.conversations.length === 4 && secondProject.conversations.find(c => c.conversationId === cid(4)).localProject.projectKey !== removed.conversations.find(c => c.conversationId === cid(2)).localProject.projectKey && secondProject.projects.length === 0 && secondProject.scopes.length === 0, 'A same-document switch to a different Project ID with the same name creates a separate persistent locally observed Project. Changed session principal isolates the local boundary; no roster is promoted to a current workspace.');
   const stale = await oldObservation(worker, oldBinding.tabId, oldBinding, P, [{ conversationId: cid(90), canonicalUrl: url(90), nativeTitle: 'Stale member' }]);
   check('PROJECT-B-stale-route-event-rejected', stale.ok === false && !(await command(start, 'SNAPSHOT')).conversations.some(c => c.conversationId === cid(90)), 'The worker rejects a real isolated-world message carrying the old Project route binding after SPA navigation.');
 
@@ -165,8 +165,9 @@ try {
   await native.evaluate(href => { history.pushState({}, '', href); document.getElementById('metadata').replaceChildren(); }, projectUrl(P));
   await waitUntil(async () => (await bindingFor(worker, projectUrl(P)))?.href === projectUrl(P), 'Return Project route not rebound');
   await fill(native, projectMarkup([memberMarkup(1)]));
-  const returned = await snapshotWith(start, s => s.conversations.find(c => c.conversationId === cid(1))?.localProjectCandidate?.nativeTitle === PROJECT_TITLE, 'New route observation was not recorded');
-  check('PROJECT-B-same-ID-stable-directory-key', returned.conversations.filter(c => c.conversationId === cid(1)).length === 1 && returned.conversations.find(c => c.conversationId === cid(1)).key === firstRecord.key, 'Returning to an existing Project/member ID reuses the original conversation key; it does not duplicate the saved directory.');
+  const returned = await snapshotWith(start, s => s.conversations.some(c => c.conversationId === cid(1) && c.key !== firstRecord.key && localProjectFor(s, c)?.nativeTitle === PROJECT_TITLE), 'New route observation was not recorded');
+  const returnedRecord = returned.conversations.find(c => c.conversationId === cid(1) && c.key !== firstRecord.key);
+  check('PROJECT-B-same-ID-different-principal-isolation', returned.conversations.filter(c => c.conversationId === cid(1)).length === 2 && returned.conversations.some(c => c.key === firstRecord.key) && returnedRecord.localProject.projectKey !== firstRecord.localProject.projectKey, 'The same native Project/member IDs under the changed session principal get separate local keys; the first principal record remains preserved.');
   const currentBinding = await bindingFor(worker, projectUrl(P));
   const beforeDocument = returned.conversations.length;
   await native.reload();
@@ -175,7 +176,7 @@ try {
   check('PROJECT-B-expired-document-rejected', expired.ok === false && (await command(start, 'SNAPSHOT')).conversations.length === beforeDocument, 'After a real page reload, a payload carrying the expired document binding cannot insert a Project member.');
 
   await fill(native, projectMarkup([memberMarkup(1)]));
-  await snapshotWith(start, s => s.conversations.find(c => c.conversationId === cid(1))?.localProjectCandidate?.key !== returned.conversations.find(c => c.conversationId === cid(1)).localProjectCandidate.key, 'Reloaded document did not create an isolated new observation');
+  await snapshotWith(start, s => s.conversations.find(c => c.key === returnedRecord.key)?.localProject?.projectKey === returnedRecord.localProject.projectKey && s.conversations.find(c => c.key === returnedRecord.key)?.localProject?.observedAt !== returnedRecord.localProject.observedAt, 'Reloaded principal document did not update the stable local Project');
   const beforeStop = await command(start, 'SNAPSHOT');
   await command(start, 'SETTINGS_UPDATE', { patch: { captureEnabled: false } });
   await native.locator('ol').evaluate((node, markup) => node.insertAdjacentHTML('beforeend', markup), memberMarkup(93)); await sleep(450);
@@ -189,8 +190,8 @@ try {
   const otherNative = await otherContext.newPage(); await otherNative.goto(projectUrl(P)); await fill(otherNative, projectMarkup([memberMarkup(1)]));
   const otherSnapshot = await snapshotWith(other.start, s => s.conversations.some(c => c.conversationId === cid(1)), 'Other Profile did not collect its independent candidate');
   const beforeProfileCheck = await command(start, 'SNAPSHOT');
-  const retained = beforeProfileCheck.conversations.find(c => c.conversationId === cid(1));
-  check('PROJECT-B-same-IDs-across-Profiles', otherSnapshot.localProfileKey !== beforeProfileCheck.localProfileKey && otherSnapshot.conversations[0].key !== retained.key && otherSnapshot.conversations[0].localProjectCandidate.key !== retained.localProjectCandidate.key, 'The same native Project/conversation IDs in another Profile receive different local record and candidate keys; no catalog is shared.');
+  const retained = beforeProfileCheck.conversations.find(c => c.key === returnedRecord.key);
+  check('PROJECT-B-same-IDs-across-Profiles', otherSnapshot.localProfileKey !== beforeProfileCheck.localProfileKey && otherSnapshot.conversations[0].key !== retained.key && otherSnapshot.conversations[0].localProject.projectKey !== retained.localProject.projectKey, 'The same native Project/conversation IDs in another Profile receive different local record and observed Project keys; no catalog is shared.');
   await otherContext.close(); otherContext = null;
   // Move the pregranted host back to optional, retaining the synthetic grant in
   // this one test Profile, before exercising Chrome's actual remove API.
@@ -200,7 +201,7 @@ try {
   ({ browser, worker, start } = await launch(profile, harness)); context = browser;
   assert.equal((await command(start, 'SNAPSHOT')).capabilities.chatgpt, true, 'The isolated upgrade must retain the prior synthetic host grant');
   native = await context.newPage(); await native.goto(projectUrl(P)); await fill(native, projectMarkup([memberMarkup(1)]));
-  await snapshotWith(start, s => s.conversations.find(c => c.conversationId === cid(1))?.localProjectCandidate?.key !== retained.localProjectCandidate.key, 'New browser session did not settle before optional revocation');
+  await snapshotWith(start, s => s.conversations.find(c => c.key === retained.key)?.localProject?.projectKey === retained.localProject.projectKey && s.conversations.find(c => c.key === retained.key)?.localProject?.observedAt !== retained.localProject.observedAt, 'New browser session did not update the principal Project before optional revocation');
   const beforeRevoke = await command(start, 'SNAPSHOT');
   const revoked = await start.evaluate(() => chrome.permissions.remove({ origins: ['https://chatgpt.com/*'] }));
   await waitUntil(async () => !(await command(start, 'SNAPSHOT')).capabilities.chatgpt, 'Host permission did not revoke');

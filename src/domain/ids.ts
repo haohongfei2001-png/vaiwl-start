@@ -3,6 +3,11 @@ export interface ConversationIdentity { conversationId: string; canonicalUrl: st
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const CONVERSATION = new RegExp(`^/c/(${UUID})$`, 'i');
 const CONTAINER_CONVERSATION = new RegExp(`^/g/([a-zA-Z0-9_-]{1,128})/c/(${UUID})$`, 'i');
+/** Native Project URLs may append a presentation slug. The fixed ID, never
+ * that slug or a title, is the identity. A generic GPT container is not one. */
+export function projectIdFromContainer(value: string | null): string | null {
+  return value?.match(/^(g-p-[0-9a-f]{32})(?:-[a-zA-Z0-9_-]{1,91})?$/)?.[1] ?? null;
+}
 function safeURL(value: unknown): URL | null {
   if (typeof value !== 'string' || new TextEncoder().encode(value).byteLength > 8192 || /[\u0000-\u0020\u007f\\]/.test(value) || /%(?:2f|5c|2e|00|25)/i.test(value)) return null;
   const authority = value.match(/^https:\/\/([^/?#]*)/i)?.[1];
@@ -18,14 +23,16 @@ export function parseConversationUrl(value: unknown): ConversationIdentity | nul
   const conversationId = (direct?.[1] ?? contained?.[2])?.toLowerCase();
   if (contained && ['__proto__', 'constructor', 'prototype'].includes(contained[1]!)) return null;
   if (!conversationId) return null;
-  return { conversationId, canonicalUrl: `https://chatgpt.com/c/${conversationId}`, containerHint: contained?.[1] ?? null };
+  const container = contained?.[1] ?? null;
+  return { conversationId, canonicalUrl: `https://chatgpt.com/c/${conversationId}`, containerHint: projectIdFromContainer(container) ?? container };
 }
 export function parseProjectUrl(value: unknown): { projectId: string; canonicalUrl: string } | null {
   const url = safeURL(value);
   if (!url || url.protocol !== 'https:' || url.hostname !== 'chatgpt.com' || url.search || url.pathname.includes('%')) return null;
-  const m = /^\/g\/(g-p-[0-9a-f]{32})\/project$/.exec(url.pathname);
-  if (!m) return null;
-  return { projectId: m[1]!, canonicalUrl: `https://chatgpt.com/g/${m[1]}/project` };
+  const container = /^\/g\/([a-zA-Z0-9_-]{1,128})\/project$/.exec(url.pathname)?.[1] ?? null;
+  const projectId = projectIdFromContainer(container);
+  if (!projectId) return null;
+  return { projectId, canonicalUrl: `https://chatgpt.com/g/${projectId}/project` };
 }
 export function validateWebsiteUrl(value: unknown): string {
   boundedString(value, 8192);

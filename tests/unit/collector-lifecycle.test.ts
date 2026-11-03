@@ -22,6 +22,7 @@ function harness({ hold = false, ignoreAbort = false } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><p data-private>Forbidden body sentinel</p></body></html>', { url: URL1, runScripts: 'outside-only', pretendToBeVisual: true });
   const listeners = new Set<Listener>(), messages: any[] = [], requests: Request[] = [];
   let holdSessions = hold, binding = { id: randomUUID(), routeEpoch: 0 }, href = URL1;
+  let principal: string | null | undefined, identityGeneration = 0;
   const response = (url: string, body: unknown) => {
     const result = new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
     Object.defineProperty(result, 'url', { value: url }); return result;
@@ -53,6 +54,12 @@ function harness({ hold = false, ignoreAbort = false } = {}) {
       if (message.command === 'HELLO') {
         if (message.payload.href !== href) { href = message.payload.href; binding = { id: randomUUID(), routeEpoch: binding.routeEpoch + 1 }; }
         return { ok: true, data: { ...binding } };
+      }
+      if (message.command === 'LOCAL_IDENTITY') {
+        assert.equal(message.payload.bindingId, binding.id); assert.equal(message.payload.routeEpoch, binding.routeEpoch);
+        const changed = principal !== undefined && principal !== message.payload.principalKey;
+        principal = message.payload.principalKey;
+        return { ok: true, data: { identityToken: randomUUID(), identityGeneration: ++identityGeneration, changed } };
       }
       return { ok: true };
     },

@@ -1,4 +1,4 @@
-/** VAIWL-START-FREE/1.0, amendment 2026-11-03-native-experience (user approved). */
+/** VAIWL-START-FREE/1.0, amendment 2026-11-03-native-project-local (user approved). */
 export type ISOInstant = string;
 export type LocalDate = string; // YYYY-MM-DD, validated Gregorian date
 export type IANATimeZone = string;
@@ -73,6 +73,34 @@ export interface LocalProjectCandidate {
   observedAt: ISOInstant;
   basis: 'local-project-observation';
 }
+export type LocalProjectRelationBasis = 'linked-native-panel' | 'explicit-project-links' | 'labelled-sidebar-project' | 'native-project-page';
+/** Directly observed native relationships, independent of AccountScope proof. */
+export interface LocalObservedProject {
+  key: string;
+  localProfileKey: string;
+  boundaryKey: string; // Profile + principal digest, or session/document/identity generation
+  identityBasis: 'principal' | 'document';
+  projectId: NativeProjectId;
+  nativeTitle: string | null;
+  canonicalUrl: NativeProjectURL;
+  firstObservedAt: ISOInstant;
+  observedAt: ISOInstant;
+  relationBasis: LocalProjectRelationBasis;
+  source: { href: string; documentKey: string; routeEpoch: number };
+  trust: 'native-relation-observed';
+  membershipCoverage: 'observed-only';
+  stableRank: number;
+  revision: Revision;
+}
+export interface LocalObservedMembership {
+  projectKey: string;
+  boundaryKey: string;
+  identityBasis: LocalObservedProject['identityBasis'];
+  relationBasis: LocalProjectRelationBasis;
+  observedAt: ISOInstant;
+  state: 'observed' | 'conflicting';
+  conflictingProjectKeys?: string[];
+}
 export interface ConversationBase {
   key: RecordKey;
   provider: 'chatgpt';
@@ -88,6 +116,8 @@ export interface ConversationBase {
   activity: ActivitySummary | null;
   // Only unassigned UNKNOWN records can expose a local candidate. No ownership assertion.
   localProjectCandidate?: LocalProjectCandidate;
+  // Local grouping only; owner and formal membership remain unchanged.
+  localProject?: LocalObservedMembership;
   stableRank: number;
   revision: Revision;
 }

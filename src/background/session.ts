@@ -7,11 +7,13 @@ export interface DocumentBinding {
   scopeEpoch: number;
   scopeKey: string | null;
   lifecycle: 'active';
+  localIdentity?: { token: string; generation: number; principalKey: string | null; expiresAt: string | null; sampledAt: number };
 }
 export interface BrowserSession {
   id: string;
   scopeEpoch: number;
   bindings: Record<string, DocumentBinding>;
+  localIdentitySequence?: number;
 }
 let initializing: Promise<BrowserSession> | null = null;
 export async function session(): Promise<BrowserSession> {

@@ -3,7 +3,7 @@ import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate as immediate } from 'node:timers';
 import { JSDOM } from 'jsdom';
-import { startProjectObservation, type ProjectObservationMemory } from '../../src/collectors/chatgpt/project-observer.js';
+import { invalidateNativeProjectSurfaces, startProjectObservation, type ProjectObservationMemory } from '../../src/collectors/chatgpt/project-observer.js';
 import type { ProjectCandidate } from '../../src/collectors/chatgpt/project-candidate.js';
 
 const P = 'g-p-11111111111111111111111111111111';
@@ -14,6 +14,9 @@ const url = (project = P) => `https://chatgpt.com/g/${project}/project`;
 const row = (id: string, title = 'Member title') => `<li><a href="/c/${id}"><div><div>${title}</div><div data-preview>PRIVATE PREVIEW</div></div></a></li>`;
 const html = (members = row(C)) => `<main data-app-shell-main-surface><div data-app-shell-main-content-layout><div role="main"><h1><button><span>Project title</span></button></h1><div><div role="tablist"><button role="tab" aria-selected="true" id="t" aria-controls="p">Chats</button></div><div role="tabpanel" id="p" aria-labelledby="t"><section><ol>${members}</ol></section></div></div></div></div></main><aside><a href="/c/${D}">Unrelated history</a></aside>`;
 const flush = () => new Promise<void>(resolve => immediate(resolve));
+function replaceHeading(document: Document) {
+  const heading = document.querySelector('h1'); heading?.replaceWith(heading.cloneNode(true));
+}
 async function advance(t: TestContext, ms = 0) {
   // MutationObserver delivery and the async acknowledgement are microtasks;
   // flush them on both sides of the controlled production timer.
@@ -263,4 +266,183 @@ test('a reused panel with mixed old plain links and new container links remains 
   assert.equal(seen[1]!.projectId, Q);
   assert.deepEqual(seen[1]!.members.map(member => member.conversationId), [C, D]);
   assert.equal(seen[1]!.state, 'candidate', 'complete local linkage still does not establish account scope or formal membership');
+});
+
+test('sidebar relationships update incrementally outside Project routes and deduplicate per Project ID', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = fixture(t, `<nav aria-label="Chat history"><a href="/g/${P}/c/${C}" aria-label="First, chat in project Native P, unread"><span>First</span></a><a href="/g/${Q}/c/${D}" aria-label="Second, chat in project Native Q"><span>Second</span></a></nav>`);
+  h.dom.reconfigure({ url: 'https://chatgpt.com/' });
+  const seen: ProjectCandidate[] = [];
+  h.start(async candidate => { seen.push(candidate); return true; });
+  await advance(t, 0);
+  assert.deepEqual(seen.map(value => value.projectId), [P, Q]);
+  h.document.querySelector('nav')!.append(h.document.querySelector('nav a')!);
+  await advance(t, 120); assert.equal(seen.length, 2, 'sidebar row order is not a new relationship');
+  const link = h.document.querySelector(`a[href*="${P}"]`)!;
+  link.setAttribute('aria-label', 'Renamed member, chat in project Renamed P');
+  await advance(t, 120);
+  assert.equal(seen.length, 3); assert.equal(seen[2]!.projectId, P);
+  assert.equal(seen[2]!.nativeTitle, 'Renamed P'); assert.equal(seen[2]!.members[0]!.nativeTitle, 'Renamed member');
+});
+
+test('an identity transition blocks reused metadata surfaces until replacement', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = fixture(t), seen: ProjectCandidate[] = [], memory: ProjectObservationMemory = {};
+  const first = h.start(async candidate => { seen.push(candidate); return true; }, memory);
+  await advance(t, 0); assert.equal(seen.length, 1);
+  invalidateNativeProjectSurfaces(memory); first.stop();
+  h.start(async candidate => { seen.push(candidate); return true; }, memory);
+  await advance(t, 0); assert.equal(seen.length, 1);
+  h.document.querySelector('h1 span')!.firstChild!.nodeValue = 'New account title hydrated first';
+  await advance(t, 120); assert.equal(seen.length, 1, 'a title mutation does not reassign the old panel to a new principal');
+  const old = h.document.querySelector('[role="tabpanel"]')!; old.replaceWith(old.cloneNode(true)); h.protect();
+  await advance(t, 120); assert.equal(seen.length, 1, 'the old account heading is still a contributing surface');
+  replaceHeading(h.document);
+  await advance(t, 120); assert.equal(seen.length, 2);
+});
+
+test('an identity transition discovered during delivery does not blacklist the new replacement panel', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = fixture(t), seen: ProjectCandidate[] = [], memory: ProjectObservationMemory = {};
+  let changed = false;
+  h.start(async candidate => {
+    if (!changed && seen.length) { changed = true; invalidateNativeProjectSurfaces(memory); return false; }
+    seen.push(candidate); return true;
+  }, memory);
+  await advance(t, 0); assert.equal(seen.length, 1);
+  const old = h.document.querySelector('[role="tabpanel"]')!, next = old.cloneNode(true) as Element;
+  next.querySelector('li a > div > div')!.firstChild!.nodeValue = 'New principal member';
+  old.replaceWith(next); replaceHeading(h.document); h.protect();
+  await advance(t, 120); assert.equal(changed, true); assert.equal(seen.length, 1);
+  assert.equal(memory.blockedSurfaces!.has(old), true);
+  assert.equal(memory.blockedSurfaces!.has(next), false, 'the unacknowledged replacement is not owned by the old principal');
+  await advance(t, 500); assert.equal(seen.length, 2);
+  assert.equal(seen[1]!.members[0]!.nativeTitle, 'New principal member');
+});
+
+test('an identity transition before the first acknowledgement conservatively blocks the pending surface', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = fixture(t), seen: ProjectCandidate[] = [], memory: ProjectObservationMemory = {};
+  let calls = 0;
+  h.start(async candidate => {
+    calls++;
+    if (calls === 1) { invalidateNativeProjectSurfaces(memory); return false; }
+    seen.push(candidate); return true;
+  }, memory);
+  await advance(t, 0); assert.equal(calls, 1);
+  await advance(t, 500); assert.equal(calls, 1); assert.equal(seen.length, 0);
+  const old = h.document.querySelector('[role="tabpanel"]')!; old.replaceWith(old.cloneNode(true)); replaceHeading(h.document); h.protect();
+  await advance(t, 120); assert.equal(calls, 2); assert.equal(seen.length, 1);
+});
+
+test('identity invalidation clears metadata deduplication for a new surface with an identical snapshot', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = fixture(t), seen: ProjectCandidate[] = [], memory: ProjectObservationMemory = {};
+  h.start(async candidate => { seen.push(candidate); return true; }, memory);
+  await advance(t, 0); assert.equal(seen.length, 1);
+  invalidateNativeProjectSurfaces(memory);
+  const old = h.document.querySelector('[role="tabpanel"]')!; old.replaceWith(old.cloneNode(true)); replaceHeading(h.document); h.protect();
+  await advance(t, 120);
+  assert.equal(seen.length, 2); assert.deepEqual(seen[1], seen[0], 'equal metadata in a new identity must not reuse the old acknowledgement');
+});
+
+test('an identical replacement surface reaches the identity check before metadata deduplication', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = fixture(t), seen: ProjectCandidate[] = [], memory: ProjectObservationMemory = {};
+  let calls = 0;
+  h.start(async candidate => {
+    if (++calls === 2) { invalidateNativeProjectSurfaces(memory); return false; }
+    seen.push(candidate); return true;
+  }, memory);
+  await advance(t, 0); assert.equal(seen.length, 1);
+  const old = h.document.querySelector('[role="tabpanel"]')!, next = old.cloneNode(true) as Element;
+  old.replaceWith(next); replaceHeading(h.document); h.protect();
+  await advance(t, 120); assert.equal(calls, 2, 'a replacement surface must revalidate the current principal');
+  assert.equal(seen.length, 1); assert.equal(memory.blockedSurfaces!.has(old), true); assert.equal(memory.blockedSurfaces!.has(next), false);
+  await advance(t, 500); assert.equal(calls, 3); assert.equal(seen.length, 2); assert.deepEqual(seen[1], seen[0]);
+});
+
+test('a failed old surface does not exhaust the retry allowance of an identical replacement', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = fixture(t); let calls = 0;
+  h.start(async () => ++calls >= 3);
+  await advance(t, 0); await advance(t, 500); assert.equal(calls, 2);
+  const old = h.document.querySelector('[role="tabpanel"]')!; old.replaceWith(old.cloneNode(true)); h.protect();
+  await advance(t, 120); assert.equal(calls, 3);
+  await advance(t, 5000); assert.equal(calls, 3);
+});
+
+test('title-only fallback cannot reattribute the known old heading after a Project SPA route switch', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = fixture(t), seen: ProjectCandidate[] = [], memory: ProjectObservationMemory = {};
+  const old = h.start(async candidate => { seen.push(candidate); return true; }, memory);
+  await advance(t, 0); old.stop();
+  h.dom.reconfigure({ url: url(Q) });
+  h.document.querySelector('[role="tabpanel"]')!.remove();
+  h.start(async candidate => { seen.push(candidate); return true; }, memory);
+  await advance(t, 0); assert.equal(seen.length, 1, 'dropping a panel must not bypass the retained heading guard');
+  const heading = h.document.querySelector('h1')!;
+  const replacement = heading.cloneNode(true) as Element;
+  replacement.querySelector('span')!.firstChild!.nodeValue = 'Empty Q'; heading.replaceWith(replacement);
+  await advance(t, 120); assert.equal(seen.length, 2);
+  assert.equal(seen[1]!.projectId, Q); assert.equal(seen[1]!.relationBasis, 'native-project-page'); assert.deepEqual(seen[1]!.members, []);
+});
+
+test('identity invalidation also blocks an old accepted heading from becoming a title-only new-identity Project', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = fixture(t), seen: ProjectCandidate[] = [], memory: ProjectObservationMemory = {};
+  h.start(async candidate => { seen.push(candidate); return true; }, memory);
+  await advance(t, 0); assert.equal(seen.length, 1);
+  invalidateNativeProjectSurfaces(memory);
+  h.document.querySelector('[role="tabpanel"]')!.remove();
+  await advance(t, 120); assert.equal(seen.length, 1);
+  const old = h.document.querySelector('h1')!; old.replaceWith(old.cloneNode(true));
+  await advance(t, 120); assert.equal(seen.length, 2); assert.equal(seen[1]!.relationBasis, 'native-project-page');
+});
+
+test('a mixed explicit sidebar/main snapshot cannot carry retained old-identity members into a new principal', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const E = '32345678-1234-1234-1234-123456789abc', F = '42345678-1234-1234-1234-123456789abc';
+  const sidebar = (id: string) => `<nav aria-label="Chat history"><a href="/g/${P}/c/${id}"><span>Sidebar member</span></a></nav>`;
+  const main = (id: string, title: string) => `<main><h1>${title}</h1><a href="/g/${P}/c/${id}"><span>Main member</span></a></main>`;
+  const h = fixture(t, sidebar(C) + main(D, 'Project A'));
+  const memory: ProjectObservationMemory = {}, accepted: Array<{ principal: string; candidate: ProjectCandidate }> = [];
+  let principal = 'A', bound = 'A', deliveries = 0;
+  h.start(async candidate => {
+    deliveries++;
+    if (principal !== bound) { bound = principal; invalidateNativeProjectSurfaces(memory); return false; }
+    accepted.push({ principal, candidate }); return true;
+  }, memory);
+  await advance(t, 0);
+  assert.deepEqual(accepted[0]!.candidate.members.map(member => member.conversationId), [C, D]);
+  const oldMain = h.document.querySelector('main')!, oldSidebar = h.document.querySelector('nav')!;
+  principal = 'B'; oldSidebar.replaceWith(h.document.createRange().createContextualFragment(sidebar(E)));
+  await advance(t, 120); assert.equal(deliveries, 2); assert.equal(accepted.length, 1);
+  await advance(t, 500); assert.equal(accepted.length, 1, 'B must not receive retained A main member D');
+  assert.equal(memory.blockedSurfaces!.has(oldMain), true, 'all source roots are remembered, including the non-first main root');
+  oldMain.replaceWith(h.document.createRange().createContextualFragment(main(F, 'Project B')));
+  await advance(t, 120);
+  assert.equal(accepted.length, 2); assert.equal(accepted[1]!.principal, 'B');
+  assert.equal(accepted[1]!.candidate.nativeTitle, 'Project B');
+  assert.deepEqual(accepted[1]!.candidate.members.map(member => member.conversationId), [E, F]);
+});
+
+test('a Project name from a separate old sidebar remains part of the atomic identity boundary', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const names = (title: string) => `<nav aria-label="Chat history" id="names"><a href="/g/${P}/project"><span>${title}</span></a></nav>`;
+  const members = (title: string) => `<nav aria-label="Chat history" id="members"><a href="/g/${P}/c/${C}"><span>${title}</span></a></nav>`;
+  const h = fixture(t, names('Old account title') + members('First member'));
+  h.dom.reconfigure({ url: 'https://chatgpt.com/' });
+  const memory: ProjectObservationMemory = {}, accepted: ProjectCandidate[] = [];
+  let changed = false;
+  h.start(async candidate => {
+    if (accepted.length && !changed) { changed = true; invalidateNativeProjectSurfaces(memory); return false; }
+    accepted.push(candidate); return true;
+  }, memory);
+  await advance(t, 0); assert.equal(accepted.length, 1);
+  h.document.querySelector('#members')!.replaceWith(h.document.createRange().createContextualFragment(members('New account member')));
+  await advance(t, 120); await advance(t, 500);
+  assert.equal(accepted.length, 1, 'a new member root must not borrow a title from the old identity root');
+  h.document.querySelector('#names')!.replaceWith(h.document.createRange().createContextualFragment(names('New account title')));
+  await advance(t, 120); assert.equal(accepted.length, 2); assert.equal(accepted[1]!.nativeTitle, 'New account title');
 });

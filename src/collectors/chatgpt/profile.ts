@@ -1,7 +1,7 @@
 /** Local candidates are useful without full account/workspace certification.
  * A browser/page/config value still cannot enable native membership authority. */
 export const CHATGPT_METADATA_PROFILE = Object.freeze({
-  id: 'start-chatgpt-metadata-candidate-20261102', revision: 3,
+  id: 'start-chatgpt-native-project-local-20261103', revision: 4,
   upstreamSha: '1903b00f774b4fd7f3d15b3669878c32e2c7a9c8',
   liveVerified: false,
   localProjectCandidates: true,

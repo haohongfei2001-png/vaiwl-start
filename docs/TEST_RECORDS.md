@@ -1,5 +1,15 @@
 # Free V1 · 同提交验证与真实来源边界
 
+## 当前专项：原生 Project 本地稳定组织（2026-11-03）
+
+合同为[第13号修订](free-v1/13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)，生产基线 `e21d7144`。新增多适配器、principal-only、稳定本地项目模型/投影及同文档身份切换测试；新真实安装浏览器专项 `tests/browser/native-project-grouping.mjs`，回执 `native-project-grouping-validation.json`、截图 `native-project-grouping.png` 已接入同SHA CI与开发包。只有实际回执标PASS的步骤才视为通过；没有本地Chromium可执行文件，不把未启动的浏览器写成通过。
+
+独立审查推动实际修复：独立主体索引避免跨账号同ID覆盖；按边界保护墓碑；同文档换账号旧面板阻断与新面板恢复；新面板不能沿用旧主体去重缓存；瞬时session失败不复用旧主体写入、也不永久阻断正常面板。审查另实际复现并修复“新侧栏+旧主面板”混合批次跨主体错误，所有成员及名称来源共同参与隔离。原history/activity/正式归属路径保留。
+
+首次集成单元为137/144，7个旧collector测试仍使用旧两请求和空OBSERVE协议。更新mock以验证新增LOCAL_IDENTITY token/代际并保留全部生命周期断言；正常本地路径改为单次session读取，不访问accounts。新增真实同文档身份切换反例，不用reload替代。原diagnostic两请求测试仍保留。最终单元数、实装检查数、浏览器版本及包哈希以同SHA CI/PR回执为准。
+
+真实来源：本轮已实际读取两个指定开源项目固定SHA的元数据相关源码；本机Browser连接返回缺少originating browser context，因此当前已登录ChatGPT样本仍未核验。该真实来源限制独立列为P11，不关闭已实现的本地组织能力。无新增诊断器，不要求用户重导历史或重复完整Free V1验收。
+
 当前合同修订：`2026-11-03-native-experience`。本文件说明验证范围；交付包的 `build.json`、`verification/*.json` 及对应GitHub Actions是实际SHA和最终结果依据，不能引用另一提交的绿色结果。
 
 ## 书签与持久生活模式（2026-11-03）

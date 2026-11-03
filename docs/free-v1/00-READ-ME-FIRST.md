@@ -1,5 +1,7 @@
 # VAIWL Start Free V1 · 当前合同入口
 
+> **当前优先修订：2026-11-03-native-project-local。** [第13号合同](13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)拆开本地原生关系组织、完整账号空间认证、全量同步。明确关系可形成稳定本地项目卡；不再按单次观察随机拆卡，正式认证边界不变。第12号生活/书签功能继承。
+
 > **新增有效修订：2026-11-03-life-bookmarks。** [第12号合同](12-LIFE-BOOKMARKS-AMENDMENT.md)批准持久生活/工作空间双模式、官方favicon与单行原生书签架；本修订优先于下方历史UI/权限描述。
 
 
@@ -17,7 +19,7 @@
 
 ## 阅读顺序与权威
 
-1. 先读 [本地工作空间修订](10-LOCAL-FIRST-AMENDMENT.md)，再读 [产品规格](01-PRODUCT-SPEC.md)：做什么、什么算完成。
+1. 先读 [原生项目本地组织修订](13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)，再读其继承的第10至12号修订与 [产品规格](01-PRODUCT-SPEC.md)：做什么、什么算完成。
 2. [首页与交互](02-INTERACTION-DESIGN.md) 和 [可操作设计样稿](../../design/free-v1/prototype.html)。样稿中的全部数据均为合成示例。
 3. [数据合同](03-DATA-CONTRACT.md) 和 [TypeScript 合同](../../contracts/free-v1.ts)。文字定义不变量，类型定义字段形状。
 4. [来源与可靠性](04-SOURCE-RELIABILITY.md)：标准 API、已读源码、仍需真实验收的边界。

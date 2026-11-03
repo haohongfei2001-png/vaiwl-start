@@ -1,6 +1,6 @@
-import { createSessionStatusReader } from './identity.js';
+import { createLocalPrincipalReader, createSessionStatusReader } from './identity.js';
 import { observeProjectCandidate, readProjectProbe } from './metadata.js';
-import { startProjectObservation, type ProjectObservationMemory } from './project-observer.js';
+import { invalidateNativeProjectSurfaces, startProjectObservation, type ProjectObservationMemory } from './project-observer.js';
 import { inspectMetadataStructure, type MetadataStructureSummary } from './structure-probe.js';
 import { CHATGPT_METADATA_PROFILE } from './profile.js';
 import { parseProjectUrl } from '../../domain/ids.js';
@@ -15,6 +15,8 @@ if (!runtime.__vaiwlStartCollector && location.origin === 'https://chatgpt.com' 
   let pending: Promise<unknown> = Promise.resolve();
   let activeProbe: string | null = null;
   const identity = createSessionStatusReader();
+  const principal = createLocalPrincipalReader();
+  let lastPrincipal: string | null | undefined;
   const projectMemory: ProjectObservationMemory = {};
   const send = (command: string, payload: unknown) => chrome.runtime.sendMessage({ protocol: COLLECTOR_PROTOCOL, operationId: crypto.randomUUID(), command, payload });
   function invalidate() { sequence++; controller?.abort(); controller = null; }
@@ -46,20 +48,35 @@ if (!runtime.__vaiwlStartCollector && location.origin === 'https://chatgpt.com' 
     return enqueue(async (signal, current) => {
       const response = await send('HELLO', { href: location.href }); if (!response?.ok || !current()) return;
       const binding = response.data;
-      if (parseProjectUrl(location.href)) {
-        startProjectObservation(document, { signal, current, memory: projectMemory, deliver: async projectCandidate => {
-          if (!current()) return false;
-          const candidates = projectCandidate.members.map(m => ({ url: m.canonicalUrl, title: m.nativeTitle }));
-          const result = await send('OBSERVE', { bindingId: binding.id, routeEpoch: binding.routeEpoch, candidates, projectCandidate });
-          return result?.ok === true && current();
-        } });
-      } else {
-        await send('OBSERVE', { bindingId: binding.id, routeEpoch: binding.routeEpoch, candidates: [] });
-      }
-      const statusTask = identity.readStatus(signal).then(async status => {
-        if (current()) await send('SOURCE_STATUS', { bindingId: binding.id, routeEpoch: binding.routeEpoch, code: status.code, profileId: CHATGPT_METADATA_PROFILE.id });
-      });
-      await Promise.allSettled([statusTask]);
+      const bindIdentity = async (publishStatus = false) => {
+        const observed = await principal.read(signal); if (!current()) return null;
+        if (lastPrincipal && observed.principalKey === null && observed.code !== 'session-unauthorized') {
+          // A transport failure is not an account switch. Reject this batch
+          // without reusing its old proof; a later successful read can recover
+          // on the same surface. Never downgrade and merge unknown identities.
+          if (publishStatus) await send('SOURCE_STATUS', { bindingId: binding.id, routeEpoch: binding.routeEpoch, code: observed.code, profileId: CHATGPT_METADATA_PROFILE.id });
+          return null;
+        }
+        const proof = await send('LOCAL_IDENTITY', { bindingId: binding.id, routeEpoch: binding.routeEpoch,
+          principalKey: observed.principalKey, expiresAt: observed.expiresAt });
+        if (!proof?.ok || !current()) return null;
+        const changed = lastPrincipal !== undefined && lastPrincipal !== observed.principalKey || proof.data.changed === true;
+        if (changed) invalidateNativeProjectSurfaces(projectMemory);
+        lastPrincipal = observed.principalKey;
+        if (publishStatus || changed) await send('SOURCE_STATUS', { bindingId: binding.id, routeEpoch: binding.routeEpoch, code: observed.code, profileId: CHATGPT_METADATA_PROFILE.id });
+        return { token: proof.data.identityToken, changed };
+      };
+      await bindIdentity(true); if (!current()) return;
+      startProjectObservation(document, { signal, current, memory: projectMemory, deliver: async projectCandidate => {
+        // Revalidate only after metadata deduplication. A principal transition
+        // rejects the sampled old surface and rotates the worker's identity token.
+        const proof = await bindIdentity();
+        if (!proof || proof.changed || !current()) return false;
+        const candidates = projectCandidate.members.map(m => ({ url: m.canonicalUrl, title: m.nativeTitle }));
+        const result = await send('OBSERVE', { bindingId: binding.id, routeEpoch: binding.routeEpoch,
+          identityToken: proof.token, candidates, projectCandidate });
+        return result?.ok === true && current();
+      } });
     });
   }
   function pickStructure(signal: AbortSignal, current: () => boolean): Promise<MetadataStructureSummary> {

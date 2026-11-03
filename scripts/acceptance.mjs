@@ -7,13 +7,24 @@ if(build.sha!==currentSha||build.dirty!==currentDirty)throw Error('Stale build f
 const specification = await readFile('docs/free-v1/06-ACCEPTANCE.md', 'utf8');
 const U='unit-validation', B='browser-validation', I='import-recovery-validation', P='privacy-boundaries-validation', N='source-recovery-validation', F='storage-faults-validation', V='ui-validation', R='review-validation';
 const X='native-experience-validation', G='native-upgrade-validation';
+const LP='native-project-grouping-validation';
 const evidence={};
-for(const name of [U,B,I,P,N,F,V,R,X,G,'privacy-audit','performance-validation']){
+for(const name of [U,B,I,P,N,F,V,R,X,G,LP,'privacy-audit','performance-validation']){
   try{const result=JSON.parse(await readFile('artifacts/'+name+'.json','utf8'));if(result.buildSha===build.sha&&result.dirty===build.dirty)evidence[name]=result;}catch{/* Other-build or missing evidence never passes. */}
 }
 // Each full claim names actual predicates. File-level success alone is insufficient.
 // Unit IDs are actual test names, matched by stable prefixes. Visual review is explicit.
 const full={
+ P01:{[LP]:['LOCAL-P-empty-card-without-workspace','LOCAL-P-members-and-title-separation'],[U]:['native local Project survives repeated visits']},
+ P02:{[LP]:['LOCAL-P-rename-keeps-identity','LOCAL-P-reload-stable-project','LOCAL-P-slug-is-not-identity','LOCAL-P-observation-after-restart-no-duplicate']},
+ P03:{[LP]:['LOCAL-P-incremental-same-title-different-IDs','LOCAL-P-same-name-distinct-IDs']},
+ P04:{[LP]:['LOCAL-P-principal-boundary-isolation','LOCAL-P-unknown-document-stability','LOCAL-P-unknown-documents-do-not-merge','LOCAL-P-same-ID-cross-Profile-isolation'],[U]:['concurrent first observations from different principals']},
+ P05:{[LP]:['LOCAL-P-incremental-same-title-different-IDs','LOCAL-P-reorder-is-idempotent','LOCAL-P-missing-partial-empty-no-removal']},
+ P06:{[LP]:['LOCAL-P-expired-document-rejected','LOCAL-P-stale-SPA-event-rejected','LOCAL-P-same-document-old-surface-rejected','LOCAL-P-same-document-fresh-surface-resumes'],[U]:['same-document principal change rejects the retained old surface']},
+ P07:{[LP]:['LOCAL-P-legacy-data-preserved','LOCAL-P-older-member-stays-in-project','LOCAL-P-project-name-search'],[U]:['local grouping reuses history identity']},
+ P08:{[LP]:['LOCAL-P-explicit-Project-URL','LOCAL-P-sidebar-explicit-ID-only','LOCAL-P-semantic-adapter-different-hierarchy','LOCAL-P-generic-GPT-is-not-Project']},
+ P09:{[LP]:['LOCAL-P-logout-does-not-reuse-principal','LOCAL-P-capture-stop-preserves-catalog','LOCAL-P-real-permission-revocation','LOCAL-P-v1-nondestructive-storage'],[U]:['local Project writes are atomic on quota failure']},
+ P10:{[LP]:['LOCAL-P-certification-boundary','LOCAL-P-metadata-only-and-activity-preserved','LOCAL-P-production-bytes','LOCAL-P-no-page-errors']},
  X01:{[X]:['N-default-browser-title','N-default-browser-favicon','N-independent-custom-title','N-independent-product-icon','N-brand-identity-unchanged','N-restore-default']},
  X02:{[X]:['N-upload-raster-reencoded','N-upload-reject-evil.svg','N-upload-reject-fake.png','N-upload-reject-too-big.png','N-restart-persistence','N-extension-reload-persistence']},
  X03:{[X]:['N-always-bar-hidden','N-user-hidden-bar','N-no-permission-help','N-denial-does-not-block-workspace','N-real-optional-revocation','N-revocation-keeps-legacy-and-workspace']},
@@ -57,6 +68,7 @@ const full={
 const sourceDependent=new Set(['S07','O02','O04','O06','O07','O08','O10','O11','O12','O13','O14','O15','O17','T03','D07']);
 const deviceDependent=new Set(['D08','D09','U06','U09','U10','U11']);
 const gaps={
+ P11:'Current authenticated ChatGPT Project metadata has not been observed in the connected real browser. Isolated production-extension fixtures prove local behavior, not live source coverage.',
  S07:'U proves 500-to-499 per-record resolution; production B cannot admit a resolved scope until the live source gate is proven.',
  O04:'Synthetic-click rejection passes; complete negative navigation must be repeated with a proven positive arrival adapter.',
  O08:'Scripted history.back/go qualifier counterexamples remain pending with the supported activity adapter.',
@@ -98,7 +110,7 @@ function predicate(name,id){
 }
 const records=[];
 for(const line of specification.split('\n')){
- const cells=line.split('|').map(s=>s.trim());if(!/^[SOTDULX]\d{2}$/.test(cells[1]||''))continue;
+ const cells=line.split('|').map(s=>s.trim());if(!/^[SOTDULXP]\d{2}$/.test(cells[1]||''))continue;
  const [id,action,requirement,layer]=cells.slice(1,5);
  const predicates=Object.entries(full[id]||related[id]||{}).flatMap(([name,ids])=>ids.map(check=>predicate(name,check)));
  const blocked=layer.includes('L')||sourceDependent.has(id)||deviceDependent.has(id);
@@ -112,8 +124,8 @@ for(const line of specification.split('\n')){
   limitations:['Row PASS never implies Free V1 acceptance or real Mac/Edge compatibility.',...(id==='D10'?['Current v1 initial-schema recovery and same-version reopen; quota is injected into a real browser transaction, not physical disk exhaustion or a nonexistent legacy migration.']:[])]});
 }
 for(let n=1;n<=4;n++)records.push({id:'JOURNEY-'+n,status:'BLOCKED',buildSha:build.sha,browserVersion:null,environment:'Real Mac Chrome and Edge',steps:'Continuous journey '+n+' with local-first amendment',observed:'Actual device journey and authenticated native context/PROJECT/NONE remain unverified. This does not block tested local history and Start navigation activity.',artifactRefs:['M0_SOURCE_GATE.md'],limitations:['Synthetic browser tests do not replace this journey.']});
-const engineeringGates=[U,'privacy-audit',B,I,P,N,F,V,X,G,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
+const engineeringGates=[U,'privacy-audit',B,I,P,N,F,V,X,G,LP,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
 const evidenceFailures=Object.entries(evidence).filter(([,r])=>r.status==='FAIL'||r.checks?.some(c=>typeof c==='object'&&c.status==='FAIL')).map(([name])=>name+'.json');
 const status=records.some(r=>r.status==='FAIL')||evidenceFailures.length?'FAIL':engineeringGates.every(g=>g.status==='PASS')?'LOCAL_WORKSPACE_READY':'IMPLEMENTATION_READY_FOR_CI';
-await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status,sourceGate:build.sourceGate,amendment:build.amendment,nativeAttribution:'UNVERIFIED',buildSha:build.sha,dirty:build.dirty,engineeringGates,evidenceFailures,records},null,2));
+await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status,sourceGate:build.sourceGate,amendment:build.amendment,nativeAttribution:'UNVERIFIED',nativeProjectLocalGrouping:evidence[LP]?.status||'NOT_RUN',accountWorkspaceCertification:'UNVERIFIED',fullProjectSync:'NOT_IMPLEMENTED',buildSha:build.sha,dirty:build.dirty,engineeringGates,evidenceFailures,records},null,2));
 console.log(JSON.stringify({status,buildSha:build.sha,records:records.length,statuses:records.reduce((n,r)=>({...n,[r.status]:(n[r.status]||0)+1}),{}),engineeringGates}));

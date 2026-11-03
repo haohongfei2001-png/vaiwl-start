@@ -1,5 +1,13 @@
 # VAIWL Start · 本地工作空间纠偏
 
+## 当前：原生 Project 本地稳定组织（2026-11-03）
+
+本轮从远端 `e21d7144b164b262c558a1fabbcbb32ac2eefe7c` 继续，按用户授权的[第13号修订](free-v1/13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)取消“完整 Workspace 认证是所有本地 Project 组织前置”的限制。下文旧 `PROJECT_BLOCKED` 和单次候选键描述属于此前阶段，不代表当前本地组织能力。
+
+生产已接通 `HELLO → LOCAL_IDENTITY → OBSERVE → observeLocalProject → LocalObservedProject/本地关系 → Start项目卡`。增加安全slug路由、多种独立无正文适配器、稳定主体/文档边界、空项目、增量成员、改名/搜索/旧成员保留。完整账号认证与全量同步继续独立未完成，`confirmObservation()` 未接收弱证明。
+
+原数据库v1/12stores、目录key、历史/活动、D1标题和生活/书签继承；新项目保存在settings前缀行。不同主体的相同会话ID使用独立本地记录，冲突关系保留而不自动搬移。直接查看[源码与测试记录](TEST_RECORDS.md)和原PR #1同SHA CI/开发包回执。本地浏览器连接不可用，未把合成来源冒称为当前ChatGPT实机通过。
+
 合同：`VAIWL-START-FREE/1.0 / 2026-11-03-native-experience`。唯一分支：`codex/free-v1-implementation`，Draft PR #1。
 
 ## 书签与生活模式候选（2026-11-03）

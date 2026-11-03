@@ -16,7 +16,7 @@ for (const [entry, output, format] of entries) {
   const result = await build({ entryPoints: [entry], outfile: `dist/${output}`, bundle: true, format, target: 'chrome120', platform: 'browser', metafile: true, sourcemap: false, minify: false, legalComments: 'none' });
   metadata[output] = result.metafile;
 }
-const record = { contract: 'VAIWL-START-FREE/1.0', amendment: '2026-11-03-life-bookmarks', sha, dirty, version: manifest.version, sourceGate: 'LOCAL_WORKSPACE_READY', nativeAttribution: 'UNVERIFIED', adapterVersion: 'chatgpt-metadata-candidate/3', files: {} };
+const record = { contract: 'VAIWL-START-FREE/1.0', amendment: '2026-11-03-native-project-local', sha, dirty, version: manifest.version, sourceGate: 'LOCAL_WORKSPACE_READY', nativeAttribution: 'UNVERIFIED', nativeProjectLocalGrouping: 'IMPLEMENTED', accountWorkspaceCertification: 'UNVERIFIED', fullProjectSync: 'NOT_IMPLEMENTED', adapterVersion: 'chatgpt-native-project-local/4', files: {} };
 for (const name of ['manifest.json', 'service-worker.js', 'content.js', 'newtab.js', 'newtab.html', 'newtab.css', 'bookmarks.css', 'life.css', 'source-check.js', 'source-check.html', 'source-check.css', 'tab-chrome.svg', 'tab-edge.svg', 'tab-product.svg']) record.files[name] = createHash('sha256').update(await readFile('dist/' + name)).digest('hex');
 await writeFile('dist/build.json', JSON.stringify(record, null, 2) + '\n');
 await mkdir('artifacts', { recursive: true });

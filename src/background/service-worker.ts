@@ -2,6 +2,7 @@ import { HOME_MODE_KEY } from '../domain/home-mode.js';
 import { NATIVE_KEYS } from '../domain/native-experience.js';
 import { createRepository, type Repository } from '../storage/repository.js';
 import { parseConversationUrl } from '../domain/ids.js';
+import { instant } from '../domain/time.js';
 import { COLLECTOR_PROTOCOL, PROTOCOL, bounded, exact, parseEnvelope, publicError, trustedCollectorSender, trustedExtensionSender } from '../shared/protocol.js';
 import { CHATGPT_METADATA_PROFILE, SOURCE_FAILURE_CODES } from '../collectors/chatgpt/profile.js';
 import { parseLocalProjectCandidate } from '../collectors/chatgpt/project-candidate.js';
@@ -108,12 +109,26 @@ async function collectorCommand(message: unknown, sender: chrome.runtime.Message
     if (parseConversationUrl(p.href)) { await repo.discoverCandidates([{ url: p.href, title: null, source: 'unknown', titleBasis: 'unknown' }]); await broadcast(); }
     return { id: binding.id, routeEpoch: binding.routeEpoch };
   }
-  if (message.command === 'OBSERVE') exact(p, ['bindingId', 'routeEpoch', 'candidates'], ['projectCandidate']);
+  if (message.command === 'OBSERVE') exact(p, ['bindingId', 'routeEpoch', 'candidates'], ['projectCandidate', 'identityToken']);
+  else if (message.command === 'LOCAL_IDENTITY') exact(p, ['bindingId', 'routeEpoch', 'principalKey', 'expiresAt']);
   else if (message.command === 'SOURCE_STATUS') exact(p, ['bindingId', 'routeEpoch', 'code', 'profileId']);
   else throw new Error('INVALID_MESSAGE');
   bounded(p.bindingId, 80); integer(p.routeEpoch);
   const binding = await requireCurrentBinding(sender, { id: p.bindingId, routeEpoch: p.routeEpoch });
   if (!(await repo.getSnapshot()).settings.captureEnabled) throw new Error('PERMISSION_REQUIRED');
+  if (message.command === 'LOCAL_IDENTITY') {
+    if (p.principalKey === null ? p.expiresAt !== null : typeof p.principalKey !== 'string' || !/^principal:[a-f0-9]{64}$/.test(p.principalKey)
+      || instant(p.expiresAt) === null || instant(p.expiresAt)! <= Date.now()) throw new Error('INVALID_MESSAGE');
+    return changeSession(async current => {
+      await requireCurrentBinding(sender, binding);
+      const active = current.bindings[String(binding.tabId)];
+      if (active?.id !== binding.id || current.scopeEpoch !== binding.scopeEpoch || !await chrome.permissions.contains(CONNECTION)) throw Error('STALE_DOCUMENT');
+      const changed = !!active.localIdentity && active.localIdentity.principalKey !== p.principalKey;
+      const generation = !active.localIdentity || changed ? (current.localIdentitySequence = (current.localIdentitySequence ?? 0) + 1) : active.localIdentity.generation;
+      active.localIdentity = { token: crypto.randomUUID(), generation, principalKey: p.principalKey, expiresAt: p.expiresAt, sampledAt: Date.now() };
+      return { identityToken: active.localIdentity.token, identityGeneration: generation, changed };
+    });
+  }
   if (message.command === 'SOURCE_STATUS') {
     if (!SOURCE_FAILURE_CODES.includes(p.code) || p.profileId !== CHATGPT_METADATA_PROFILE.id) throw new Error('INVALID_MESSAGE');
     await requireCurrentBinding(sender, binding);
@@ -122,15 +137,20 @@ async function collectorCommand(message: unknown, sender: chrome.runtime.Message
     return { accepted: true };
   }
   if (!Array.isArray(p.candidates) || p.candidates.length > 200) throw new Error('INVALID_MESSAGE');
-  for (const candidate of p.candidates) { exact(candidate, ['url', 'title']); bounded(candidate.url, 8192); bounded(candidate.title, 512); if (!parseConversationUrl(candidate.url)) throw new Error('INVALID_MESSAGE'); }
+  for (const candidate of p.candidates) { exact(candidate, ['url', 'title']); bounded(candidate.url, 8192); if (candidate.title !== null) bounded(candidate.title, 512); if (!parseConversationUrl(candidate.url)) throw new Error('INVALID_MESSAGE'); }
   const projectCandidate = p.projectCandidate === undefined ? null : parseLocalProjectCandidate(p.projectCandidate, binding.href);
   if (projectCandidate && (p.candidates.length !== projectCandidate.members.length || p.candidates.some((candidate: any, index: number) => candidate.url !== projectCandidate.members[index]!.canonicalUrl || candidate.title !== projectCandidate.members[index]!.nativeTitle))) throw new Error('INVALID_MESSAGE');
   if (projectCandidate) {
+    bounded(p.identityToken, 80);
     await requireCurrentBinding(sender, binding);
     await changeSession(async current => {
       if (current.scopeEpoch !== binding.scopeEpoch || current.bindings[String(binding.tabId)]?.id !== binding.id || !await chrome.permissions.contains(CONNECTION)) throw new Error('STALE_DOCUMENT');
       await requireCurrentBinding(sender, binding);
-      await repo.observeLocalProjectCandidate(projectCandidate, { browserSessionId: current.id, bindingId: binding.id, observationId: message.operationId, sourceHref: binding.href });
+      const identity = current.bindings[String(binding.tabId)]?.localIdentity, now = Date.now();
+      if (!identity || identity.token !== p.identityToken || now < identity.sampledAt || now - identity.sampledAt > 10000
+        || identity.principalKey && (instant(identity.expiresAt) === null || instant(identity.expiresAt)! <= now)) throw Error('STALE_DOCUMENT');
+      await repo.observeLocalProject(projectCandidate, { browserSessionId: current.id, documentId: binding.documentId,
+        identityGeneration: identity.generation, principalKey: identity.principalKey, sourceHref: binding.href, routeEpoch: binding.routeEpoch });
     });
     await broadcast();
   } else if (p.candidates.length) {
@@ -139,7 +159,7 @@ async function collectorCommand(message: unknown, sender: chrome.runtime.Message
     await repo.discoverCandidates(p.candidates.map((c: any) => ({ ...c, source: 'unknown', titleBasis: 'native-label' })));
     await broadcast();
   }
-  return { accepted: true, membership: 'UNKNOWN', projectCandidate: !!projectCandidate, sourceGate: 'LOCAL_WORKSPACE_READY' };
+  return { accepted: true, membership: 'UNKNOWN', localProject: !!projectCandidate, sourceGate: 'LOCAL_WORKSPACE_READY' };
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {

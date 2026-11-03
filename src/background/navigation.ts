@@ -23,6 +23,7 @@ export async function bindCurrentDocument(sender: chrome.runtime.MessageSender, 
     if (existing?.documentId === sender.documentId && existing.href === href && existing.scopeEpoch === current.scopeEpoch) return existing;
     const binding: DocumentBinding = { id: crypto.randomUUID(), tabId: sender.tab!.id!, documentId: sender.documentId!, href,
       routeEpoch: existing?.documentId === sender.documentId ? existing.routeEpoch + 1 : 0, scopeEpoch: current.scopeEpoch, scopeKey: null, lifecycle: 'active' };
+    if (existing?.documentId === sender.documentId && existing.localIdentity) binding.localIdentity = existing.localIdentity;
     current.bindings[String(binding.tabId)] = binding; return binding;
   });
 }
@@ -124,7 +125,7 @@ export function registerNavigation(getRepository: () => Promise<Repository>, cha
         if (details.url === 'about:blank' && intent.evidence.kind === 'start-gesture' && intent.disposition !== 'same-tab' && intent.targetDocumentId === null) continue;
         await repository.rejectIntent(intent.id, 'target-mismatch');
       }
-      if (parseProjectUrl(details.url)) {
+      if (parseProjectUrl(details.url) || /^https:\/\/chatgpt\.com\/(?:projects)?$/.test(details.url)) {
         // A Project SPA route still needs a fresh collector binding. It cannot be
         // treated as a conversation or prove any member's activity/ownership.
         const binding = await bindCurrentDocument({ documentId: details.documentId, tab: { id: details.tabId } } as chrome.runtime.MessageSender, details.url);

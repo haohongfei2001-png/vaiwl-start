@@ -1,6 +1,7 @@
 /** Session-only adaptation; source byte hashes and boundary are in UPSTREAM.md.
  * No conversation endpoint, DOM data, token IPC, persistence or log transport. */
 import { instant } from '../../domain/time.js';
+import { tupleHash } from '../../domain/ids.js';
 import { CHATGPT_METADATA_PROFILE, normalizeSourceFailure } from './profile.js';
 import type { SourceStatus } from './profile.js';
 import { createProbeAliaser } from './probe.js';
@@ -29,6 +30,58 @@ export interface IdentityProbeSummary extends SourceStatus {
 }
 const status = (state: SourceStatus['state'], code: SourceStatus['code']): SourceStatus => ({ state, code, profileId: CHATGPT_METADATA_PROFILE.id });
 const emptyProbe = (source: SourceStatus): IdentityProbeSummary => ({ ...source, principalPresent: false, principalAlias: null, rosterCount: 0, contexts: [], currentContext: 'unproven' });
+
+export interface LocalPrincipalObservation {
+  principalKey: string | null;
+  expiresAt: string | null;
+  code: SourceStatus['code'];
+}
+
+/** A separate, metadata-only principal reader for local isolation. It makes one
+ * existing same-origin session GET; no token extraction, accounts request or
+ * current-workspace inference. Only a digest and expiry leave this function. */
+export function createLocalPrincipalReader({ fetch = globalThis.fetch, now = Date.now, elapsedNow = () => performance.now() }: ReaderDependencies = {}) {
+  let busy = false;
+  async function read(signal?: AbortSignal): Promise<LocalPrincipalObservation> {
+    if (globalThis.location?.origin !== ORIGIN) return { principalKey: null, expiresAt: null, code: 'source-origin-rejected' };
+    if (busy) return { principalKey: null, expiresAt: null, code: 'session-read-busy' };
+    busy = true;
+    const controller = new AbortController(), started = elapsedNow();
+    let last = started;
+    let timedOut = false;
+    const check = () => {
+      const elapsed = elapsedNow();
+      if (timedOut || !Number.isFinite(started) || !Number.isFinite(elapsed) || elapsed < last || elapsed - started >= TIMEOUT) throw Error('request-timeout');
+      last = elapsed;
+      if (signal?.aborted || controller.signal.aborted) throw Error('session-aborted');
+    };
+    let rejectAbort: (error: Error) => void = () => {};
+    const cancelled = new Promise<never>((_, reject) => { rejectAbort = reject; });
+    const abort = () => { controller.abort(); rejectAbort(Error('session-aborted')); };
+    signal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); rejectAbort(Error('request-timeout')); }, TIMEOUT);
+    const work = (async (): Promise<LocalPrincipalObservation> => {
+      check();
+      const target = ORIGIN + SESSION;
+      const response = await fetch(target, { method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error', signal: controller.signal, headers: { Accept: 'application/json' } });
+      let value = await readJSON(response, target, 256 * 1024, check);
+      try {
+        check();
+        const sampledAt = now();
+        if (record(value) && Object.keys(value).length === 0) throw Error('session-unauthorized');
+        if (!Number.isFinite(sampledAt) || !record(value) || !record(value.user) || !identifier(value.user.id) || typeof value.expires !== 'string' || instant(value.expires) === null || instant(value.expires)! <= sampledAt) throw Error('invalid-session-schema');
+        const principalKey = await tupleHash('principal', value.user.id), expiresAt = value.expires;
+        const returnedAt = now();
+        check(); if (!Number.isFinite(returnedAt) || returnedAt < sampledAt || instant(expiresAt)! <= returnedAt) throw Error('session-expired');
+        return { principalKey, expiresAt, code: 'current-context-unproven' };
+      } finally { value = null; }
+    })().finally(() => { busy = false; });
+    try { return await Promise.race([work, cancelled]); }
+    catch (error) { return { principalKey: null, expiresAt: null, code: normalizeSourceFailure(error) }; }
+    finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); controller.abort(); }
+  }
+  return Object.freeze({ read });
+}
 
 async function readJSON(response: Response, target: string, limit: number, check: () => void): Promise<unknown> {
   try {

@@ -151,8 +151,8 @@ export async function readProjectProbe(document: Document, saltHex: string): Pro
   const { candidate, summary } = inspectProjectCandidate(document);
   if (candidate) {
     summary.projectAlias = await alias('project', candidate.projectId);
-    summary.projectTitleAlias = await alias('project-title', candidate.nativeTitle);
-    summary.members = await Promise.all(candidate.members.map(async member => ({ conversationAlias: await alias('conversation', member.conversationId), titleAlias: await alias('conversation-title', member.nativeTitle) })));
+    summary.projectTitleAlias = await alias('project-title', candidate.nativeTitle!);
+    summary.members = await Promise.all(candidate.members.map(async member => ({ conversationAlias: await alias('conversation', member.conversationId), titleAlias: await alias('conversation-title', member.nativeTitle!) })));
   }
   if (document.location.href !== href) return { ...emptyProbe(), code: 'project-route-changed' };
   return summary;
