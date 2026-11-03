@@ -1,6 +1,14 @@
 # Free V1 · 同提交验证与真实来源边界
 
-## 当前专项：原生 Project 本地稳定组织（2026-11-03）
+## 当前专项：首次自动恢复与 Chrome RC 集成（2026-11-03）
+
+继承6bc0b29的真实Mac `REAL_NATIVE_PROJECT_PASS`（Chrome 156.0.8078.80 / macOS 27.0），本地回执已核对；不上传私人标题、项目ID、URL、正文或截图。D1/历史/活动/书签已有实机证据继续继承。下面较早阶段的“真实来源未核验”不是当前状态。
+
+干净基线的实际扩展在Reload后未自动观察已打开Project的迟到成员；同一专项在修复后14/14通过。新增7项单元反例，当前173项；生产仅改后台恢复与串行权限协调，不改页面、来源解析、数据库或标题裁决。新 `project-startup-validation.json` 已接入正式CI、验收矩阵与开发包。一次瞬时注册失败的新增反例先失败，再由一次250ms有界重试修复；另检查重试期间暂停不会重新注入。
+
+隔离生产扩展测试区分“存储已写入”与“Start卡片可见”。原较早成员默认折叠不视为丢失。首次原生权限弹窗接受未由headless测试冒称通过；普通worker消息不触发全页面重注入。完整覆盖、审查边界和回退风险见 [Chrome RC说明](CHROME_LOCAL_RC.zh-CN.md)。最终精确SHA、全部门结果及包哈希以同SHA CI/包内回执为准。
+
+## 上一专项：原生 Project 本地稳定组织（2026-11-03）
 
 合同为[第13号修订](free-v1/13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)，生产基线 `e21d7144`。新增多适配器、principal-only、稳定本地项目模型/投影及同文档身份切换测试；新真实安装浏览器专项 `tests/browser/native-project-grouping.mjs`，回执 `native-project-grouping-validation.json`、截图 `native-project-grouping.png` 已接入同SHA CI与开发包。只有实际回执标PASS的步骤才视为通过；没有本地Chromium可执行文件，不把未启动的浏览器写成通过。
 

@@ -55,7 +55,7 @@
 
 新 `tests/browser/native-project-grouping.mjs` 在隔离 Profile 实际安装生产扩展，校验构建字节，使用合成 HTTPS Project/session 页面并操作真实 Start UI。验证空卡、成员、迟到更新、重复访问、改名、slug、同名不同ID、同主体重启、不同主体/文档/Profile、同文档切换、撤权与旧事件，以及原目录/标题/活动/搜索保全。回执 `native-project-grouping-validation.json` 与开发包同 SHA。
 
-真实已登录 ChatGPT 样本仍独立核验。本轮连接的本地浏览器上下文不可用；不请求用户反复运行诊断，不用合成结果填补实机来源。保持原分支与 Draft PR #1，不合并、不发布，不处理 Edge favicon。
+后续6bc0b29已取得真实Mac `REAL_NATIVE_PROJECT_PASS`：明确项目与两条成员、单卡去重及关闭标签后的持久化通过。当前工程继承该实机证据，新首次自动恢复专项使用隔离生产扩展，不重新认证Workspace或把合成来源当新实机来源。参见 [Chrome RC说明](../CHROME_LOCAL_RC.zh-CN.md)。保持原分支与 Draft PR #1，不合并、不发布，不处理 Edge favicon。
 
 ## 已实际阅读的公开源码
 

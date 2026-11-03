@@ -4,6 +4,26 @@ export async function capabilities() {
   const [chatgpt, history] = await Promise.all([chrome.permissions.contains(CONNECTION), chrome.permissions.contains({ permissions: ['history'] })]);
   return { chatgpt, history, sourceGate: 'LOCAL_WORKSPACE_READY', localHistory: true, startNavigationActivity: chatgpt, localProjectCandidates: chatgpt, nativeProjectLocalGrouping: chatgpt, verifiedScope: false, nativeProjectMembership: false, nativeNone: false, reasons: ['current-context-unverified', 'account-project-membership-unverified', 'positive-none-unverified'] };
 }
+
+/** Lifecycle and UI events can overlap. Resolve the stored preference when each
+ * queued reconciliation runs, never replay an earlier event's captured value. */
+export function createCaptureReconciler(readEnabled: () => Promise<boolean>) {
+  let pending: Promise<unknown> = Promise.resolve();
+  return () => {
+    const work = pending.catch(() => {}).then(async () => {
+      try { await synchronizePermissions(await readEnabled()); }
+      catch {
+        // One transient storage/registration failure must not leave an enabled
+        // installation idle until its user toggles capture. Re-read both the
+        // preference and permission on retry; persistent failures still reject.
+        await new Promise(resolve => setTimeout(resolve, 250));
+        await synchronizePermissions(await readEnabled());
+      }
+    });
+    pending = work;
+    return work;
+  };
+}
 export async function synchronizePermissions(captureEnabled: boolean): Promise<void> {
   const connected = captureEnabled && await chrome.permissions.contains(CONNECTION);
   if (!connected) {

@@ -4,11 +4,11 @@
 
 ## 已安装用户：保留原有目录更新
 
-已有564条历史的用户不需要再次导入，也不要卸载扩展、清除本地数据或换路径加载副本。
+已有历史目录的用户不需要再次导入，也不要卸载扩展、清除本地数据或换路径加载副本。先验证开发 ZIP 的 SHA-256、build SHA 与运行文件哈希，并备份原运行目录及匹配的本地数据；GitHub Actions 外层制品 ZIP 与内部开发 ZIP 的哈希是两个不同值。
 
 1. 保留原扩展ID与已加载的原路径，把本包 `vaiwl-start` 文件夹中的运行文件更新到该路径。只更新扩展代码，不能覆盖Chrome Profile、IndexedDB或扩展数据目录。
 2. 在 `chrome://extensions`（Edge为 `edge://extensions`）对原扩展重新加载一次，再新开Start。原数据使用同一个数据库名、version=1和12个store，无重建/迁移。
-3. 在设置底部核对构建SHA与包内 `vaiwl-start/build.json`。已授权的ChatGPT连接与继续收录状态应保留；新开或刷新一次用于观察的ChatGPT项目页，以使用新内容脚本。
+3. 在设置底部核对实际运行SHA与包内 `vaiwl-start/build.json`。已授权的ChatGPT连接与继续收录状态应保留；Reload/启动会在收录已启用时自动恢复已有ChatGPT页面，不需要先关闭再打开收录。
 
 本轮用户给出的扩展ID为 `ikfnmnlajafpkoojjbcofpceghpmgdbc`。该值来自用户现有安装信息；更新时应以浏览器实际注册记录核对，不能凭猜测新建安装目录。
 
@@ -24,7 +24,7 @@
 
 ## 验证范围
 
-实装扩展的隔离测试覆盖本地项目、身份切换、旧目录/活动/标题和搜索保全；同SHA回执随开发包提供。已通过的D1、历史、活动及书签实机证据继承，不要求再次执行完整Free V1验收或旧source-check诊断。真实已登录ChatGPT页面来源仍单独核验，合成测试不能代替它。来源不足的普通记录继续UNKNOWN；保存的项目/目录不因退出或撤权而删除。
+实装扩展的隔离测试覆盖本地项目、身份切换、旧目录/活动/标题和搜索保全；同SHA回执随开发包提供。继承6bc0b29的真实Project PASS及已通过的D1、历史、活动和书签证据，不要求再次执行完整Free V1验收或旧source-check诊断。新生命周期专项为隔离合成来源，不能代替实机来源。来源不足的普通记录继续UNKNOWN；保存的项目/目录不因退出或撤权而删除。当前能力、首次自动恢复、备份与旧版本关系字段回退限制见 [Chrome RC 说明](CHROME_LOCAL_RC.zh-CN.md)。
 
 ## 首次安装与常用操作
 
@@ -46,8 +46,14 @@ npm run test:browser
 node tests/browser/import-recovery.mjs
 node tests/browser/privacy-boundaries.mjs
 node tests/browser/source-recovery.mjs
+node tests/browser/project-observation.mjs
+node tests/browser/native-project-grouping.mjs
+node tests/browser/project-startup.mjs
 node tests/browser/storage-faults.mjs
 node tests/ui/production-ui.mjs
+node tests/browser/native-experience.mjs
+node tests/browser/life-bookmarks.mjs
+node tests/browser/upgrade-native.mjs
 node tests/browser/performance.mjs
 node scripts/acceptance.mjs
 npm run package

@@ -1,12 +1,18 @@
 # VAIWL Start · 本地工作空间纠偏
 
-## 当前：原生 Project 本地稳定组织（2026-11-03）
+## 当前：Chrome Local-first RC 与首次自动恢复（2026-11-03）
+
+从已实机验证的 `6bc0b29b848edcf7e6b5293c24fd5d957f0b3515` 继续。真实原生 Project 本地组织已取得 `REAL_NATIVE_PROJECT_PASS`；两条明确成员、稳定项目身份、无重复、关闭标签及 Start 重开持久化已通过。本轮继承该证据，不重新认证 Workspace，也不重跑用户历史、D1 和 30 天专项。
+
+隔离生产扩展实测确认并修复 Reload 后已有 ChatGPT 文档未恢复收录的缺陷。新增安装/升级/启动及权限变化恢复、串行最新偏好读取、一次有界重试，14 项专项覆盖不依赖开关切换的自动生效。源适配器、身份合同、数据库和页面布局不变。完整候选范围、回执、审查与回退限制见 [Chrome RC 说明](CHROME_LOCAL_RC.zh-CN.md)。实际交付 SHA/结果以同 SHA CI 和包内回执为准，不把 dirty 本地验证作为交付包。
+
+## 上一阶段：原生 Project 本地稳定组织（2026-11-03）
 
 本轮从远端 `e21d7144b164b262c558a1fabbcbb32ac2eefe7c` 继续，按用户授权的[第13号修订](free-v1/13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)取消“完整 Workspace 认证是所有本地 Project 组织前置”的限制。下文旧 `PROJECT_BLOCKED` 和单次候选键描述属于此前阶段，不代表当前本地组织能力。
 
 生产已接通 `HELLO → LOCAL_IDENTITY → OBSERVE → observeLocalProject → LocalObservedProject/本地关系 → Start项目卡`。增加安全slug路由、多种独立无正文适配器、稳定主体/文档边界、空项目、增量成员、改名/搜索/旧成员保留。完整账号认证与全量同步继续独立未完成，`confirmObservation()` 未接收弱证明。
 
-原数据库v1/12stores、目录key、历史/活动、D1标题和生活/书签继承；新项目保存在settings前缀行。不同主体的相同会话ID使用独立本地记录，冲突关系保留而不自动搬移。直接查看[源码与测试记录](TEST_RECORDS.md)和原PR #1同SHA CI/开发包回执。本地浏览器连接不可用，未把合成来源冒称为当前ChatGPT实机通过。
+原数据库v1/12stores、目录key、历史/活动、D1标题和生活/书签继承；新项目保存在settings前缀行。不同主体的相同会话ID使用独立本地记录，冲突关系保留而不自动搬移。该阶段最初浏览器连接不可用；后续6bc0b29的真实Mac来源与本地组织已经通过，以本文件顶部状态为准。
 
 合同：`VAIWL-START-FREE/1.0 / 2026-11-03-native-experience`。唯一分支：`codex/free-v1-implementation`，Draft PR #1。
 

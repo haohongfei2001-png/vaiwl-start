@@ -8,8 +8,9 @@ const specification = await readFile('docs/free-v1/06-ACCEPTANCE.md', 'utf8');
 const U='unit-validation', B='browser-validation', I='import-recovery-validation', P='privacy-boundaries-validation', N='source-recovery-validation', F='storage-faults-validation', V='ui-validation', R='review-validation';
 const X='native-experience-validation', G='native-upgrade-validation';
 const LP='native-project-grouping-validation';
+const PS='project-startup-validation', LB='life-bookmarks-validation';
 const evidence={};
-for(const name of [U,B,I,P,N,F,V,R,X,G,LP,'privacy-audit','performance-validation']){
+for(const name of [U,B,I,P,N,F,V,R,X,G,LP,PS,LB,'privacy-audit','performance-validation']){
   try{const result=JSON.parse(await readFile('artifacts/'+name+'.json','utf8'));if(result.buildSha===build.sha&&result.dirty===build.dirty)evidence[name]=result;}catch{/* Other-build or missing evidence never passes. */}
 }
 // Each full claim names actual predicates. File-level success alone is insufficient.
@@ -68,7 +69,7 @@ const full={
 const sourceDependent=new Set(['S07','O02','O04','O06','O07','O08','O10','O11','O12','O13','O14','O15','O17','T03','D07']);
 const deviceDependent=new Set(['D08','D09','U06','U09','U10','U11']);
 const gaps={
- P11:'Current authenticated ChatGPT Project metadata has not been observed in the connected real browser. Isolated production-extension fixtures prove local behavior, not live source coverage.',
+ P11:'Real Mac local Project organization passed on 6bc0b29 (see the Chrome RC report). That inherited source evidence is distinct from this same-build synthetic matrix and from full account/workspace certification.',
  S07:'U proves 500-to-499 per-record resolution; production B cannot admit a resolved scope until the live source gate is proven.',
  O04:'Synthetic-click rejection passes; complete negative navigation must be repeated with a proven positive arrival adapter.',
  O08:'Scripted history.back/go qualifier counterexamples remain pending with the supported activity adapter.',
@@ -124,7 +125,7 @@ for(const line of specification.split('\n')){
   limitations:['Row PASS never implies Free V1 acceptance or real Mac/Edge compatibility.',...(id==='D10'?['Current v1 initial-schema recovery and same-version reopen; quota is injected into a real browser transaction, not physical disk exhaustion or a nonexistent legacy migration.']:[])]});
 }
 for(let n=1;n<=4;n++)records.push({id:'JOURNEY-'+n,status:'BLOCKED',buildSha:build.sha,browserVersion:null,environment:'Real Mac Chrome and Edge',steps:'Continuous journey '+n+' with local-first amendment',observed:'Actual device journey and authenticated native context/PROJECT/NONE remain unverified. This does not block tested local history and Start navigation activity.',artifactRefs:['M0_SOURCE_GATE.md'],limitations:['Synthetic browser tests do not replace this journey.']});
-const engineeringGates=[U,'privacy-audit',B,I,P,N,F,V,X,G,LP,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
+const engineeringGates=[U,'privacy-audit',B,I,P,N,F,V,X,G,LP,PS,LB,'performance-validation'].map(name=>({id:name,status:evidence[name]?.status||'NOT_RUN',artifact:name+'.json'}));
 const evidenceFailures=Object.entries(evidence).filter(([,r])=>r.status==='FAIL'||r.checks?.some(c=>typeof c==='object'&&c.status==='FAIL')).map(([name])=>name+'.json');
 const status=records.some(r=>r.status==='FAIL')||evidenceFailures.length?'FAIL':engineeringGates.every(g=>g.status==='PASS')?'LOCAL_WORKSPACE_READY':'IMPLEMENTATION_READY_FOR_CI';
 await writeFile('artifacts/acceptance-matrix.json',JSON.stringify({status,sourceGate:build.sourceGate,amendment:build.amendment,nativeAttribution:'UNVERIFIED',nativeProjectLocalGrouping:evidence[LP]?.status||'NOT_RUN',accountWorkspaceCertification:'UNVERIFIED',fullProjectSync:'NOT_IMPLEMENTED',buildSha:build.sha,dirty:build.dirty,engineeringGates,evidenceFailures,records},null,2));

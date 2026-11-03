@@ -6,7 +6,7 @@ import { instant } from '../domain/time.js';
 import { COLLECTOR_PROTOCOL, PROTOCOL, bounded, exact, parseEnvelope, publicError, trustedCollectorSender, trustedExtensionSender } from '../shared/protocol.js';
 import { CHATGPT_METADATA_PROFILE, SOURCE_FAILURE_CODES } from '../collectors/chatgpt/profile.js';
 import { parseLocalProjectCandidate } from '../collectors/chatgpt/project-candidate.js';
-import { capabilities, CONNECTION, synchronizePermissions } from './permissions.js';
+import { capabilities, CONNECTION, createCaptureReconciler } from './permissions.js';
 import { bindCurrentDocument, registerNavigation, requireCurrentBinding } from './navigation.js';
 import { sourceCheckCommand, stopSourceCheck } from './source-check.js';
 import { SOURCE_CHECK_PROTOCOL } from '../shared/source-check.js';
@@ -16,6 +16,11 @@ import { createHistoryJob, stepHistoryImport, type HistoryJob } from './import-h
 
 let repositoryPromise: Promise<Repository> | null = null;
 function repository() { return repositoryPromise ||= createRepository().catch(error => { repositoryPromise = null; throw error; }); }
+const reconcileCapture = createCaptureReconciler(async () => (await (await repository()).getSnapshot()).settings.captureEnabled);
+async function restoreCollection() {
+  ensureListeners();
+  await reconcileCapture();
+}
 let buildPromise: Promise<Record<string, unknown>> | null = null;
 function build() { return buildPromise ||= fetch(chrome.runtime.getURL('build.json')).then(r => r.json()).then(({ sha, version, sourceGate, adapterVersion, dirty }) => ({ sha, version, sourceGate, adapterVersion, dirty })); }
 async function broadcast() {
@@ -49,14 +54,14 @@ async function uiCommand(message: unknown, sender: chrome.runtime.MessageSender)
     case 'SETTINGS_UPDATE':
       exact(p, ['patch']); exact(p.patch, [], ['libraryTimeZone', 'shortcutSectionCollapsed', 'selectedScope', 'currentSegment', 'captureEnabled']);
       await repo.setSettings(p.patch, expectedRevision);
-      if ('captureEnabled' in p.patch) { await synchronizePermissions(p.patch.captureEnabled); if (!p.patch.captureEnabled) await stopSourceCheck(); }
+      if ('captureEnabled' in p.patch) { await restoreCollection(); if (!p.patch.captureEnabled) await stopSourceCheck(); }
       break;
     case 'SHORTCUT_UPSERT': exact(p, ['shortcut']); exact(p.shortcut, ['label', 'url'], ['id', 'pinned']); await repo.saveShortcut(p.shortcut as any, expectedRevision); break;
     case 'SHORTCUT_MOVE': exact(p, ['id', 'toIndex']); bounded(p.id, 128); integer(p.toIndex); await repo.moveShortcut(p.id, p.toIndex, expectedRevision); break;
     case 'SHORTCUT_REMOVE': exact(p, ['id']); bounded(p.id, 128); await repo.removeShortcut(p.id, expectedRevision); break;
     case 'RECORD_REMOVE': exact(p, ['recordKey']); bounded(p.recordKey, 128); await repo.removeConversation(p.recordKey, expectedRevision); break;
     case 'RECORD_RESTORE': exact(p, ['recordKey']); bounded(p.recordKey, 128); await repo.restoreConversation(p.recordKey, expectedRevision); break;
-    case 'CLEAR_LOCAL': exact(p, []); await repo.clearLocalData(expectedRevision); await chrome.storage.local.remove([...NATIVE_KEYS, HOME_MODE_KEY]); await synchronizePermissions(false); await stopSourceCheck(); await chrome.storage.session.remove(['sourceStatus', 'sourceCheckRun']); break;
+    case 'CLEAR_LOCAL': exact(p, []); await repo.clearLocalData(expectedRevision); await chrome.storage.local.remove([...NATIVE_KEYS, HOME_MODE_KEY]); await restoreCollection(); await stopSourceCheck(); await chrome.storage.session.remove(['sourceStatus', 'sourceCheckRun']); break;
     case 'PERMISSIONS_SYNC': {
       exact(p, [], ['enableCapture']);
       if (p.enableCapture !== undefined && typeof p.enableCapture !== 'boolean') throw new Error('INVALID_MESSAGE');
@@ -64,7 +69,7 @@ async function uiCommand(message: unknown, sender: chrome.runtime.MessageSender)
       const before = await repo.getSnapshot();
       const capture = caps.chatgpt && (p.enableCapture === true || before.settings.captureEnabled);
       if (capture && !before.settings.captureEnabled) await repo.setSettings({ captureEnabled: true }, before.revision);
-      await synchronizePermissions(capture); ensureListeners(); break;
+      await restoreCollection(); break;
     }
     case 'IMPORT_START': {
       exact(p, ['range', 'includeSynced']);
@@ -193,12 +198,23 @@ function ensureListeners() {
 }
 ensureListeners();
 chrome.action.onClicked.addListener(() => { void chrome.tabs.create({ url: chrome.runtime.getURL('newtab.html') }); });
-chrome.runtime.onInstalled.addListener(() => { void repository(); });
-chrome.runtime.onStartup.addListener(() => { void session().then(s => repository().then(r => r.expireIntents(s.id))).catch(() => {}); });
+// Unpacked Reload is an update too. Dynamic registration alone does not revive
+// collectors in documents that were already open when the old context died.
+// Ordinary worker wakeups retain their session and collectors; do not reinject
+// every time a collector message wakes this module.
+chrome.runtime.onInstalled.addListener(() => { void restoreCollection().catch(() => {}); });
+chrome.runtime.onStartup.addListener(() => {
+  void session().then(s => repository().then(r => r.expireIntents(s.id))).then(restoreCollection).catch(() => {});
+});
+chrome.permissions.onAdded.addListener(added => {
+  if (added.origins?.includes('https://chatgpt.com/*') || added.permissions?.some(p => p === 'scripting' || p === 'webNavigation')) {
+    void restoreCollection().catch(() => {});
+  }
+});
 chrome.permissions.onRemoved.addListener(() => {
   void (async () => {
     const repo = await repository(), caps = await capabilities();
-    if (!caps.chatgpt) { await synchronizePermissions(false); await stopSourceCheck(); }
+    if (!caps.chatgpt) { await restoreCollection(); await stopSourceCheck(); }
     if (!caps.history) {
       for (const job of (await repo.getSnapshot()).importJobs) if (['running', 'paused', 'partial'].includes(job.state)) { job.state = 'permission-revoked'; await repo.saveImportJob(job); }
     }
