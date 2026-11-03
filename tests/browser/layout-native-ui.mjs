@@ -3,7 +3,7 @@
  * Requires xdotool and ImageMagick import. Never reads an existing Profile.
  */
 import { chromium } from 'playwright';
-import { mkdtemp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, writeFile, copyFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -23,6 +23,7 @@ const report = { schema: 'vaiwl-layout-native-ui/1', startedAt: new Date().toISO
   officialCommands: [
     'https://learn.microsoft.com/en-us/deployedge/edge-learnmore-configurable-edge-commands',
     'https://support.microsoft.com/en-us/edge/keyboard-shortcuts-in-microsoft-edge',
+    'https://developer.chrome.com/docs/extensions/reference/api/tabs#method-create',
   ], checks: [], frames: [], errors: [], limitations: [] };
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -63,7 +64,7 @@ async function observation() {
     let zoom = null, zoomError = null;
     try { zoom = await chrome.tabs.getZoom(tab.id); } catch (error) { zoomError = String(error); }
     const rect = selector => { const el = document.querySelector(selector); if (!el || !el.getClientRects().length) return null; const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
-    return { documentUrl: location.href, nativeTabUrl: tab.url, title: document.title, zoom, zoomError,
+    return { documentUrl: location.href, tabId: tab.id, nativeTabUrl: tab.url ?? null, nativeTabUrlReadable: typeof tab.url === 'string', title: document.title, zoom, zoomError,
       cssViewport: { width: innerWidth, height: innerHeight, clientWidth: document.documentElement.clientWidth }, outerWindow: { width: outerWidth, height: outerHeight }, devicePixelRatio,
       documentWidth: document.documentElement.scrollWidth,
       main: rect('.workspace'), topbar: rect('.topbar'), rail: rect('#history-rail'),
@@ -72,16 +73,53 @@ async function observation() {
     };
   });
 }
+function pixelProof(file, pixelSize) {
+  const stats = crop => {
+    const output = command('convert', [file, ...(crop ? ['-crop', crop, '+repage'] : []), '-format', '%k %[fx:standard_deviation]', 'info:']).trim().split(/\s+/);
+    const deviation = Number(output[1]);
+    return { colors: Number(output[0]), standardDeviation: Number.isFinite(deviation) ? deviation : null };
+  };
+  const whole = stats(), header = stats(`${pixelSize.width}x${Math.min(140, pixelSize.height)}+0+0`);
+  const bodyTop = Math.min(180, Math.floor(pixelSize.height / 3));
+  const body = stats(`${pixelSize.width}x${pixelSize.height - bodyTop}+0+${bodyTop}`);
+  // A mapped window can report correct DOM geometry before X11 has painted it.
+  // Require visible variation in both the browser frame and page content.
+  return { whole, header, body, rendered: whole.colors > 100 && header.colors > 24 && body.colors > 100
+    && (header.standardDeviation ?? 0) > .005 && (body.standardDeviation ?? 0) > .005 };
+}
 async function capture(id, claim) {
   await page.bringToFront(); await pause(200);
-  const measured = await observation();
+  const attempts = [];
+  let measured, pixels, pixelSize, renderedFile;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (attempt > 1) {
+      // Request a genuine native repaint at the same final window dimensions.
+      // No DOM/CSS change and no compositing of browser decorations.
+      const geometry = Object.fromEntries(command('xdotool', ['getwindowgeometry', '--shell', windowId]).trim().split('\n').map(line => line.split('=')));
+      const width = Number(geometry.WIDTH), height = Number(geometry.HEIGHT);
+      command('xdotool', ['windowsize', '--sync', windowId, String(width - 1), String(height)]);
+      command('xdotool', ['windowsize', '--sync', windowId, String(width), String(height)]);
+      await ready(page); await pause(500);
+    }
+    measured = await observation();
+    const file = `${id}-attempt-${attempt}.png`, path = join(out, file);
+    command('import', ['-window', windowId, path]);
+    pixels = await readFile(path);
+    if (!pixels.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw Error('NATIVE_SCREENSHOT_IS_NOT_PNG');
+    pixelSize = { width: pixels.readUInt32BE(16), height: pixels.readUInt32BE(20) };
+    const proof = pixelProof(path, pixelSize);
+    attempts.push({ attempt, file, sha256: digest(pixels), pixelSize, proof });
+    if (proof.rendered) { renderedFile = path; break; }
+  }
+  if (!renderedFile) {
+    check(`${id}-pixels`, 'FAIL', { reason: 'Owned browser window stayed blank/incompletely painted after three bounded captures.', attempts });
+    throw Error('NATIVE_WINDOW_NOT_PAINTED: ' + id);
+  }
   const file = `${id}.png`;
-  command('import', ['-window', windowId, join(out, file)]);
-  const pixels = await readFile(join(out, file));
-  if (!pixels.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw Error('NATIVE_SCREENSHOT_IS_NOT_PNG');
-  const pixelSize = { width: pixels.readUInt32BE(16), height: pixels.readUInt32BE(20) };
-  const frame = { id, claim, file, sha256: digest(pixels), pixelSize, x11Geometry: command('xdotool', ['getwindowgeometry', '--shell', windowId]).trim(), measured };
+  await copyFile(renderedFile, join(out, file));
+  const frame = { id, claim, file, sha256: digest(pixels), pixelSize, x11Geometry: command('xdotool', ['getwindowgeometry', '--shell', windowId]).trim(), attempts, measured };
   report.frames.push(frame);
+  check(`${id}-pixels`, 'PASS', { attempts: attempts.length, proof: attempts.at(-1).proof, file });
   const fits = measured.documentWidth <= measured.cssViewport.width + 1
     && measured.main.right <= measured.cssViewport.width + 1
     && measured.rail.left >= measured.main.right + 3
@@ -118,7 +156,13 @@ try {
   page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/newtab.html`); await ready(page);
   await seedLayoutCatalog(page, 'typical', report.fixture.anchorIso); await page.reload(); await ready(page);
   const next = context.waitForEvent('page', { timeout: 20000 });
-  await worker.evaluate(() => chrome.tabs.create({ active: true }));
+  report.nativeEntry = await worker.evaluate(async () => {
+    // The public tabs.create contract defaults an omitted URL to the New Tab Page.
+    // Record the actual creation and match its identity without requesting tabs.
+    const properties = { active: true };
+    const created = await chrome.tabs.create(properties);
+    return { method: 'chrome.tabs.create', properties, urlOmitted: !Object.hasOwn(properties, 'url'), createdTabId: created.id, createdWindowId: created.windowId, returnedUrl: created.url ?? null };
+  });
   page = await next; await ready(page);
   for (const other of context.pages()) if (other !== page) await other.close();
   windowId = await findOwnedWindow();
@@ -128,7 +172,16 @@ try {
   command('xdotool', ['mousemove', '--window', windowId, '1948', '1052']);
   await pause(500);
   const initial = await capture('01-native-initial', 'Real installed extension opened through native new-tab entry; entire owned browser window.');
-  check('native-new-tab-route', /^(chrome|edge):\/\/newtab\/?/.test(initial.nativeTabUrl || '') ? 'PASS' : 'BLOCKED', { nativeTabUrl: initial.nativeTabUrl, documentUrl: initial.documentUrl });
+  const nativeEntryMatches = report.nativeEntry.urlOmitted && Number.isInteger(report.nativeEntry.createdTabId)
+    && initial.tabId === report.nativeEntry.createdTabId
+    && initial.documentUrl === `chrome-extension://${extensionId}/newtab.html`;
+  check('native-new-tab-entry', nativeEntryMatches ? 'PASS' : 'FAIL', {
+    ...report.nativeEntry, observedTabId: initial.tabId, documentUrl: initial.documentUrl,
+    nativeTabUrl: initial.nativeTabUrl, nativeTabUrlReadable: initial.nativeTabUrlReadable,
+    evidence: 'Browser default new-tab creation without URL; the resulting tab identity matches the installed override document. No page.goto after default creation.',
+    source: 'https://developer.chrome.com/docs/extensions/reference/api/tabs#method-create',
+  });
+  if (!initial.nativeTabUrlReadable) report.limitations.push('tabs.Tab.url is not exposed by the production permission set. The native entry is verified through URL-omitted tabs.create plus exact returned/current tab-ID equality, not by inventing an internal URL.');
   if (family === 'edge') {
     key('ctrl+shift+comma'); await pause(700);
     const toggled = await capture('02-edge-vertical-command', 'Real Edge Ctrl+Shift+, command; direction is determined by measured content-width change.');
@@ -145,6 +198,11 @@ try {
     check('chrome-native-tabstrip-window', 'PASS', { frame: '01-native-initial', nativeBrowserWindowPixels: true, contentOnlyScreenshot: false });
     await nativeZooms('chrome-native');
   }
+  // One real narrow-window case. Edge remains in its verified native vertical mode.
+  key('ctrl+0');
+  command('xdotool', ['windowsize', '--sync', windowId, '1024', '768']);
+  await ready(page); await pause(500);
+  await capture('native-narrow-1024', 'Actual 1024×768 owned browser window at 100% zoom; Edge retains its native vertical tab strip.');
   report.limitations.push('The initial user screenshot pixels and private catalog were not available to this run. This is a 2048×1152 isolated Linux browser window with the shared synthetic fixture, not a claim of user Mac acceptance.');
   report.limitations.push('Optional bookmarks permission is not pre-granted and the production manifest is unchanged; this native-frame fixture has no bookmark shelf. The responsive content suite validates bookmark states separately.');
 } catch (error) { report.errors.push(String(error)); check('native-ui-execution', 'FAIL', String(error)); }
