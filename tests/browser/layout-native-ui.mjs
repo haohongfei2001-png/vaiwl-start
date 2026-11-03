@@ -92,14 +92,19 @@ async function capture(id, claim) {
   const attempts = [];
   let measured, pixels, pixelSize, renderedFile;
   for (let attempt = 1; attempt <= 3; attempt++) {
+    let repaint = null;
     if (attempt > 1) {
-      // Request a genuine native repaint at the same final window dimensions.
-      // No DOM/CSS change and no compositing of browser decorations.
-      const geometry = Object.fromEntries(command('xdotool', ['getwindowgeometry', '--shell', windowId]).trim().split('\n').map(line => line.split('=')));
-      const width = Number(geometry.WIDTH), height = Number(geometry.HEIGHT);
-      command('xdotool', ['windowsize', '--sync', windowId, String(width - 1), String(height)]);
-      command('xdotool', ['windowsize', '--sync', windowId, String(width), String(height)]);
-      await ready(page); await pause(500);
+      // An X11 resize alone can leave Chrome's initial native surface unpainted.
+      // Use real browser zoom commands to request paint, then restore its exact
+      // original factor. This never substitutes an emulated or edited image.
+      const before = await observation();
+      key('ctrl+plus'); await pause(150); key('ctrl+minus');
+      await ready(page); await pause(1800);
+      const restored = await observation();
+      repaint = { method: 'native Ctrl+Plus then Ctrl+Minus', beforeZoom: before.zoom, restoredZoom: restored.zoom,
+        beforeViewport: before.cssViewport, restoredViewport: restored.cssViewport };
+      if (typeof before.zoom !== 'number' || Math.abs(restored.zoom - before.zoom) > .001
+        || Math.abs(restored.cssViewport.width - before.cssViewport.width) > 1) throw Error('NATIVE_REPAINT_DID_NOT_RESTORE_ZOOM');
     }
     measured = await observation();
     const file = `${id}-attempt-${attempt}.png`, path = join(out, file);
@@ -108,7 +113,7 @@ async function capture(id, claim) {
     if (!pixels.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw Error('NATIVE_SCREENSHOT_IS_NOT_PNG');
     pixelSize = { width: pixels.readUInt32BE(16), height: pixels.readUInt32BE(20) };
     const proof = pixelProof(path, pixelSize);
-    attempts.push({ attempt, file, sha256: digest(pixels), pixelSize, proof });
+    attempts.push({ attempt, file, sha256: digest(pixels), pixelSize, proof, repaint });
     if (proof.rendered) { renderedFile = path; break; }
   }
   if (!renderedFile) {
