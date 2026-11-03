@@ -20,7 +20,7 @@ const deadline = Date.now() + 110000;
 const report = {
   schema: 'vaiwl-settings-native-window/1', startedAt: new Date().toISOString(), family,
   source: { sha: build.sha, dirty: build.dirty, runtimeHashes: build.files },
-  environment: { platform: process.platform, display: process.env.DISPLAY, isolatedProfile: true, productionManifestModified: false, windowRequest: { width: 2048, height: 1152 }, compositor: 'software (--disable-gpu)', displaySizedWindow: true, f11Fullscreen: false },
+  environment: { platform: process.platform, display: process.env.DISPLAY, executable: process.env.VAIWL_CHROMIUM_EXECUTABLE || `playwright:${channel}`, isolatedProfile: true, productionManifestModified: false, windowRequest: { width: 2048, height: 1152 }, compositor: 'software (--disable-gpu)', displaySizedWindow: true, f11Fullscreen: false },
   fixture: { state: 'typical', anchorIso: new Date(Date.now() - 300000).toISOString(), synthetic: true },
   officialCommands: ['https://learn.microsoft.com/en-us/deployedge/edge-learnmore-configurable-edge-commands', 'https://developer.chrome.com/docs/extensions/reference/api/tabs#method-create'],
   checks: [], frames: [], errors: [], limitations: [],

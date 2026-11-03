@@ -18,7 +18,8 @@ The “new location” column is the recommended destination. The implementation
 
 | Existing setting / operation | Existing UI entry and handler | Persistence / browser operation | Permission | New location and required interaction |
 | --- | --- | --- | --- | --- |
-| Custom tab title / browser default title | `#tab-title-form`, `initNativeExperience` submit; `validTitle` | `chrome.storage.local['native.title']`; blank means localized browser default | None | New tab → title; explicit save/Enter and a clear default affordance; never clobber an unfinished draft on unrelated refresh |
+| Custom tab title | `#tab-title-form`, `initNativeExperience` submit; `validTitle` | `chrome.storage.local['native.title']` | None | New tab → title; explicit save/Enter; never clobber an unfinished draft on unrelated refresh |
+| Browser default tab title | Same title form with an empty value; `defaultTabTitle` | `native.title=''`; browser family and UI locale determine the displayed fallback | None | New tab → clear the title and save, or restore default identity; icon remains independent when only the title is saved |
 | Browser / product / uploaded icon | `#tab-icon` change; `identity()` | `native.icon`; bundled SVG or sanitized local PNG | None | New tab → icon; choice saves immediately; title remains independent |
 | Upload or replace local icon | `#tab-upload-again`, `#tab-icon-upload`; `sanitizeIcon` | `native.icon` only after validated conversion; 1 MiB, ≤2048×2048, PNG/JPEG/WebP | User file picker | New tab → icon upload; failure or picker cancellation preserves the previous icon and truthful selection |
 | Restore default tab identity | `#tab-identity-reset` | Sets `native.title=''`, `native.icon={kind:'browser'}`; leaves bookmarks unchanged | None | New tab → restore tab identity; does not reset other settings |

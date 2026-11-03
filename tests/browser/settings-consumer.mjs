@@ -335,17 +335,31 @@ try {
 
   const folder = await worker.evaluate(async () => { const roots = (await chrome.bookmarks.getTree())[0].children; const bar = roots.find(n => n.folderType === 'bookmarks-bar') || roots.find(n => n.id === '1'); return (await chrome.bookmarks.create({ parentId: bar.id, title: '设置迁移目标（合成测试）' })).id; });
   await command('SHORTCUT_UPSERT', { shortcut: { label: '第二个合成快捷网站', url: 'https://example.com/second' } });
+  await command('SHORTCUT_UPSERT', { shortcut: { label: '第三个合成快捷网站', url: 'https://example.com/third' } });
+  const legacyBeforeMigration = (await command('SNAPSHOT')).shortcuts;
   await worker.evaluate(async parentId => chrome.bookmarks.create({ parentId, title: '已有网址（合成测试）', url: 'https://example.com/retained' }), folder);
   await section('newtab'); await section('legacy');
   await page.locator(`#bookmark-destination option[value="${folder}"]`).waitFor({ state: 'attached' });
   await page.locator('#bookmark-destination').selectOption(folder);
+  await page.evaluate(() => {
+    window.__settingsRealBookmarkCreate = chrome.bookmarks.create.bind(chrome.bookmarks); window.__settingsBookmarkCreateCalls = 0;
+    chrome.bookmarks.create = async value => { if (++window.__settingsBookmarkCreateCalls === 2) throw Error('Synthetic second-create rejection'); return window.__settingsRealBookmarkCreate(value); };
+  });
   page.once('dialog', dialog => dialog.accept()); await page.locator('#bookmark-migrate').click();
-  await waitForAsync(page, async parentId => (await chrome.bookmarks.getChildren(parentId)).some(n => n.url === 'https://example.com/second'), folder);
+  await page.waitForFunction(() => window.__settingsBookmarkCreateCalls === 2 && document.querySelector('#bookmark-migration-status').textContent.includes('迁移中断') && !document.querySelector('#bookmark-migrate').disabled);
+  const partialBookmarks = await worker.evaluate(parentId => chrome.bookmarks.getChildren(parentId), folder);
+  assert.deepEqual((await command('SNAPSHOT')).shortcuts, legacyBeforeMigration);
+  check('SC-migration-partial-failure-retains-real-progress', partialBookmarks.length === 2 && partialBookmarks.some(n => n.url === 'https://example.com/second') && !partialBookmarks.some(n => n.url === 'https://example.com/third'), 'Only the second create is explicitly rejected; the first real browser bookmark survives, all three original shortcut records are unchanged and the nearby status accurately reports interruption.');
+  await shot('after-bookmark-migration-partial-failure');
+  await page.evaluate(() => { chrome.bookmarks.create = window.__settingsRealBookmarkCreate; });
+  page.once('dialog', dialog => dialog.accept()); await page.locator('#bookmark-migrate').click();
+  await waitForAsync(page, async parentId => (await chrome.bookmarks.getChildren(parentId)).some(n => n.url === 'https://example.com/third'), folder);
   const migrated = await worker.evaluate(parentId => chrome.bookmarks.getChildren(parentId), folder);
-  check('SC-real-native-folder-migration-deduplicates', migrated.length === 2 && (await command('SNAPSHOT')).shortcuts.length === 2, 'A nested native folder is selectable; migration skips an existing URL, creates only the missing bookmark and retains both legacy records.');
+  assert.deepEqual((await command('SNAPSHOT')).shortcuts, legacyBeforeMigration);
+  check('SC-real-native-folder-migration-deduplicates', migrated.length === 3 && migrated.filter(n => n.url === 'https://example.com/second').length === 1 && (await command('SNAPSHOT')).shortcuts.length === 3, 'Retry in the selected nested folder skips the pre-existing URL and the first successful write, creates only the remaining bookmark and retains every legacy record.');
   page.once('dialog', dialog => dialog.accept()); await page.locator('#bookmark-migrate').click();
   await page.waitForFunction(() => !document.querySelector('#bookmark-migrate').disabled);
-  check('SC-repeat-migration-is-idempotent', (await worker.evaluate(parentId => chrome.bookmarks.getChildren(parentId), folder)).length === 2, 'Repeating migration through the visible control creates no duplicate native bookmark.');
+  check('SC-repeat-migration-is-idempotent', (await worker.evaluate(parentId => chrome.bookmarks.getChildren(parentId), folder)).length === 3, 'Repeating migration through the visible control creates no duplicate native bookmark.');
   await shot('after-native-bookmark-migration');
 
   await section('workspace');
@@ -455,6 +469,15 @@ try {
   check('SC-clear-retains-real-bookmarks-and-history', true, 'Every native bookmark node and all 262 actual synthetic browser-history entries remain exactly unchanged by confirmed Start data deletion.');
   await shot('after-clear-completed');
   await section('workspace');
+  await page.evaluate(() => {
+    window.__settingsRealRemovePermission = chrome.permissions.remove.bind(chrome.permissions); window.__settingsRefusedHistoryRemovals = 0;
+    chrome.permissions.remove = async value => { if (value.permissions?.includes('history')) { window.__settingsRefusedHistoryRemovals++; return false; } return window.__settingsRealRemovePermission(value); };
+  });
+  await page.locator('#revoke-history').click();
+  await page.waitForFunction(() => window.__settingsRefusedHistoryRemovals === 1 && document.querySelector('#workspace-status').textContent.includes('未撤销') && !document.querySelector('#revoke-history').disabled);
+  check('SC-history-revoke-false-keeps-honest-status', await page.evaluate(() => chrome.permissions.contains({ permissions: ['history'] })) && await page.locator('#revoke-history').isVisible(), 'A named remove=false injection keeps the actual history grant intact; the UI reports that revocation did not succeed and retains the retry control.');
+  await shot('after-history-revocation-refused');
+  await page.evaluate(() => { chrome.permissions.remove = window.__settingsRealRemovePermission; });
   await page.locator('#revoke-history').click();
   await waitForAsync(page, async () => !await chrome.permissions.contains({ permissions: ['history'] }));
   await page.waitForFunction(() => document.querySelector('#revoke-history').hidden);
@@ -479,7 +502,7 @@ try {
 } finally {
   await close();
   if (baselineAdded) execFileSync('git', ['worktree', 'remove', '--force', baselineSource], { stdio: 'pipe' });
-  const receipt = { status, buildSha: build.sha, dirty: build.dirty, baseline, browserFamily: family, browserVersion, checks, errors, screenshots, limitations: [
+  const receipt = { status, buildSha: build.sha, dirty: build.dirty, baseline, browserFamily: family, browserVersion, executable: process.env.VAIWL_CHROMIUM_EXECUTABLE || `playwright:${channel}`, checks, errors, screenshots, limitations: [
     'Every browser Profile, website entry and conversation is isolated and synthetic; no user database or signed-in ChatGPT page is accessed.',
     'Screenshots show the actually installed extension content. They do not prove browser-native tab-strip icons or operating-system UI.',
     'Permission refusal and storage exceptions, where named, are explicit fault injections. Temporary required-permission manifests exercise actual permission state and API behavior, not native consent-popup acceptance.',

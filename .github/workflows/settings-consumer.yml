@@ -29,7 +29,7 @@ jobs:
           path: artifacts/
           if-no-files-found: error
   chrome:
-    name: Installed Chrome settings and regression
+    name: Installed Chrome for Testing settings and Chromium regression
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -43,12 +43,23 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: sudo apt-get install -y fonts-noto-cjk xvfb xauth xdotool imagemagick
+      - name: Install official Chrome for Testing Stable 156.0.8078.80
+        run: |
+          curl --fail --location --retry 3 https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.80/linux64/chrome-linux64.zip --output "$RUNNER_TEMP/vaiwl-chrome.zip"
+          unzip -q "$RUNNER_TEMP/vaiwl-chrome.zip" -d "$RUNNER_TEMP/vaiwl-cft"
+          mkdir -p artifacts
+          "$RUNNER_TEMP/vaiwl-cft/chrome-linux64/chrome" --version | tee artifacts/chrome-for-testing-version.txt
+          sha256sum "$RUNNER_TEMP/vaiwl-chrome.zip" > artifacts/chrome-for-testing-download.sha256
       - run: npm run build
         id: build
       - run: node tests/browser/settings-consumer.mjs
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          VAIWL_CHROMIUM_EXECUTABLE: ${{ runner.temp }}/vaiwl-cft/chrome-linux64/chrome
       - run: xvfb-run -a -s '-screen 0 2048x1152x24' node tests/browser/settings-native-window.mjs
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          VAIWL_CHROMIUM_EXECUTABLE: ${{ runner.temp }}/vaiwl-cft/chrome-linux64/chrome
       - run: node tests/browser/layout-responsive.mjs
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
       - name: Existing installed extension, privacy and UI regressions
