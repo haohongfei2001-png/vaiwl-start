@@ -12,6 +12,8 @@
 
 首次同SHA CI `2142631c4dac49e557866a6c23c6b15b086491df` / [41605913182](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41605913182)：166单元、构建/审计/打包、既有浏览器17+8+9+18+25+3及新增Project实装37项通过，Microsoft Edge继承生活/书签job成功。Chromium后续完整UI在 `UI-source-limit-visible` 失败：断开连接说明漏掉完整认证/全量同步未完成的明确声明，旧断言仍要求原单一归属措辞。修复为始终显示“完整账号空间认证与全量同步尚未完成”，同时断言本地项目仍保留、断开后不承诺新增活动。未删除检查；本次仅产品说明/对应断言/本记录变化，最终同SHA完整CI结果见原PR回执。
 
+后续 `3cb4c4b4613465283040ddb19e41a90121731c26` / [41606440416](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41606440416) 的类型/单元/审计/包与Chromium完整job通过（包括新增37项Project、原25项观察和67项UI）。继承Edge生活/书签job两次在同一缩放夹具初始化点失败：directPage先以1440px完成初始化，再改760px，collapsedRow只等旧visibleCount>0，读到了CSS已缩窄、ResizeObserver/RAF尚未更新hidden的中间状态。独立源码审查确认此测宽链及其生产代码未被Project修改。停止重试，仅将该直接页面夹具的760px设定前移至导航前；既有真实resize、实际setZoom、单行几何、inert及全部断言/超时保持不变。没有修改书签功能或Edge favicon；新提交的同SHACI和包结果继续见原PR回执。
+
 当前合同修订：`2026-11-03-native-experience`。本文件说明验证范围；交付包的 `build.json`、`verification/*.json` 及对应GitHub Actions是实际SHA和最终结果依据，不能引用另一提交的绿色结果。
 
 ## 书签与持久生活模式（2026-11-03）

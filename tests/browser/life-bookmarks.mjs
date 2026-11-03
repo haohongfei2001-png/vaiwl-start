@@ -317,7 +317,11 @@ try {
     if (nativeShortcut) zoomMethod = 'native NTP browser shortcut';
     else {
       checks.push({ id: 'B-native-NTP-zoom', status: 'BLOCKED', observed: `This browser rejects native-NTP setZoom and automation did not change zoom using the browser shortcut: ${String(error)}` });
-      zoomPage = await directPage(); await ready(zoomPage); await zoomPage.setViewportSize({ width: 760, height: 900 }); await collapsedRow(zoomPage);
+      // Set the fallback fixture viewport before navigation, so ready() cannot
+      // expose a wide-page count while the resize measurement is still queued.
+      // The actual resize assertion above and the zoom assertions below remain.
+      zoomPage = await directPage(page => page.setViewportSize({ width: 760, height: 900 }));
+      await ready(zoomPage); await collapsedRow(zoomPage);
       await zoomPage.evaluate(async () => { const tab = await chrome.tabs.getCurrent(); await chrome.tabs.setZoom(tab.id, 1.5); });
       zoomMethod = 'direct extension page setZoom; native NTP API restricted';
     }
