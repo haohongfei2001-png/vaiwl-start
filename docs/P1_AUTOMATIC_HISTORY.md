@@ -12,7 +12,7 @@
 - 每个 worker 实例具有独立 ID。现有 settings store 内的私有 `automaticHistory` 行保存 Profile、worker ID 与随机代际；新 worker 轮换它，旧 worker 无法重新取得该授权。
 - 暂停、恢复、清除及相关权限变化首先同步推进内存代际，并中止已经打开的自动历史写事务；随后持久化代际失效，完成后才准入新的自动事件。
 - `getVisits()` 前后都检查 ChatGPT 连接、history 权限及操作代际。初始暂停／缺权时不调用历史读取。
-- 最终 IndexedDB 写事务再次检查 captureEnabled、Profile、worker ID 和持久代际。哈希准备及每个异步写阶段保留同步失效检查，事务直到完成前都可中止；不存在在 IDB 事务中等待 Chrome 权限 API 的做法。
+- 最终 IndexedDB 写事务再次检查 captureEnabled、Profile、worker ID 和持久代际。哈希准备及每个异步写阶段保留同步失效检查；停止事件同步中止仍可回滚的自动事务，拒绝旧授权继续写入。浏览器已进入不可回滚提交阶段的先前写入不能因 complete 通知稍后到达而追溯撤销；不存在在 IDB 事务中等待 Chrome 权限 API 的做法。
 - 开关写入与持久代际更新在同一事务内完成，防止暂停后恢复让旧读取借用新授权。
 - 私有授权更新不增加业务 revision，避免普通 worker 启动干扰显式历史导入的 revision 校验。
 
