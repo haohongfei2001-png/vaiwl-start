@@ -27,3 +27,12 @@
 ## 继承与范围
 
 开始HEAD dd8d8051；远端随后新增 a8e54d01 的Project增量观察，已完整继承。正式Project来源仍由对应专项裁决，Edge原生新标签页标签栏favicon仍由旧独立专项裁决。本轮网站favicon不依赖标签栏问题解决。没有操作用户真实浏览器Profile或数据。
+
+
+## 首次同SHA运行与验收驱动修正
+
+候选 `a193296e18b1dd1c0a8d17ed7418c6dca4e05e8a`，Actions `41599557496`：类型/单元/构建作业成功，Edge新专项43 PASS、1原生NTP缩放自动化BLOCKED；Chrome原有回归及native-experience 41项通过，新life专项停在“Reload必须立即出现新worker”的观测。生活页设计本就不发SNAPSHOT，后台可以保持休眠，不能把工作空间触发的后台活动当作生活页前置条件。
+
+后续只修验收驱动：Chrome使用该同提交已通过的原生扩展管理页Reload，并等待对应LOADED/ENABLED事件；临时生活观察页先断言零SNAPSHOT，再发送被生产协议明确拒绝的无业务消息以唤醒后台，仅用于验证新worker timeOrigin。仍保留实际新实例、原生新标签life、零工作数据读取和持久化断言；Edge已通过的runtime.reload路径保留。未删除测试、放宽成功条件或修改生产代码。最后候选需重新取得同SHA三作业结果。
+
+原生NTP缩放因浏览器内部可见URL限制，setZoom/自动化快捷键不能提供完整证据时明确记录BLOCKED；同版直接扩展页真实150%缩放单独通过，不合并宣称原生入口缩放通过。

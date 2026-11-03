@@ -173,7 +173,24 @@ try {
   await launch(productionProfile); page = await nativePage(); await noWork(page);
   check('L-browser-restart-retains-life', await page.evaluate(() => !window.__startCommands.includes('SNAPSHOT')), 'Full isolated browser-process restart retains life and avoids workspace projection.');
   const beforeOrigin = await worker.evaluate(() => performance.timeOrigin);
-  await worker.evaluate(() => { setTimeout(() => chrome.runtime.reload(), 20); });
+  let reloadManager, reloadObserver;
+  if (family === 'chrome') {
+    // Match the native Reload path already verified by native-experience.mjs.
+    // runtime.reload() does not reliably surface a replacement worker target in
+    // this Chromium/Playwright combination; a silent life page should not need
+    // to request a catalog merely to make a test's worker watcher succeed.
+    reloadManager = await context.newPage(); await reloadManager.goto('chrome://extensions');
+    await reloadManager.locator('extensions-item').first().waitFor(); await reloadManager.locator('#devMode').click();
+    await reloadManager.evaluate(() => { window.__reloadEvents = []; chrome.developerPrivate.onItemStateChanged.addListener(event => window.__reloadEvents.push({ event: event.event_type, id: event.item_id, state: event.extensionInfo?.state })); });
+    await reloadManager.locator('#dev-reload-button').click();
+    await reloadManager.waitForFunction(id => window.__reloadEvents.some(event => event.event === 'LOADED' && event.id === id && event.state === 'ENABLED'), extensionId, { timeout: 15000 });
+    reloadObserver = await directPage(); await ready(reloadObserver); await noWork(reloadObserver);
+    assert.ok(await reloadObserver.evaluate(() => !window.__startCommands.includes('SNAPSHOT')));
+    // This deliberately unsupported envelope wakes the event worker and is
+    // rejected by parseEnvelope before any repository command can execute.
+    const rejected = await reloadObserver.evaluate(() => chrome.runtime.sendMessage({ protocol: 'vaiwl-reload-observer/1' }));
+    assert.equal(rejected?.ok, false);
+  } else await worker.evaluate(() => { setTimeout(() => chrome.runtime.reload(), 20); });
   const until = Date.now() + 15000; let replacement;
   while (Date.now() < until && !replacement) {
     for (const candidate of context.serviceWorkers()) {
@@ -183,7 +200,8 @@ try {
   }
   assert.ok(replacement, 'Extension reload must start a fresh service worker'); worker = replacement;
   page = await nativePage(); await noWork(page);
-  check('L-extension-reload-retains-life', await page.evaluate(() => !window.__startCommands.includes('SNAPSHOT')), 'Actual chrome.runtime.reload() creates a fresh worker global; native tab still opens life without workspace data.');
+  check('L-extension-reload-retains-life', await page.evaluate(() => !window.__startCommands.includes('SNAPSHOT')), `${family === 'chrome' ? 'Native extensions manager Reload emits LOADED/ENABLED' : 'Actual chrome.runtime.reload()'} and a fresh worker global is verified; native tab still opens life without workspace data.`);
+  if (reloadObserver) await reloadObserver.close(); if (reloadManager) await reloadManager.close();
   assert.deepEqual(await raw(page), catalogBefore); pass('L-catalog-preserved', 'All twelve IndexedDB stores, keys, values, old shortcuts, OpenDays, removed record and capture settings are identical across switching, browser restart and extension reload.');
 
   const failedRead = await directPage(async target => target.addInitScript(() => {
