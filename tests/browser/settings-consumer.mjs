@@ -367,10 +367,13 @@ try {
   await worker.evaluate(async urls => { for (const url of urls) await chrome.history.addUrl({ url }); }, historyUrls);
   check('SC-history-does-not-imply-capture', !(await command('SNAPSHOT')).settings.captureEnabled && (await command('SNAPSHOT')).conversations.length === 1, 'History access and synthetic visits do not auto-enable the paused collector.');
   await page.locator('#settings-import').click(); await page.locator('#import-range').selectOption('all');
+  const safeImportOptions = { range: await page.locator('#import-range').inputValue(), synced: await page.locator('#include-synced').isChecked() };
   await page.locator('#confirm-import').click();
   await waitForAsync(page, async () => { const r = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} }); return r.ok && r.data.importJobs.some(j => j.state === 'complete'); });
   const imported = await command('SNAPSHOT');
   check('SC-real-history-import-while-capture-paused', imported.conversations.length === 6 && !imported.settings.captureEnabled && imported.conversations.filter(c => historyUrls.includes(c.canonicalUrl)).every(c => c.activity === null), 'The explicit import UI reads five real synthetic chrome.history entries while automatic capture stays paused and creates no active-open fact.');
+  await page.locator('#confirm-import').waitFor({ state: 'visible' });
+  const completedOptionsRestored = await page.locator('#import-range').isVisible() && await page.locator('#include-synced').isVisible() && await page.locator('#import-range').inputValue() === safeImportOptions.range && await page.locator('#include-synced').isChecked() === safeImportOptions.synced;
   await shot('after-history-complete');
 
   // Hold the real browser search result, not repository writes, to exercise the
@@ -380,9 +383,13 @@ try {
     chrome.history.search = async query => { const result = await globalThis.__settingsHistorySearch(query); return new Promise(resolve => globalThis.__settingsHeldSearches.push(() => resolve(result))); };
   });
   await page.locator('#confirm-import').click(); await page.locator('[data-import-pause]').waitFor();
+  const managedJobId = await page.locator('[data-import-pause]').getAttribute('data-import-pause');
+  check('SC-running-import-has-one-task-control-set', await page.locator('#confirm-import').isHidden() && await page.locator('#import-range').isHidden() && await page.locator('#include-synced').isHidden(), 'A running real import exposes its progress, Pause and Cancel controls without simultaneously offering to create another import.');
   await page.locator('[data-import-pause]').click();
   await page.locator('[data-import-resume]').waitFor();
   check('SC-import-pause-live-control', (await command('SNAPSHOT')).importJobs.some(j => j.state === 'paused'), 'The visible Pause command persists an actual paused checkpoint during a named delayed-search interleaving.');
+  await page.locator('#import-dialog [data-close]').first().click(); await page.locator('#settings-import').click(); await page.locator('[data-import-resume]').waitFor();
+  check('SC-paused-import-reopen-keeps-task-and-controls', await page.locator('[data-import-resume]').getAttribute('data-import-resume') === managedJobId && await page.locator('#confirm-import').isHidden() && await page.locator('#import-range').isHidden() && await page.locator('#include-synced').isHidden(), 'Closing and reopening a paused import preserves the exact task ID and its Resume/Cancel actions; hidden new-task inputs remain retained, and closing does not cancel the task.');
   await shot('after-history-paused');
   await worker.evaluate(() => { chrome.history.search = globalThis.__settingsHistorySearch; for (const release of globalThis.__settingsHeldSearches.splice(0)) release(); });
   await page.locator('[data-import-resume]').click();
@@ -393,7 +400,28 @@ try {
   await waitForAsync(page, async () => { const r = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} }); return r.ok && r.data.importJobs.some(j => j.state === 'cancelled'); });
   await worker.evaluate(() => { chrome.history.search = globalThis.__settingsHistorySearch; for (const release of globalThis.__settingsHeldSearches.splice(0)) release(); });
   check('SC-import-cancel-retains-completed-results', (await command('SNAPSHOT')).conversations.length === 6, 'Cancel terminates the new checkpoint while preserving already retained local results.');
+  await page.locator('#confirm-import').waitFor({ state: 'visible' });
+  check('SC-terminal-import-restores-retained-new-task-options', completedOptionsRestored && await page.locator('#import-range').isVisible() && await page.locator('#include-synced').isVisible() && await page.locator('#import-range').inputValue() === safeImportOptions.range && await page.locator('#include-synced').isChecked() === safeImportOptions.synced && (await page.locator('[data-import-resume]').textContent()).includes('继续上次导入'), 'Completed and cancelled imports restore the new-import entry and the original safe range/synced choices. A cancelled checkpoint clearly labels its separate action as continuing the previous import.');
   await shot('after-history-cancelled');
+  await page.locator('#import-dialog [data-close]').first().click();
+
+  // Named UI capability fixture: the real grant stays present, while SNAPSHOT
+  // reports no history access so cancelled-task recovery must ask for permission.
+  const cancelledWithoutPermission = (await raw()).values.importJobs.find(job => job.state === 'cancelled');
+  await page.evaluate(() => {
+    window.__settingsBeforeCancelledRead = chrome.runtime.sendMessage.bind(chrome.runtime);
+    window.__settingsBeforeCancelledRequest = chrome.permissions.request.bind(chrome.permissions);
+    window.__settingsCancelledAuthorizationRequests = 0; window.__settingsCommands = [];
+    chrome.runtime.sendMessage = async (...args) => { const reply = await window.__settingsBeforeCancelledRead(...args); if (args[0]?.command === 'SNAPSHOT' && reply?.ok) reply.data.capabilities.history = false; return reply; };
+    chrome.permissions.request = async value => { if (value.permissions?.includes('history')) { window.__settingsCancelledAuthorizationRequests++; return false; } return window.__settingsBeforeCancelledRequest(value); };
+  });
+  await section('workspace'); await page.locator('#settings-import').click(); await page.locator('[data-import-authorize-resume]').waitFor();
+  const cancelledRecoveryLabel = await page.locator('[data-import-authorize-resume]').textContent();
+  await page.locator('[data-import-authorize-resume]').click();
+  await page.waitForFunction(() => window.__settingsCancelledAuthorizationRequests === 1 && document.querySelector('#import-status').textContent.includes('未授予') && !document.querySelector('[data-import-authorize-resume]').disabled);
+  assert.deepEqual((await raw()).values.importJobs.find(job => job.id === cancelledWithoutPermission.id), cancelledWithoutPermission);
+  check('SC-cancelled-without-history-asks-before-resume', cancelledRecoveryLabel.includes('授权并继续上次导入') && !await page.evaluate(() => window.__settingsCommands.some(name => ['IMPORT_START', 'IMPORT_RESUME'].includes(name))), 'With an explicitly injected no-history SNAPSHOT and permission refusal, cancelled-task recovery requests authorization first, preserves the original checkpoint exactly and dispatches neither Resume nor Start.');
+  await page.evaluate(() => { chrome.runtime.sendMessage = window.__settingsBeforeCancelledRead; chrome.permissions.request = window.__settingsBeforeCancelledRequest; });
   await page.locator('#import-dialog [data-close]').first().click();
 
   // Explicit state fixture: the browser grant remains real and present; only a

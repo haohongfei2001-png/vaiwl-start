@@ -2,7 +2,7 @@
 
 ## 验证检查点
 
-本文件记录已完成的 **CI2**，不把后续新增测试预先记为通过。
+本文件保留 **CI2** 的逐项功能映射，以及下方 **CI3** 的后续验收历史。最后一次导入状态呈现修正的精确 SHA 与同 SHA 验收记录见 PR #2；不把未执行的新测试预先记为通过。
 
 - 已测源码：`8bcb17928d3191c3200a56c59ca3e7c4c290aac6`，所有对应 receipt 的 `dirty` 为 false。
 - CI：[41663529928](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41663529928)，三个 job 均 SUCCESS。
@@ -119,3 +119,11 @@ Chromium 原生窗口 receipt 标识 **156.0.8078.4**；Edge 标识 **156.0.4314
 | `SC-history-revoke-false-keeps-honest-status` | 注入history remove=false，真实grant仍保留时UI应说明未撤销并保持重试控件；移除注入后继续真实撤权检查。 | **PENDING：已写测试，尚未执行最终CI** |
 
 最终候选没有授权合并main、发布商店或操作用户真实资料库。独立源码结论与问题闭环见 [REVIEW.md](REVIEW.md)。
+
+## CI3 后续验收与最后的导入交互修正
+
+[CI3 run 41666157706](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41666157706) 对应 `08d58f311855256971f7de54f8d7fccbdeba5fd5`，已纳入正式分支 `83387b841e58faac1fa00095e57add2aec7527d2`，三个 job 均 SUCCESS。官方 **Google Chrome for Testing 156.0.8078.80** 与 **Microsoft Edge 156.0.4314.58** 的设置专项各 **92/92 PASS**，原生窗口分别 **21/21、32/32 PASS**，单元测试 **248/248 PASS**。上方两个历史 PENDING（部分迁移失败恢复、历史撤权返回 false）均已在两浏览器实际通过；独立审查读取了同 SHA 回执。
+
+最终截图复核另外发现暂停导入时“继续”和“开始导入”同时出现。后续定点修正将新建表单与当前任务操作互斥呈现，保留原输入、checkpoint 和结束后新建能力。独立复核同时检查并修复了“撤权后取消，再继续旧任务”的授权分流：缺少历史权限时复用原 job 的授权恢复，不误开新 job。
+
+这一处后续源码改动不能借用 CI3 的通过结论。新增的运行中呈现、暂停关闭重开、完成／取消恢复表单、取消后缺权限恢复断言，将在 PR #2 最终同 SHA 回执记录结果。原生权限气泡、真人读屏和 F11 的验证边界仍然适用。

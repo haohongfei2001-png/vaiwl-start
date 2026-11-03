@@ -78,3 +78,9 @@ The settings workflow now also runs the homepage's responsive/native-frame suite
 ## Review disposition
 
 No confirmed new P0/P1 was identified in this bounded source review. R1–R7 have source fixes, the homepage was integrated without a destructive overwrite, and CI2 passed at `8bcb179`. This is not a main-merge approval. The next candidate also incorporates homepage test-only commit `83387b841e58faac1fa00095e57add2aec7527d2`, official Google Chrome for Testing execution and two targeted failure checks; those final results must be recorded at the exact candidate SHA in [PR #2](https://github.com/haohongfei2001-png/vaiwl-start/pull/2), without re-labeling this historical checkpoint.
+
+## Final import interaction review after CI3
+
+The root visual review of the actual paused-import screenshot found competing Resume and Start actions. The subsequent bounded change hides, but does not replace or reset, the new-import form while a running or resumable job is being managed. Cancel and completion restore that form; cancelling retains the original checkpoint and imported records. Close does not cancel.
+
+Independent source review identified one P2 in the first version of this final adjustment: cancelling a permission-revoked job exposed a plain Resume action despite missing history access. The corrected implementation uses the existing trusted `resumeImportPermission` path for every resumable state without history access. The action retains the original job ID and sends `IMPORT_RESUME`, never `IMPORT_START`; rejection returns before writes. The source-level P2 is closed, with no background permission or database changes. Four targeted browser assertions and the new exact-SHA CI must verify the final adjustment; CI3 remains evidence for the preceding candidate only.

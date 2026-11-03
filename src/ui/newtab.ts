@@ -385,10 +385,20 @@ function latestJob(): CatalogSnapshot['importJobs'][number] | undefined {
 
 function renderImport(): void {
   const area = byId('import-progress'); const job = latestJob();
+  const pending = !!job && !!(job.pendingIntervals.length || job.pendingCandidates?.length);
+  const managingJob = !!job && (job.state === 'running' || pending && ['paused', 'partial', 'permission-revoked'].includes(job.state));
+  const startControl = byId<HTMLButtonElement>('confirm-import');
+  const focusWasStart = document.activeElement === startControl;
   const focused = area.contains(document.activeElement) ? document.activeElement as HTMLButtonElement : null;
   const focusedAction = focused ? ['importPause', 'importResume', 'importCancel', 'importAuthorizeResume'].find(key => focused.dataset[key]) : undefined;
-  byId('confirm-import').textContent = snapshot?.capabilities.history ? '开始导入' : '授权并导入';
-  byId<HTMLButtonElement>('confirm-import').disabled = importStarting || job?.state === 'running';
+  // Keep the unsent options in the DOM, but do not offer a new job beside
+  // controls that manage a resumable checkpoint. Explicit cancellation
+  // restores the new-import form without discarding the saved checkpoint.
+  byId('import-options').hidden = managingJob;
+  byId('import-permission-note').hidden = !!snapshot?.capabilities.history;
+  startControl.hidden = managingJob;
+  startControl.textContent = job ? snapshot?.capabilities.history ? '新建导入' : '授权并新建导入' : snapshot?.capabilities.history ? '开始导入' : '授权并导入';
+  startControl.disabled = importStarting || managingJob;
   if (!job) { area.replaceChildren(); return; }
   const stateLabel = importStateLabel(job.state);
   const start = new Date(job.startTimeMs).toLocaleDateString('zh-CN');
@@ -397,15 +407,18 @@ function renderImport(): void {
   if (job.state === 'partial' || job.saturatedIntervals.length) area.append(el('p', {}, ['部分历史未能读取，已导入的会话已保留。']));
   const actions = el('div', { class: 'import-actions' });
   if (job.state === 'running') actions.append(button('暂停', { class: 'secondary', 'data-import-pause': job.id }));
-  if (['paused', 'partial', 'cancelled'].includes(job.state) && (job.pendingIntervals.length || job.pendingCandidates?.length)) actions.append(button('继续', { class: 'secondary', 'data-import-resume': job.id }));
-  if (job.state === 'running' || job.state === 'paused') actions.append(button('取消本次导入', { class: 'text-button', 'data-import-cancel': job.id }));
+  if (['paused', 'partial', 'cancelled', 'permission-revoked'].includes(job.state) && pending) {
+    const needsGrant = job.state === 'permission-revoked' || !snapshot?.capabilities.history;
+    const label = job.state === 'cancelled' ? '继续上次导入' : '继续';
+    actions.append(button(`${needsGrant ? '授权并' : ''}${label}`, { class: 'secondary', [needsGrant ? 'data-import-authorize-resume' : 'data-import-resume']: job.id, disabled: importStarting }));
+  }
+  if (managingJob) actions.append(button('取消本次导入', { class: 'text-button', 'data-import-cancel': job.id }));
   if (job.state === 'permission-revoked') {
     area.append(el('p', {}, ['已导入的会话仍保留。授权后可继续剩余部分。']));
-    if (job.pendingIntervals.length || job.pendingCandidates?.length) actions.append(button('授权并继续', { class: 'secondary', 'data-import-authorize-resume': job.id, disabled: importStarting }));
   }
   area.append(actions);
-  if (focused && byId<HTMLDialogElement>('import-dialog').open && document.activeElement === document.body) {
-    const replacement = focusedAction ? [...actions.querySelectorAll<HTMLButtonElement>('button')].find(node => node.dataset[focusedAction] === focused.dataset[focusedAction]) : null;
+  if ((focused || managingJob && focusWasStart) && byId<HTMLDialogElement>('import-dialog').open && document.activeElement === document.body) {
+    const replacement = focused && focusedAction ? [...actions.querySelectorAll<HTMLButtonElement>('button')].find(node => node.dataset[focusedAction] === focused.dataset[focusedAction]) : null;
     (replacement || actions.querySelector<HTMLButtonElement>('button:not(:disabled)') || byId('import-title')).focus({ preventScroll: true });
   }
 }
@@ -498,7 +511,7 @@ async function revokeHistory(event: Event): Promise<void> {
 }
 
 async function startImport(event: Event): Promise<void> {
-  if (!event.isTrusted || importStarting || !workspaceAccessAllowed()) return;
+  if (!event.isTrusted || importStarting || byId('confirm-import').hidden || !workspaceAccessAllowed()) return;
   importStarting = true; settingsView.showStatus('', false, 'import-status'); renderImport();
   const requestedModeEpoch = modeEpoch;
   try {
