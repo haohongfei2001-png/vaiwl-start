@@ -11,6 +11,8 @@ const ORIGIN = 'https://chatgpt.com', PROTOCOL = 'vaiwl-start-collector/1', EXTE
 const URL1 = ORIGIN + '/c/12345678-1234-1234-1234-123456789abc';
 const URL2 = ORIGIN + '/c/22345678-1234-1234-1234-123456789abc';
 const URL3 = ORIGIN + '/c/32345678-1234-1234-1234-123456789abc';
+const PROJECT_URL = ORIGIN + '/g/g-p-11111111111111111111111111111111/project';
+const PROJECT_HTML = '<main><h1><span>Synthetic project</span></h1><div role="tablist"><button role="tab" aria-selected="true" id="t" aria-controls="p">Chats</button></div><div role="tabpanel" id="p" aria-labelledby="t"><ol><li><a href="/c/12345678-1234-1234-1234-123456789abc"><div><div>Synthetic member</div><div data-preview>Forbidden preview sentinel</div></div></a></li></ol></div></main>';
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 5));
 async function eventually(predicate: () => boolean, label: string) {
   for (let attempt = 0; attempt < 200; attempt++) { if (predicate()) return; await tick(); }
@@ -18,13 +20,16 @@ async function eventually(predicate: () => boolean, label: string) {
 }
 type Listener = (message: any, sender: any, respond: (response: unknown) => void) => unknown;
 type Request = { url: string; signal?: AbortSignal | null; release: () => void };
-function harness({ hold = false, ignoreAbort = false } = {}) {
-  const dom = new JSDOM('<!doctype html><html><body><p data-private>Forbidden body sentinel</p></body></html>', { url: URL1, runScripts: 'outside-only', pretendToBeVisual: true });
+type HarnessOptions = { hold?: boolean; ignoreAbort?: boolean; project?: boolean; firstSessionResponse?: { status: number; body: unknown } };
+function harness({ hold = false, ignoreAbort = false, project = false, firstSessionResponse }: HarnessOptions = {}) {
+  const initialURL = project ? PROJECT_URL : URL1;
+  const dom = new JSDOM('<!doctype html><html><body>' + (project ? PROJECT_HTML : '') + '<p data-private>Forbidden body sentinel</p></body></html>', { url: initialURL, runScripts: 'outside-only', pretendToBeVisual: true });
+  if (project) Object.defineProperty(dom.window.Element.prototype, 'getClientRects', { value() { return [{ x: 0, y: 0, width: 80, height: 20 }]; } });
   const listeners = new Set<Listener>(), messages: any[] = [], requests: Request[] = [];
-  let holdSessions = hold, binding = { id: randomUUID(), routeEpoch: 0 }, href = URL1;
+  let holdSessions = hold, binding = { id: randomUUID(), routeEpoch: 0 }, href = initialURL;
   let principal: string | null | undefined, identityGeneration = 0;
-  const response = (url: string, body: unknown) => {
-    const result = new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+  const response = (url: string, body: unknown, status = 200) => {
+    const result = new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
     Object.defineProperty(result, 'url', { value: url }); return result;
   };
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -41,6 +46,7 @@ function harness({ hold = false, ignoreAbort = false } = {}) {
         if (init?.signal?.aborted && !ignoreAbort) abort();
       });
     }
+    if (isSession && firstSessionResponse && requests.filter(request => request.url.endsWith('/api/auth/session')).length === 1) return response(url, firstSessionResponse.body, firstSessionResponse.status);
     return response(url, isSession ? { user: { id: 'synthetic-principal', email: 'forbidden@example.invalid' }, accessToken: 'never-export-this-token', expires: '2099-01-01T00:00:00Z' }
       : { accounts: { 'synthetic-context': { account: { account_id: 'synthetic-context', structure: 'personal', is_deactivated: false }, can_access_with_session: true } } });
   };
@@ -65,7 +71,7 @@ function harness({ hold = false, ignoreAbort = false } = {}) {
     },
   } } });
   // Body contents and snapshots are deliberately inaccessible to collector code.
-  for (const node of [dom.window.document.body, dom.window.document.querySelector('[data-private]')!]) {
+  for (const node of [dom.window.document.body, ...dom.window.document.querySelectorAll('[data-private],[data-preview]')]) {
     Object.defineProperty(node, 'textContent', { get() { throw Error('body text must not be read'); } });
     Object.defineProperty(node, 'outerHTML', { get() { throw Error('body snapshot must not be read'); } });
   }
@@ -85,6 +91,47 @@ function harness({ hold = false, ignoreAbort = false } = {}) {
   dom.window.eval(bundle);
   return { dom, messages, requests, command, route, lifecycle, requestProbe, probePayload, count, statuses, sessionRequests, close, setHold: (value: boolean) => { holdSessions = value; } };
 }
+
+test('collector first transient session failure recovers on the same untouched Project without a ROUTE event', async () => {
+  const h = harness({ project: true, firstSessionResponse: { status: 503, body: {} } });
+  const panel = h.dom.window.document.querySelector('[role="tabpanel"]');
+  try {
+    await eventually(() => h.count('OBSERVE') === 1, 'first 503 followed by a valid session must not blacklist the initial Project panel');
+    assert.equal(h.count('HELLO'), 1, 'no reroute or duplicate startup is used to hide the first failure');
+    assert.equal(h.sessionRequests().length, 2, 'one successful metadata recheck recovers without repeated polling');
+    assert.equal(h.dom.window.document.querySelector('[role="tabpanel"]'), panel, 'the fixture never replaces the source surface');
+    assert.equal(h.dom.window.location.href, PROJECT_URL);
+    const identities = h.messages.filter(message => message.command === 'LOCAL_IDENTITY');
+    assert.equal(identities.length, 1, 'a transient transport failure must not publish a synthetic signed-out identity');
+    assert.match(identities[0]!.payload.principalKey, /^principal:[a-f0-9]{64}$/);
+    const observation = h.messages.find(message => message.command === 'OBSERVE')!;
+    assert.equal(observation.payload.projectCandidate.members.length, 1);
+    assert.equal(observation.payload.projectCandidate.members[0].conversationId, '12345678-1234-1234-1234-123456789abc');
+  } finally { await h.close(); }
+});
+
+test('collector initial signed-out identity still rejects the retained panel after login until sources are replaced', async () => {
+  for (const first of [{ status: 401, body: {} }, { status: 200, body: {} }]) {
+    const h = harness({ project: true, firstSessionResponse: first });
+    try {
+      await eventually(() => h.count('LOCAL_IDENTITY') === 2, 'real signed-out identity followed by principal transition');
+      await new Promise(resolve => setTimeout(resolve, 600));
+      const identities = h.messages.filter(message => message.command === 'LOCAL_IDENTITY');
+      assert.equal(identities[0]!.payload.principalKey, null, `HTTP ${first.status} explicit logout still publishes the null boundary`);
+      assert.match(identities[1]!.payload.principalKey, /^principal:[a-f0-9]{64}$/);
+      assert.equal(h.count('OBSERVE'), 0, 'the actual null-to-principal transition must still block the retained old panel after its bounded retry');
+      const main = h.dom.window.document.querySelector('main')!;
+      main.replaceWith(main.cloneNode(true));
+      for (const preview of h.dom.window.document.querySelectorAll('[data-preview]')) {
+        Object.defineProperty(preview, 'textContent', { get() { throw Error('replacement preview must not be read'); } });
+        Object.defineProperty(preview, 'outerHTML', { get() { throw Error('replacement preview must not be serialized'); } });
+      }
+      await eventually(() => h.count('OBSERVE') === 1, 'a fresh heading and panel may be observed under the new principal');
+      assert.equal(h.count('HELLO'), 1, 'recovery uses a replacement native surface, not a test ROUTE command');
+      assert.equal(h.dom.window.location.href, PROJECT_URL);
+    } finally { await h.close(); }
+  }
+});
 
 test('collector reroute discards stale identity status and rereads identity for each current route', async () => {
   const h = harness({ hold: true });

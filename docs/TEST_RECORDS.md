@@ -12,6 +12,8 @@
 
 首轮正式 CI [41632026138](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41632026138) 的197单元、基础浏览器18项、导入恢复9项及Edge作业通过；新专项在干净基线证据门失败。实际旧版生产安装和正常开启正例均PASS，暂停后改写历史的指定反例明确FAIL，但测试把整个node_modules软链接到旧worktree，旧版`node_modules/`忽略规则不匹配该软链接，使构建dirty=true。修正为被忽略的真实依赖目录，并在构建前断言worktree为空；保留dirty=false和唯一指定反例失败的全部要求，没有降低证据门或修改生产源码来通过此失败。最终以修正后的同SHA完整CI为准。
 
+第二轮 [41632554788](https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41632554788) 的新自动历史专项14/14和干净旧版反证通过，37项Project本地组织、25项观察也通过；原启动专项在首次session503后恢复Project8失败。定向执行未修改生产collector复现：首次200正常OBSERVE=1，首次503随后200却发布null→principal并永久封锁同一面板，OBSERVE=0。该错误分类在旧源码已存在；先前通过可能受ROUTE事件交错影响，这是时序推断，当前无ROUTE反例则已确定复现。不将增加等待当修复。最小修改仅去掉“已有principal才拒绝暂时失败”的前置条件，不发布虚构匿名身份；保留真实401/空会话的身份切换和旧面板隔离。新增两项生产bundle回归修前1FAIL/1PASS、修后全PASS，完整本地verify199/199通过。原启动脚本、超时、Project解析器、身份模型和observer防护均未改动，继续要求完整同SHA CI通过。
+
 ## 前一专项：首次自动恢复与 Chrome RC 集成（2026-11-03）
 
 继承6bc0b29的真实Mac `REAL_NATIVE_PROJECT_PASS`（Chrome 156.0.8078.80 / macOS 27.0），本地回执已核对；不上传私人标题、项目ID、URL、正文或截图。D1/历史/活动/书签已有实机证据继续继承。下面较早阶段的“真实来源未核验”不是当前状态。

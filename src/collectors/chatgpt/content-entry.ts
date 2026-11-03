@@ -50,10 +50,11 @@ if (!runtime.__vaiwlStartCollector && location.origin === 'https://chatgpt.com' 
       const binding = response.data;
       const bindIdentity = async (publishStatus = false) => {
         const observed = await principal.read(signal); if (!current()) return null;
-        if (lastPrincipal && observed.principalKey === null && observed.code !== 'session-unauthorized') {
-          // A transport failure is not an account switch. Reject this batch
-          // without reusing its old proof; a later successful read can recover
-          // on the same surface. Never downgrade and merge unknown identities.
+        if (observed.principalKey === null && observed.code !== 'session-unauthorized') {
+          // A transport failure is not an account switch. Do not publish an
+          // initial failure as anonymous or reuse an earlier proof. A later
+          // successful read can recover on the same surface without merging
+          // unknown identities.
           if (publishStatus) await send('SOURCE_STATUS', { bindingId: binding.id, routeEpoch: binding.routeEpoch, code: observed.code, profileId: CHATGPT_METADATA_PROFILE.id });
           return null;
         }
