@@ -1,7 +1,7 @@
 /** Real chrome.history events against byte-identical production JavaScript.
  * Disposable Profiles and a separate synthetic-history feeder, never user data. */
 import { chromium } from 'playwright';
-import { mkdtemp, mkdir, cp, readFile, writeFile, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, cp, readFile, writeFile, readdir, symlink } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -136,8 +136,17 @@ async function verifyBaselineRegression() {
     try { execFileSync('git', ['cat-file', '-e', baselineSha + '^{commit}'], { stdio: 'pipe' }); }
     catch { execFileSync('git', ['fetch', '--depth=1', 'origin', baselineSha], { stdio: 'pipe' }); }
     execFileSync('git', ['worktree', 'add', '--detach', baselineSource, baselineSha], { stdio: 'pipe' }); added = true;
-    await symlink(resolve('node_modules'), join(baselineSource, 'node_modules'), 'dir');
+    // The baseline ignores node_modules/ as a directory. A symlink at that exact
+    // path is an untracked file, making the honest build fingerprint dirty.
+    // Keep a real ignored directory and share only its dependency entries.
+    const dependencies = resolve('node_modules'), baselineDependencies = join(baselineSource, 'node_modules');
+    await mkdir(baselineDependencies);
+    for (const entry of await readdir(dependencies)) await symlink(join(dependencies, entry), join(baselineDependencies, entry));
+    const baselineStatus = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd: baselineSource, encoding: 'utf8' }).trim();
+    assert.equal(baselineStatus, '', 'Baseline dependency setup must leave a clean worktree before building: ' + baselineStatus);
     execFileSync(process.execPath, ['scripts/build.mjs'], { cwd: baselineSource, stdio: 'pipe' });
+    const baselineBuild = JSON.parse(await readFile(join(baselineSource, 'dist', 'build.json'), 'utf8'));
+    assert.equal(baselineBuild.sha, baselineSha); assert.equal(baselineBuild.dirty, false, 'Baseline build must retain its truthful clean fingerprint');
     const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { cwd: process.cwd(),
       env: { ...process.env, VAIWL_HISTORY_DIST: join(baselineSource, 'dist'), VAIWL_HISTORY_OUTPUT: baselineOutput },
       encoding: 'utf8', timeout: 90000, maxBuffer: 2 * 1024 * 1024 });
@@ -149,7 +158,9 @@ async function verifyBaselineRegression() {
       && receipt.checks.some(item => item.id === 'AUTO-HISTORY-enabled-positive-control' && item.status === 'PASS')
       && failures.length === 1 && failures[0].id === 'AUTO-HISTORY-paused-blocks-new-and-existing';
     await writeFile(join(output, 'automatic-history-baseline-validation.json'), JSON.stringify({ status: reproduced ? 'PASS' : 'FAIL',
-      buildSha: build.sha, dirty: build.dirty, baselineSha, conclusion: reproduced ? 'EXPECTED_P1_FAILURE_CONFIRMED' : 'BASELINE_REPRODUCTION_FAILED', exitStatus: status, result: receipt,
+      buildSha: build.sha, dirty: build.dirty, baselineSha,
+      baselinePreparation: { dependencyLayout: 'real ignored node_modules directory with symlinked entries', gitStatusBeforeBuild: baselineStatus },
+      conclusion: reproduced ? 'EXPECTED_P1_FAILURE_CONFIRMED' : 'BASELINE_REPRODUCTION_FAILED', exitStatus: status, result: receipt,
       ...(reproduced ? {} : { error: String(result.error || result.stderr || 'Baseline did not reach the expected pause regression').slice(-4000) }),
       limitations: ['The expected failure must occur at the same real-history pause assertion after successful production install and automatic enabled admission; setup errors/timeouts do not count.'] }, null, 2));
     check('AUTO-HISTORY-baseline-regression-confirmed', reproduced,
