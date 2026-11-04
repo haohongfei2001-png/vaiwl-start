@@ -135,7 +135,14 @@ try {
     await page.locator('#recent-toggle-more').click();
     check(`R5-${selectedTheme}-more-real-groups`,await page.locator('.spatial-date-band').count()>initialDates.length,'Disclosure expands remaining groups in this period.');
     await page.locator('#recent-toggle-more').click();
-    await settings(page); await page.locator('[data-project-layout-choice="equal"]').click(); await stored('native.projectLayout','equal'); await closeSettings(page);
+    await settings(page); await page.locator('[data-project-layout-choice="equal"]').click(); await stored('native.projectLayout','equal');
+    const settingsChrome=await page.evaluate(()=>{
+      const dialog=document.querySelector('#settings-dialog'), header=dialog.querySelector('.settings-header'), close=header.querySelector('button');
+      const bounds=el=>{const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right}};
+      return {dialog:bounds(dialog),header:bounds(header),close:bounds(close),scrollTop:dialog.scrollTop};
+    });
+    check(`R6-${selectedTheme}-settings-header-stays-visible`,settingsChrome.scrollTop===0&&settingsChrome.header.top>=settingsChrome.dialog.top-1&&settingsChrome.close.bottom<=settingsChrome.dialog.bottom+1&&settingsChrome.close.top>=settingsChrome.dialog.top-1,settingsChrome);
+    await closeSettings(page);
     await until(async()=>{const g=await geometry(page);return g.cards.length>0&&g.cards.every(c=>Math.abs(c.h-g.cards[0].h)<1)},'equal card geometry');
     const equal=await geometry(page); measurements.push({theme:selectedTheme,mode:'equal',...equal});
     check(`R6-${selectedTheme}-equal-exterior`,equal.cards.every(c=>Math.abs(c.h-equal.cards[0].h)<1&&Math.abs(c.w-equal.cards[0].w)<1),equal);
