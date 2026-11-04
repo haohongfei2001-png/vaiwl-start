@@ -1,5 +1,7 @@
 # VAIWL Start Free V1 · 当前合同入口
 
+> **全主题首页设计最新强制约束：[第16号首页设计规范](16-HOME-THEME-DESIGN-GUARDRAILS.md)（2026-11-04）。** 适用于 B/C 与未来全部主题；覆盖旧版项目头多操作、卡片补位与首页数量/时间标签等冲突的视觉规定。数据、真实活动、身份和安全仍遵循第14号及其他正式合同；执行者另须遵守仓库根目录 [AGENTS.md](../../AGENTS.md)。
+
 > **视觉布局当前修订：[第15号响应式首页](15-RESPONSIVE-HOME-AMENDMENT.md)。** 共享容器、1–4列受控网格与统一间距；第14号信息结构与全部数据/权限规则不变。
 
 > **当前最高优先修订：[第14号首页与时间投影合同](14-HOME-TIME-PROJECTION-AMENDMENT.md)。** 废止可见待确认/来源等级、严格更早日期证明与独立无日期会话区；完整项目、范围时间证据、最近与全局更早按该合同执行。身份隔离、P1权限及12stores不变。
@@ -23,7 +25,7 @@
 
 ## 阅读顺序与权威
 
-1. 先读[第14号首页与时间投影修订](14-HOME-TIME-PROJECTION-AMENDMENT.md)，再读 [原生项目本地组织修订](13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)，再读其继承的第10至12号修订与 [产品规格](01-PRODUCT-SPEC.md)：做什么、什么算完成。
+1. **先读[第16号全主题设计规范](16-HOME-THEME-DESIGN-GUARDRAILS.md)**（只约束可见设计/交互；不可削弱数据安全），再读[第14号首页与时间投影修订](14-HOME-TIME-PROJECTION-AMENDMENT.md)，再读 [原生项目本地组织修订](13-NATIVE-PROJECT-LOCAL-AMENDMENT.md)，再读其继承的第10至12号修订与 [产品规格](01-PRODUCT-SPEC.md)：做什么、什么算完成。
 2. [首页与交互](02-INTERACTION-DESIGN.md) 和 [可操作设计样稿](../../design/free-v1/prototype.html)。样稿中的全部数据均为合成示例。
 3. [数据合同](03-DATA-CONTRACT.md) 和 [TypeScript 合同](../../contracts/free-v1.ts)。文字定义不变量，类型定义字段形状。
 4. [来源与可靠性](04-SOURCE-RELIABILITY.md)：标准 API、已读源码、仍需真实验收的边界。

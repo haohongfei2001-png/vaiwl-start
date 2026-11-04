@@ -17,6 +17,9 @@ Build: `npm ci && npm run verify`. Load `dist` as an unpacked extension. `npm ru
 
 ## Free V1 design handoff
 
+**All homepage themes and future UI work must follow the [cross-theme mandatory design rules (R1–R6)](docs/free-v1/16-HOME-THEME-DESIGN-GUARDRAILS.md).** AI designers and coding agents must read [AGENTS.md](AGENTS.md) before proposing or changing home UI. This is a design contract, not a claim that the rules are implemented yet.
+
+
 **VAIWL-START-FREE/1.0 — design specification, not a released extension.**
 
 - [Start here · 冻结设计入口](docs/free-v1/00-READ-ME-FIRST.md)
