@@ -649,7 +649,15 @@ async function pumpImport(): Promise<void> {
     if (workspaceAccessAllowed() && requestedModeEpoch === modeEpoch && (activeJobId || latestJob()?.id) === stepJobId
       && (refreshFailed || current?.state === 'running')) fail(error);
   }
-  finally { importPumping = false; }
+  finally {
+    importPumping = false;
+    // A user can start a new import while the previous driver's final paint
+    // delay is still pending. Hand that different job over instead of losing
+    // its start request; a failed batch of the same job is never auto-retried.
+    const next = latestJob();
+    if (requestedModeEpoch === modeEpoch && next?.state === 'running' && next.id !== stepJobId
+      && workspaceAccessAllowed() && !stopped && !document.hidden) void pumpImport();
+  }
 }
 
 function changePeriod(delta: number): void {

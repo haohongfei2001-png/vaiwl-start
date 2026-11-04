@@ -49,7 +49,7 @@ async function launch(profile, extension = resolve('dist')) {
     chrome.runtime.sendMessage = (...args) => {
       if (args[0]?.protocol === 'vaiwl-start-internal/1') window.__startCommands.push(args[0].command);
       const result = send(...args);
-      return args[0]?.command === 'SNAPSHOT' && window.__holdSnapshot ? Promise.resolve(result).then(async value => { await new Promise(resolve => { window.__snapshotReleases.push(resolve); window.__releaseSnapshot = () => { for (const release of window.__snapshotReleases.splice(0)) release(); }; }); return value; }) : result;
+      return args[0]?.protocol === 'vaiwl-start-internal/1' && args[0]?.command === 'SNAPSHOT' && window.__holdSnapshot ? Promise.resolve(result).then(async value => { await new Promise(resolve => { window.__snapshotReleases.push(resolve); window.__releaseSnapshot = () => { for (const release of window.__snapshotReleases.splice(0)) release(); }; }); return value; }) : result;
     };
   });
   worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker', { timeout: 15000 });
@@ -259,7 +259,7 @@ try {
         window.__importDriverComplete = true; return Promise.resolve(reply('complete'));
       }
       const result = send(...args);
-      return message?.command === 'SNAPSHOT' ? Promise.resolve(result).then(reply => ({ ...reply, data: { ...reply.data, importJobs: [{ ...job, state: window.__importDriverComplete ? 'complete' : 'running' }] } })) : result;
+      return message?.protocol === 'vaiwl-start-internal/1' && message?.command === 'SNAPSHOT' ? Promise.resolve(result).then(reply => ({ ...reply, data: { ...reply.data, importJobs: [{ ...job, state: window.__importDriverComplete ? 'complete' : 'running' }] } })) : result;
     };
   });
   await mode(failedRead, 'workspace'); await failedRead.waitForFunction(() => window.__importStepCalls === 1);
