@@ -1,0 +1,65 @@
+name: ChatGPT task results
+on:
+  pull_request:
+    branches: [main, feat/home-theme-guardrails-20261104]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'contracts/**'
+      - 'research/chatgpt-tasks/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'package*.json'
+      - '.github/workflows/chatgpt-tasks.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: chatgpt-tasks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  installed-runtime:
+    name: Task integration (${{ matrix.family }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - family: chrome
+            install: chromium
+            channel: chromium
+          - family: edge
+            install: msedge
+            channel: msedge
+    env:
+      VAIWL_TEST_BROWSER_FAMILY: ${{ matrix.family }}
+      VAIWL_BROWSER_CHANNEL: ${{ matrix.channel }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: node --test research/chatgpt-tasks/result-model.test.mjs
+      - run: npx playwright install --with-deps ${{ matrix.install }}
+      - run: sudo apt-get install -y fonts-noto-cjk
+      - name: Installed task flow and existing homepage contracts
+        run: |
+          failed=0
+          for test in tasks home-guardrails settings-consumer life-bookmarks; do
+            node "tests/browser/$test.mjs" || failed=1
+          done
+          exit "$failed"
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: task-results-${{ matrix.family }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/
+          if-no-files-found: error

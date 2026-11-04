@@ -78,9 +78,10 @@ async function harness() {
           get: async (key: string) => { activity++; return { [key]: structuredClone(storedSession[key]) }; },
           set: async (patch: Record<string, unknown>) => { activity++; Object.assign(storedSession, structuredClone(patch)); },
           remove: async (keys: string | string[]) => { activity++; for (const key of Array.isArray(keys) ? keys : [keys]) delete storedSession[key]; },
-        }, local: { remove: async () => { activity++; } } },
+        }, local: { get: async () => ({}), set: async () => {}, remove: async () => { activity++; } } },
+        alarms: { onAlarm: event('alarm'), clear: async () => true, get: async () => undefined, create: async () => {} },
         scripting: { getRegisteredContentScripts: async () => [], registerContentScripts: async () => {}, unregisterContentScripts: async () => {} },
-        tabs: { query: async () => [], sendMessage: async () => {}, create: async () => ({ id: 3 }) },
+        tabs: { query: async () => [], sendMessage: async () => {}, create: async () => ({ id: 3 }), onRemoved: event('tab-removed'), onActivated: event('tab-activated') },
       },
     });
   }
