@@ -1,0 +1,96 @@
+name: Optional home theme
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'package*.json'
+      - '.github/workflows/home-theme.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: home-theme-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  domain-and-package:
+    name: Theme types, unit, privacy and package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: home-theme-package-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+  browsers:
+    name: Installed ${{ matrix.browser }} theme and regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - browser: Chromium
+            install: chromium
+            channel: ''
+            family: chrome
+          - browser: Edge
+            install: msedge
+            channel: msedge
+            family: edge
+    env:
+      VAIWL_BROWSER_CHANNEL: ${{ matrix.channel }}
+      VAIWL_TEST_BROWSER_FAMILY: ${{ matrix.family }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.install }}
+      - run: sudo apt-get install -y fonts-noto-cjk
+      - run: npm run build
+        id: build
+      - name: Installed extension theme switching and responsive layouts
+        run: node tests/browser/home-theme.mjs
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      - name: Installed cross-theme R1–R6 contract
+        run: node tests/browser/home-guardrails.mjs
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      - name: Existing settings, layout, workspace and bookmark regressions
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          failed=0
+          for test in settings-consumer layout-responsive home-workspace life-bookmarks; do
+            node "tests/browser/$test.mjs" || failed=1
+          done
+          exit "$failed"
+      - run: npm run audit
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      - run: npm run package
+        if: ${{ success() }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: home-theme-${{ matrix.family }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/
+          if-no-files-found: error

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light">
-<title>New Tab</title><link id="tab-favicon" rel="icon" href="tab-chrome.svg" type="image/svg+xml"><link rel="stylesheet" href="newtab.css"><link rel="stylesheet" href="bookmarks.css"><link rel="stylesheet" href="life.css"><link rel="stylesheet" href="settings.css"><script type="module" src="newtab.js"></script>
+<title>New Tab</title><link id="tab-favicon" rel="icon" href="tab-chrome.svg" type="image/svg+xml"><link rel="stylesheet" href="newtab.css"><link rel="stylesheet" href="bookmarks.css"><link rel="stylesheet" href="life.css"><link rel="stylesheet" href="settings.css"><link rel="stylesheet" href="spatial-theme.css"><link rel="stylesheet" href="workbench-theme.css"><link rel="stylesheet" href="folio-theme.css"><link rel="stylesheet" href="home-layout.css"><script type="module" src="newtab.js"></script>
 </head>
 <body>
 <svg aria-hidden="true" width="0" height="0" class="icon-definitions"><defs>
@@ -27,6 +27,7 @@
 <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v.1"/></symbol>
 <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="19" cy="12" r=".8" fill="currentColor"/></symbol>
 <symbol id="i-settings" viewBox="0 0 24 24"><path d="m9 3-1 3-3 1-1 3-2 2 2 2 1 3 3 1 1 3h6l1-3 3-1 1-3 2-2-2-2-1-3-3-1-1-3Z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-switch" viewBox="0 0 24 24"><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4"/></symbol>
 <symbol id="i-pin" viewBox="0 0 24 24"><path d="M8 3h8l-1 6 4 4v2H5v-2l4-4-1-6ZM12 15v7"/></symbol>
 <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></symbol>
 <symbol id="i-drag" viewBox="0 0 24 24"><path d="M9 6h.1M15 6h.1M9 12h.1M15 12h.1M9 18h.1M15 18h.1" stroke-width="3"/></symbol>
@@ -37,8 +38,10 @@
 </defs></svg>
 <header class="topbar">
  <button class="brand" id="home" aria-label="回到工作区首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>VAIWL <em>Start</em></span></button>
+ <div class="theme-controls" id="theme-controls" hidden></div>
  <div class="top-spacer"></div>
  <button class="search-trigger" id="search-trigger" aria-label="搜索所有本地会话，页面非编辑状态按斜杠键"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="search-label">搜索会话与项目</span><kbd>/</kbd></button>
+ <a id="theme-new-chat" class="new-chat theme-new-chat" href="https://chatgpt.com/" aria-label="在 ChatGPT 中开始新对话" hidden><svg aria-hidden="true"><use href="#i-plus"/></svg><span>新对话</span></a>
  <button class="mode-toggle" id="mode-toggle" type="button" aria-label="切换到生活" aria-busy="false" disabled><svg aria-hidden="true"><use href="#i-sun"/></svg><span>生活</span></button>
  <button class="icon-button" id="settings-trigger" aria-label="设置" title="设置"><svg aria-hidden="true"><use href="#i-settings"/></svg></button>
 </header>
@@ -53,7 +56,7 @@
  </section>
  <div id="mode-loading" class="mode-loading" role="status">正在打开首页…</div>
  <div id="workspace-content" aria-busy="true" hidden><section class="first-use"><div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div><h1>让对话留在手边。</h1><p>正在打开本地记录…</p></section></div>
- <nav class="history-rail" id="history-rail" aria-label="30 天区间导航" hidden></nav>
+ <nav class="history-rail" id="history-rail" aria-label="时段导航" hidden></nav>
 </main>
 <div id="toast" class="toast" role="status" hidden></div><div id="live" class="sr" aria-live="polite" aria-atomic="true"></div>
 <dialog id="search-dialog" class="search-dialog" aria-label="搜索本地会话与项目">
@@ -88,6 +91,39 @@
     <div id="settings-load-error" class="settings-empty" hidden><p>暂时无法读取设置，已有数据仍保留。</p><button id="settings-load-retry" class="secondary">重试</button></div>
     <div id="settings-panels">
      <section id="settings-panel-newtab" class="settings-panel" aria-labelledby="settings-page-title">
+      <section class="settings-group home-theme-group" aria-labelledby="home-theme-heading">
+       <h4 id="home-theme-heading">首页主题</h4>
+       <div class="home-theme-options" role="group" aria-label="首页主题">
+        <button class="home-theme-option" type="button" data-home-theme-choice="classic" aria-label="经典主题（默认）" aria-pressed="true" aria-describedby="home-theme-classic-description">
+         <span class="home-theme-preview theme-preview-classic" aria-hidden="true"><span class="theme-mini-header"><i></i><i></i></span><span class="theme-mini-projects"><i></i><i></i><i></i><i></i></span><span class="theme-mini-history"><i></i><i></i><i></i><i></i></span></span>
+         <span class="home-theme-option-label"><strong>经典</strong><span class="home-theme-default">默认</span><span class="home-theme-check" aria-hidden="true">✓</span></span>
+         <small id="home-theme-classic-description">保留熟悉的首页布局</small>
+        </button>
+        <button class="home-theme-option" type="button" data-home-theme-choice="spatial" aria-label="空间主题" aria-pressed="false" aria-describedby="home-theme-spatial-description">
+         <span class="home-theme-preview theme-preview-spatial" aria-hidden="true"><span class="theme-mini-header"><i></i><i></i></span><span class="theme-mini-projects"><i></i><i></i><i></i><i></i></span><span class="theme-mini-history"><i></i><i></i><i></i></span></span>
+         <span class="home-theme-option-label"><strong>空间</strong><span class="home-theme-check" aria-hidden="true">✓</span></span>
+         <small id="home-theme-spatial-description">全宽项目与连续日期</small>
+        </button>
+        <button class="home-theme-option" type="button" data-home-theme-choice="workbench" aria-label="分区主题" aria-pressed="false" aria-describedby="home-theme-workbench-description">
+         <span class="home-theme-preview theme-preview-workbench" aria-hidden="true"><span class="theme-mini-header"><i></i><i></i></span><span class="theme-mini-projects"><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="theme-mini-history"><i></i><i></i><i></i></span></span>
+         <span class="home-theme-option-label"><strong>分区</strong><span class="home-theme-check" aria-hidden="true">✓</span></span>
+         <small id="home-theme-workbench-description">项目主区与侧边时间线</small>
+        </button>
+        <button class="home-theme-option" type="button" data-home-theme-choice="folio" aria-label="书页主题" aria-pressed="false" aria-describedby="home-theme-folio-description">
+         <span class="home-theme-preview theme-preview-folio" aria-hidden="true"><span class="theme-mini-header"><i></i><i></i></span><span class="theme-mini-projects"><i></i><i></i><i></i></span><span class="theme-mini-history"><i></i><i></i><i></i></span></span>
+         <span class="home-theme-option-label"><strong>书页</strong><span class="home-theme-check" aria-hidden="true">✓</span></span>
+         <small id="home-theme-folio-description">开放项目与分栏日期</small>
+        </button>
+       </div>
+       <p id="home-theme-status" class="settings-feedback" role="status" aria-live="polite"></p>
+      </section>
+      <section class="settings-group" aria-labelledby="home-layout-heading">
+       <h4 id="home-layout-heading">首页布局</h4>
+       <div class="settings-row"><div class="settings-label"><label for="home-period-days">每个时段</label><small>调整项目与最近会话的显示范围</small></div><select id="home-period-days" class="field-input" disabled><option value="7">7 天</option><option value="30" selected>30 天</option><option value="90">90 天</option></select></div>
+       <p id="home-period-status" class="settings-feedback" role="status" aria-live="polite"></p>
+       <div class="settings-row home-layout-row"><div class="settings-label"><span id="project-layout-label">项目卡片</span><small>所有主题沿用此偏好</small></div><div class="project-layout-options" role="group" aria-labelledby="project-layout-label"><button class="secondary" type="button" data-project-layout-choice="equal" aria-pressed="false" disabled>等高卡片</button><button class="secondary" type="button" data-project-layout-choice="adaptive" aria-pressed="true" disabled>按内容自适应</button></div></div>
+       <p id="project-layout-status" class="settings-feedback" role="status" aria-live="polite"></p>
+      </section>
       <section class="settings-group" aria-labelledby="tab-identity-heading">
        <h4 id="tab-identity-heading">标签页</h4>
        <div class="settings-tab-preview" aria-label="标签页预览"><img id="settings-tab-preview-icon" src="tab-chrome.svg" alt="" width="16" height="16"><span id="settings-tab-preview-title">新标签页</span><svg aria-hidden="true"><use href="#i-close"/></svg></div>
@@ -131,7 +167,7 @@
      <section id="settings-panel-about" class="settings-panel" aria-labelledby="settings-page-title" hidden>
       <section class="settings-about"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><div><h4>VAIWL Start</h4><p id="settings-version">0.1.0</p></div></section>
       <section class="settings-group" aria-label="浏览器帮助">
-       <details class="settings-help"><summary>隐藏 Chrome 新标签页页脚<svg aria-hidden="true"><use href="#i-chevron"/></svg></summary><p id="browser-footer-help">右键点击页脚，选择“隐藏新标签页页脚”；或在“自定义 Chrome”→“页脚”中关闭。受管理的浏览器可能不提供此选项。</p><p>主题仍可在浏览器菜单 → 设置 → 外观中调整。</p></details>
+       <details class="settings-help"><summary>隐藏 Chrome 新标签页页脚<svg aria-hidden="true"><use href="#i-chevron"/></svg></summary><p id="browser-footer-help">右键点击页脚，选择“隐藏新标签页页脚”；或在“自定义 Chrome”→“页脚”中关闭。受管理的浏览器可能不提供此选项。</p><p>浏览器工具栏的外观可在浏览器菜单 → 设置 → 外观中调整。</p></details>
        <details class="settings-help"><summary>新标签页没有打开 Start<svg aria-hidden="true"><use href="#i-chevron"/></svg></summary><p>在浏览器的扩展管理中检查是否有其他扩展接管新标签页。也可以点击浏览器工具栏中的 Start 图标打开。</p></details>
        <details class="settings-help"><summary>自定义图标没有出现在标签栏<svg aria-hidden="true"><use href="#i-chevron"/></svg></summary><p>Edge 的原生新标签页可能保留浏览器图标。通过扩展图标打开 Start，可使用自定义图标。</p><p>可上传 PNG、JPG 或 WebP，大小不超过 1 MB、尺寸不超过 2048 × 2048。</p></details>
        <button id="settings-diagnostics-link" class="settings-link-row" data-settings-page="diagnostics"><span>技术诊断</span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>
@@ -150,7 +186,11 @@
   </main>
  </div>
 </dialog>
-<dialog id="project-dialog" aria-labelledby="project-title"><div class="dialog-head"><h2 id="project-title">项目</h2><button class="icon-button" data-close="project-dialog" aria-label="关闭项目操作"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p>打开原生项目后，继续使用 ChatGPT 自己的项目功能。</p><div class="context-links"><a id="project-native"><svg aria-hidden="true"><use href="#i-external"/></svg>在 ChatGPT 中打开项目</a><a id="project-new"><svg aria-hidden="true"><use href="#i-plus"/></svg>打开项目以新建对话</a><button id="project-find"><svg aria-hidden="true"><use href="#i-search"/></svg>搜索这个项目的会话</button></div></div></dialog>
+<dialog id="pins-dialog" class="pins-dialog" aria-labelledby="pins-title">
+ <div class="dialog-head"><h2 id="pins-title">管理置顶</h2><button class="icon-button" data-close="pins-dialog" aria-label="关闭置顶管理"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+ <div class="dialog-body"><p class="pins-description">选择会话，在最近区域优先显示。置顶不会改变会话的日期或项目归属。</p><label class="sr" for="pins-search">查找可置顶的会话</label><input class="field-input" id="pins-search" type="search" placeholder="查找会话…" autocomplete="off"><div id="pins-list" class="pins-list"></div><p id="pins-status" class="settings-feedback" role="status" aria-live="polite"></p></div>
+ <div class="dialog-foot"><button class="primary" data-close="pins-dialog">完成</button></div>
+</dialog>
 <dialog id="record-dialog" aria-labelledby="record-title"><div class="dialog-head"><h2 id="record-title">会话详情</h2><button class="icon-button" data-close="record-dialog" aria-label="关闭会话详情"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="dialog-body"><dl id="record-details" class="record-details"></dl><div class="dialog-foot"><button class="secondary" id="remove-record">从首页移除</button><button class="primary" data-close="record-dialog">完成</button></div></div></dialog>
 <dialog class="settings-detail-dialog" id="import-dialog" aria-labelledby="import-title">
  <div class="dialog-head"><h2 id="import-title" tabindex="-1">导入浏览器历史</h2><button class="icon-button" data-close="import-dialog" aria-label="关闭历史导入"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>

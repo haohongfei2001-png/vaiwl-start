@@ -1,10 +1,15 @@
 import { initNativeExperience } from './native-experience.js';
 import { initSettingsView, type SettingsPage } from './settings-view.js';
 import { HOME_MODE_KEY, homeMode as normalizeHomeMode, type HomeMode } from '../domain/home-mode.js';
+import type { HomeTheme } from '../domain/home-theme.js';
+import { initHomeTheme } from './home-theme.js';
+import { initHomePreferences } from './home-preferences.js';
+import { mountProjectLayout } from './project-layout.js';
+import { readSpatialView, saveSpatialView, spatialColumns, spatialPanelId, spatialProjectGrid, spatialProjectSection, spatialRecentSection, SPATIAL_DATE_ROWS, SPATIAL_DATE_STEP, SPATIAL_PROJECT_ROWS, SPATIAL_PROJECT_STEP } from './spatial-home.js';
 import type { ConversationRecord, WebsiteShortcut, OpenDisposition, ImportCheckpoint } from '../../contracts/free-v1.js';
 import type { CatalogSnapshot } from '../storage/repository.js';
 import { projectCatalog, searchCatalog, searchProjects, type CandidateProjectCard, type LocalObservedProjectCard } from '../domain/projection.js';
-import { createFreeViewSession, freeWindowFor, dayLabel } from '../domain/time.js';
+import { createFreeViewSession, dayLabel, reanchorFreeSegment } from '../domain/time.js';
 import { request, subscribeRevision } from '../shared/client.js';
 import { element as el, icon, byId, button, isEditing, allowedWebsiteUrl, dateTime } from './dom.js';
 import { readView, saveView, SafeRendering, preservePosition } from './view-state.js';
@@ -17,6 +22,10 @@ interface UISnapshot extends CatalogSnapshot {
 type Filter = 'all' | 'project' | 'none';
 interface DisplayProject { key: string; nativeTitle: string | null; canonicalUrl: string; stableRank?: number }
 const view = readView();
+const spatialView = readSpatialView();
+let activeHomeTheme: HomeTheme = 'classic';
+let lastSpatialColumns = spatialColumns(window.innerWidth, activeHomeTheme);
+const isModernTheme = () => activeHomeTheme !== 'classic';
 const initialScrollY = view.scrollY;
 const safe = new SafeRendering();
 let homeMode: HomeMode | null = null;
@@ -30,7 +39,6 @@ let clockTimer: ReturnType<typeof setTimeout> | undefined;
 let snapshot: UISnapshot | null = null;
 let calendar: ReturnType<typeof createFreeViewSession> | null = null;
 let selectedScope = view.selectedScope;
-let currentProject: DisplayProject | null = null;
 let currentRecord: ConversationRecord | null = null;
 let siteEditingId: string | null = null;
 let siteDragId: string | null = null;
@@ -42,6 +50,12 @@ const SEARCH_PAGE_SIZE = 100;
 let searchVisibleLimit = SEARCH_PAGE_SIZE;
 let searchConditions = '';
 let renderingFocusRecordKey: string | null = null;
+let recentMoreOpen = view.recentMoreOpen === true;
+let currentRecentGroups: RecentDisplayGroup[] = [];
+let pinsBusy = false;
+let pinsVisibleLimit = SEARCH_PAGE_SIZE;
+let calendarTimer: ReturnType<typeof setTimeout> | undefined;
+let projectLayouts: ReturnType<typeof mountProjectLayout>[] = [];
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 let refreshSequence = 0;
 let mutationRunning = false;
@@ -64,8 +78,9 @@ const filterLabels: Record<Filter, string> = { all: '全部', project: '项目',
 
 function persistView(): void {
   if (homeMode !== 'workspace' || modeLoading) return;
-  view.selectedScope = selectedScope; view.scrollY = window.scrollY;
+  view.selectedScope = selectedScope; view.recentMoreOpen = recentMoreOpen; view.scrollY = window.scrollY;
   workspaceScrollY = view.scrollY; saveView(view);
+  saveSpatialView(spatialView);
 }
 function announce(message: string): void { byId('live').textContent = message; }
 function toast(message: string, action?: { label: string; run: () => void }): void {
@@ -97,6 +112,28 @@ function fail(error: unknown, target?: string): void {
   } else toast(message);
 }
 
+/** Keep date labels honest across local midnight without collecting new activity. */
+function updateCalendar(): boolean {
+  if (homeMode !== 'workspace' || !snapshot) return false;
+  const next = createFreeViewSession({ now: new Date().toISOString(), timeZone: snapshot.settings.libraryTimeZone, H: homePreferences.value.periodDays });
+  const previous = calendar;
+  if (previous && previous.H === next.H && previous.T === next.T && previous.Z === next.Z) return false;
+  if (previous) view.k = reanchorFreeSegment(view.k, previous, next);
+  calendar = next; if (previous) recentMoreOpen = false;
+  return true;
+}
+function scheduleCalendarTick(): void {
+  clearTimeout(calendarTimer);
+  if (homeMode !== 'workspace' || document.hidden || stopped) return;
+  calendarTimer = setTimeout(() => {
+    if (homeMode !== 'workspace' || stopped) return;
+    safe.renderAfterPending(() => {
+      if (homeMode === 'workspace' && updateCalendar()) { renderWorkspace(); persistView(); }
+      scheduleCalendarTick();
+    });
+  }, 60_000 - Date.now() % 60_000);
+}
+
 async function refresh(immediate = false): Promise<UISnapshot | undefined> {
   if (!workspaceAccessAllowed() || stopped) return;
   const sequence = ++refreshSequence;
@@ -110,7 +147,7 @@ async function refresh(immediate = false): Promise<UISnapshot | undefined> {
     if (!selectedScope || (selectedScope !== 'unassigned' && !received.scopes.some(scope => scope.key === selectedScope))) selectedScope = received.settings.selectedScope || 'unassigned';
     if (homeMode === 'workspace') {
       view.selectedScope = selectedScope;
-      if (!calendar || calendar.Z !== received.settings.libraryTimeZone) calendar = createFreeViewSession({ now: new Date().toISOString(), timeZone: received.settings.libraryTimeZone });
+      updateCalendar(); scheduleCalendarTick();
     }
     render();
   };
@@ -162,33 +199,6 @@ function conversationRow(record: ConversationRecord): HTMLElement {
 }
 
 interface DisplayCard { project: DisplayProject; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; sortTime: number | null; attributes?: Record<string, string> }
-/** Every supported native relationship uses one visual component. Identity remains in domain keys. */
-function projectCard(card: DisplayCard): HTMLElement {
-  const project = card.project, key = project.key, name = project.nativeTitle || '未命名项目';
-  const focusIndex = renderingFocusRecordKey ? card.recent.findIndex(record => record.key === renderingFocusRecordKey) : -1;
-  if (focusIndex >= (view.limits[key] || 5)) view.limits[key] = 5 + Math.ceil((focusIndex + 1 - 5) / 12) * 12;
-  if (renderingFocusRecordKey && [...card.older, ...card.undated].some(record => record.key === renderingFocusRecordKey) && !view.older.includes(key)) view.older.push(key);
-  const expanded = view.older.includes(key), limit = view.limits[key] || 5;
-  const body = el('div', { class: 'project-body' });
-  if (card.recent.length) {
-    const rows = el('div', { class: 'conversation-list' }, card.recent.slice(0, limit).map(conversationRow));
-    if (card.recent.length > limit) rows.append(button('显示更多', { class: 'more-rows', 'data-more': key, 'data-focus-key': `more:${key}` }));
-    body.append(rows);
-  }
-  // Compatibility with an older projection never drops a member or duplicates it.
-  const seen = new Set(card.recent.map(record => record.key));
-  const older = [...card.older, ...card.undated].filter(record => { if (seen.has(record.key)) return false; seen.add(record.key); return true; });
-  if (older.length) {
-    body.append(button('更早', { class: 'history-disclosure', 'data-older': key, 'aria-expanded': String(expanded), 'aria-controls': `older-${key}`, 'data-focus-key': `older:${key}` }, 'chevron'));
-    const old = el('div', { class: 'old-list', id: `older-${key}` }, [el('div', { class: 'conversation-list' }, older.map(conversationRow))]);
-    old.hidden = !expanded; body.append(old);
-  }
-  if (!card.recent.length && !older.length) body.append(el('a', { class: 'empty-project-link', href: project.canonicalUrl }, ['打开项目', icon('external')]));
-  return el('article', { class: 'project', 'data-project': key, ...card.attributes, 'aria-labelledby': `project-${key}` }, [
-    el('header', { class: 'project-head' }, [el('span', { class: 'project-symbol' }, [icon('folder')]),
-      el('h3', { id: `project-${key}`, title: name }, [name]),
-      button('', { class: 'icon-button', 'data-project-menu': key, 'data-focus-key': `project-menu:${key}`, 'aria-label': `${name}项目操作` }, 'more')]), body]);
-}
 function localCard(card: LocalObservedProjectCard): DisplayCard { return { ...card, attributes: { 'data-local-project': card.project.key } }; }
 function candidateCard(card: CandidateProjectCard): DisplayCard { return { ...card, project: { ...card.candidate, key: `candidate:${card.candidate.key}`, stableRank: card.stableRank }, attributes: { 'data-candidate-project': card.candidate.key } }; }
 function cardOrder(a: DisplayCard, b: DisplayCard): number {
@@ -204,43 +214,49 @@ function dateLabel(date: string): string {
   return `${year !== Number(dayLabel(calendar.T).slice(0, 4)) ? `${year} 年 ` : ''}${month} 月 ${day} 日`;
 }
 
-function recentSection(groups: RecentDisplayGroup[]): HTMLElement {
-  return el('section', { class: 'date-section recent-section', 'aria-label': '最近' }, [
-    el('div', { class: 'section-heading' }, [el('h2', {}, ['最近'])]),
-    el('div', { class: 'date-grid' }, groups.map(group => {
-      const key = `recent:${selectedScope}:${group.key}`;
-      const focusIndex = renderingFocusRecordKey ? group.records.findIndex(record => record.key === renderingFocusRecordKey) : -1;
-      if (focusIndex >= (view.limits[key] || 5)) view.limits[key] = 5 + Math.ceil((focusIndex + 1 - 5) / 12) * 12;
-      const limit = view.limits[key] || 5;
-      const list = el('div', { class: 'conversation-list' }, group.records.slice(0, limit).map(conversationRow));
-      if (group.records.length > limit) list.append(button('显示更多', { class: 'more-rows', 'data-more': key, 'data-focus-key': `more:${key}`, 'aria-label': '显示更多会话' }));
-      const period = calendar ? freeWindowFor(view.k, calendar) : null;
-      const label = group.date ? dateLabel(group.date) : period ? `${period.start}—${dayLabel(calendar!.T - 30 * view.k)}` : '最近';
-      return el('article', { class: 'date-window', ...(group.date ? { 'data-date': group.date } : { 'data-period': String(view.k) }) }, [
-        el('h3', { 'aria-label': group.date || label }, [icon('calendar'), label]), list]);
-    }))]);
-}
 function earlierProjects(cards: DisplayCard[]): HTMLElement {
   if (renderingFocusRecordKey && cards.some(card => [...card.recent, ...card.older, ...card.undated].some(record => record.key === renderingFocusRecordKey))) view.earlierProjectsOpen = true;
   const expanded = view.earlierProjectsOpen;
-  const list = el('div', { class: 'project-grid', id: 'earlier-projects-content' }, cards.map(projectCard));
+  const list = spatialProjectGrid(cards, { view: spatialView, row: conversationRow, columns: spatialColumns(window.innerWidth, activeHomeTheme), focusedRecord: renderingFocusRecordKey });
+  list.id = 'earlier-projects-content';
   list.hidden = !expanded;
   return el('section', { class: 'earlier-projects', 'aria-label': '更早' }, [
     button('更早', { id: 'earlier-projects-toggle', class: 'earlier-projects-toggle', 'aria-expanded': String(expanded), 'aria-controls': list.id }, 'chevron'), list]);
 }
 
 function workspaceHeading(): HTMLElement {
-  const heading = el('div', { class: 'board-heading' }, [el('h1', {}, ['工作区'])]);
+  const title = el('h1', isModernTheme() ? { class: 'sr' } : {}, ['工作区']);
+  const titleGroup = isModernTheme() ? el('div', { class: 'spatial-heading-title' }, [title]) : null;
+  const heading = el('div', { class: 'board-heading' }, [titleGroup || title]);
   if (snapshot && snapshot.scopes.length > 0) {
     const scopeSelect = el('select', { class: 'scope-selector', id: 'scope-selector', 'aria-label': '选择本地资料库' });
     for (const scope of snapshot.scopes) scopeSelect.append(el('option', { value: scope.key }, [scope.label || '已保存的资料库']));
     scopeSelect.append(el('option', { value: 'unassigned' }, ['此浏览器']));
-    scopeSelect.value = selectedScope || 'unassigned'; heading.append(scopeSelect);
+    scopeSelect.value = selectedScope || 'unassigned'; (titleGroup || heading).append(scopeSelect);
   }
   const filters = el('div', { class: 'segment', role: 'tablist', 'aria-label': '筛选会话' });
-  for (const filter of Object.keys(filterLabels) as Filter[]) filters.append(button(filterLabels[filter], { role: 'tab', 'data-filter': filter, 'data-focus-key': `filter:${filter}`, 'aria-selected': String(view.filter === filter), tabindex: view.filter === filter ? 0 : -1 }));
-  heading.append(filters, el('a', { class: 'new-chat', href: 'https://chatgpt.com/', 'aria-label': '在 ChatGPT 中开始新对话' }, ['新对话', icon('external')]));
+  for (const filter of Object.keys(filterLabels) as Filter[]) {
+    const control = button(filterLabels[filter], { role: 'tab', 'data-filter': filter, 'data-focus-key': `filter:${filter}`, 'aria-selected': String(view.filter === filter), tabindex: view.filter === filter ? 0 : -1 });
+    filters.append(control);
+  }
+  heading.append(filters);
+  if (calendar) heading.append(el('nav', { class: 'spatial-period', 'aria-label': '时段导航' }, [
+    button('', { class: 'icon-button', id: 'period-newer', 'aria-label': '更新时段', title: '更新时段', disabled: view.k === 0 }, 'chevron'),
+    button('', { class: 'icon-button', id: 'period-older', 'aria-label': '更早时段', title: '更早时段' }, 'chevron'),
+  ]));
+  if (!isModernTheme()) heading.append(el('a', { class: 'new-chat', href: 'https://chatgpt.com/', 'aria-label': '在 ChatGPT 中开始新对话' }, ['新对话', icon('external')]));
   return heading;
+}
+
+/** One reversible mode action; each theme keeps its own visual treatment. */
+function renderThemeChrome(heading?: HTMLElement): void {
+  const modern = isModernTheme();
+  const controls = byId('theme-controls');
+  controls.replaceChildren(...(modern && homeMode === 'workspace' && heading ? [heading] : []));
+  controls.hidden = !modern || homeMode !== 'workspace' || !heading;
+  byId('mode-toggle').hidden = false;
+  byId('theme-new-chat').hidden = !modern || homeMode !== 'workspace';
+  byId('search-trigger').hidden = modern && homeMode === 'life';
 }
 
 function firstUse(): HTMLElement {
@@ -251,36 +267,55 @@ function firstUse(): HTMLElement {
     button('连接 ChatGPT，继续收录会话链接', { class: 'text-button', id: 'first-connect' })]);
 }
 
+function disposeProjectLayouts(): void {
+  for (const layout of projectLayouts) layout.dispose();
+  projectLayouts = [];
+}
+function layoutProjects(): void {
+  for (const grid of document.querySelectorAll<HTMLElement>('.spatial-project-grid:not([hidden])')) {
+    projectLayouts.push(mountProjectLayout(grid, {
+      mode: homePreferences.value.projectLayout, theme: activeHomeTheme,
+      schedule: work => safe.renderAfterPending(() => { if (homeMode === 'workspace' && grid.isConnected && !stopped) work(); }),
+    }));
+  }
+}
+
 function renderWorkspace(): void {
   if (homeMode !== 'workspace' || !snapshot || !calendar) return;
+  updateCalendar(); disposeProjectLayouts();
+  document.documentElement.dataset.homeTheme = activeHomeTheme;
   const content = byId('workspace-content'); content.setAttribute('aria-busy', 'false');
   if (!snapshot.conversations.length && !snapshot.projects.length && !snapshot.localProjects?.length && !snapshot.importJobs.length && !snapshot.scopes.length) {
-    content.replaceChildren(firstUse()); byId('history-rail').hidden = true; return;
+    currentRecentGroups = []; renderThemeChrome(); content.replaceChildren(firstUse()); byId('history-rail').hidden = true; return;
   }
   const projection = projectCatalog(snapshot, { ...calendar, k: view.k, selectedScope: selectedScope || 'unassigned' });
   const focused = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
   renderingFocusRecordKey = focused?.startsWith('record:') ? focused.slice(7) : focused?.startsWith('details:') ? focused.slice(8) : null;
-  content.replaceChildren(workspaceHeading());
   const showProjects = view.filter === 'all' || view.filter === 'project';
   const showRecent = view.filter === 'all' || view.filter === 'none';
   const cards: DisplayCard[] = [...projection.projects, ...projection.localProjects.map(localCard), ...projection.candidateProjects.map(candidateCard)].sort(cardOrder);
-  if (showProjects && cards.length) content.append(el('section', { 'aria-label': '项目' }, [el('div', { class: 'project-grid' }, cards.map(projectCard))]));
   const groups = recentDisplayGroups([...projection.dates, ...projection.pendingDates], projection.segmentOnly, projection.displayTimes, view.k);
-  if (showRecent && groups.length) content.append(recentSection(groups));
+  currentRecentGroups = groups;
+  const heading = workspaceHeading();
+  renderThemeChrome(isModernTheme() ? heading : undefined);
+  content.replaceChildren(...(isModernTheme() ? [] : [heading]));
+  if (showProjects && cards.length) content.append(spatialProjectSection(cards, {
+    view: spatialView, row: conversationRow, columns: spatialColumns(window.innerWidth, activeHomeTheme), focusedRecord: renderingFocusRecordKey,
+  }));
+  if (showRecent && groups.length) content.append(spatialRecentSection(groups, {
+    view: spatialView, row: conversationRow, scope: selectedScope || 'unassigned', focusedRecord: renderingFocusRecordKey,
+    label: dateLabel, pinnedKeys: homePreferences.value.recentPinnedKeys, today: dayLabel(calendar.T), moreDatesOpen: recentMoreOpen,
+  }));
   const hasRecords = showProjects && cards.length || showRecent && groups.length;
   if (!hasRecords) content.append(el('section', { class: 'period-empty' }, [el('h2', {}, ['这一段没有记录']), el('p', {}, ['可以继续向前翻，也可以搜索全部会话和项目。']), button('搜索全部', { class: 'text-button', id: 'empty-search' }, 'search')]));
   const older = [...projection.undatedProjects, ...projection.undatedLocalProjects.map(localCard), ...projection.undatedCandidateProjects.map(candidateCard)].sort(cardOrder);
   if (showProjects && view.k === 0 && older.length) content.append(earlierProjects(older));
 
-  renderRail(); renderingFocusRecordKey = null;
+  renderRail(); layoutProjects(); renderingFocusRecordKey = null;
 }
 
 function renderRail(): void {
-  if (homeMode !== 'workspace' || !calendar) return;
-  const rail = byId('history-rail'); rail.replaceChildren(); rail.hidden = false;
-  const rangeLabel = (k: number) => { const range = freeWindowFor(k, calendar!); return `${range.start}—${dayLabel(calendar!.T - 30 * k)}`; };
-  if (view.k > 0) rail.append(button('', { id: 'period-newer', 'aria-label': `更新的 30 天，${rangeLabel(view.k - 1)}`, title: `更新的 30 天 · ${rangeLabel(view.k - 1)}` }, 'up'));
-  rail.append(button('', { id: 'period-older', 'aria-label': `更早的 30 天，${rangeLabel(view.k + 1)}`, title: `更早的 30 天 · ${rangeLabel(view.k + 1)}` }, 'down'));
+  byId('history-rail').replaceChildren(); byId('history-rail').hidden = true;
 }
 
 function sortedSites(): WebsiteShortcut[] { return [...(snapshot?.shortcuts || [])].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)); }
@@ -314,6 +349,46 @@ function renderEditor(): void {
       button('', { class: 'icon-button', 'data-remove-site': site.id, 'aria-label': `移除 ${site.label}` }, 'trash')]);
     return row;
   }));
+}
+
+/** Pins are explicit display preferences; only genuine recent records can enter. */
+function renderPins(): void {
+  if (homeMode !== 'workspace' || !snapshot) return;
+  const list = byId('pins-list');
+  const focusedKey = (document.activeElement as HTMLElement | null)?.dataset.focusKey;
+  const scrollTop = list.scrollTop;
+  const query = byId<HTMLInputElement>('pins-search').value.trim().toLocaleLowerCase();
+  const pins = new Set(homePreferences.value.recentPinnedKeys);
+  const eligible = searchCatalog(snapshot, '', selectedScope || 'unassigned')
+    .filter(result => !result.project && !result.localProject && !result.candidateProject);
+  const eligibleKeys = new Set(eligible.map(result => result.record.key));
+  const current = new Map(currentRecentGroups.flatMap(group => group.records.map(record => [record.key, record] as const)).filter(([key]) => eligibleKeys.has(key)));
+  const records = [...current.values(), ...eligible.filter(result => pins.has(result.record.key) && !current.has(result.record.key)).map(result => result.record)]
+    .filter(record => !query || title(record).toLocaleLowerCase().includes(query) || record.canonicalUrl.toLocaleLowerCase().includes(query));
+  list.replaceChildren(...records.slice(0, pinsVisibleLimit).map(record => {
+    const checked = pins.has(record.key);
+    const toggle = el('input', { type: 'checkbox', 'data-recent-pin': record.key, 'data-focus-key': `pin:${record.key}`, checked, disabled: pinsBusy });
+    return el('label', { class: 'pin-choice', title: title(record) }, [toggle,
+      el('span', { class: 'pin-choice-text' }, [el('strong', {}, [title(record)]), el('small', {}, [current.has(record.key) ? checked ? '已置顶' : '当前页面的会话' : '已置顶 · 其他时段'])]), icon('pin')]);
+  }));
+  if (!records.length) list.append(el('p', { class: 'pin-empty' }, [query ? '没有找到符合条件的会话' : '当前没有可置顶的会话']));
+  if (records.length > pinsVisibleLimit) list.append(button('展开更多', { id: 'pins-more', class: 'text-button', 'data-focus-key': 'pins-more' }));
+  list.scrollTop = scrollTop;
+  if (focusedKey?.startsWith('pin:')) list.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(focusedKey)}"]`)?.focus({ preventScroll: true });
+}
+async function toggleRecentPin(key: string, checked: boolean): Promise<void> {
+  if (homeMode !== 'workspace' || pinsBusy) return;
+  const eligible = currentRecentGroups.some(group => group.records.some(record => record.key === key));
+  if (checked && !eligible) { renderPins(); return; }
+  const keys = new Set(homePreferences.value.recentPinnedKeys);
+  if (checked) keys.add(key); else keys.delete(key);
+  const epoch = modeEpoch;
+  pinsBusy = true; renderPins(); byId('pins-status').textContent = '';
+  const saved = await homePreferences.setPinnedKeys([...keys]);
+  pinsBusy = false;
+  if (homeMode !== 'workspace' || modeEpoch !== epoch) return;
+  renderPins();
+  byId('pins-status').textContent = saved ? checked ? '已置顶。' : '已取消置顶。' : '置顶偏好未能保存，请重试。';
 }
 
 function renderSearch(): void {
@@ -371,7 +446,7 @@ function renderSettings(): void {
   byId('history-import-label').textContent = !job ? '找回浏览过的会话' : importStateLabel(job.state);
   byId('settings-import').textContent = job && ['running', 'paused', 'partial', 'permission-revoked'].includes(job.state) ? '查看' : '导入';
   if (!timezoneDirty) byId<HTMLInputElement>('time-zone').value = snapshot.settings.libraryTimeZone;
-  byId('removed-count').textContent = snapshot.tombstones.length ? `${snapshot.tombstones.length} 条会话` : '没有已移除的会话';
+  byId('removed-count').textContent = snapshot.tombstones.length ? '可恢复已移除的会话' : '没有已移除的会话';
   byId('source-description').textContent = '会话目录与已观察到的项目关系保存在本机。完整账号空间认证和全量同步尚未完成。';
   byId('source-details').textContent = [snapshot.capabilities.sourceGate, ...(snapshot.capabilities.reasons || []), snapshot.capabilities.sourceStatus?.code || '', `构建：${snapshot.build.sha}`, `版本：${snapshot.build.version}`, `适配器：${snapshot.build.adapterVersion}`].filter(Boolean).join('\n');
 }
@@ -404,7 +479,7 @@ function renderImport(): void {
   const stateLabel = importStateLabel(job.state);
   const start = new Date(job.startTimeMs).toLocaleDateString('zh-CN');
   const end = new Date(job.endTimeMs).toLocaleDateString('zh-CN');
-  area.replaceChildren(el('strong', {}, [stateLabel]), el('p', {}, [`${start}—${end} · 已保留 ${job.acceptedCandidates} 条记录`]));
+  area.replaceChildren(el('strong', {}, [stateLabel]), el('p', {}, [`${start}—${end}`]));
   if (job.state === 'partial' || job.saturatedIntervals.length) area.append(el('p', {}, ['部分历史未能读取，已导入的会话已保留。']));
   const actions = el('div', { class: 'import-actions' });
   if (job.state === 'running') actions.append(button('暂停', { class: 'secondary', 'data-import-pause': job.id }));
@@ -435,6 +510,7 @@ function renderRemoved(): void {
 
 function render(): void {
   if (!workspaceAccessAllowed()) return;
+  document.documentElement.dataset.homeTheme = activeHomeTheme;
   if (homeMode === 'workspace') { renderSites(); renderWorkspace(); }
   else if (byId<HTMLDialogElement>('sites-dialog').open) renderSites();
   nativeExperience.refresh();
@@ -443,6 +519,7 @@ function render(): void {
   if (byId<HTMLDialogElement>('search-dialog').open) renderSearch();
   if (byId<HTMLDialogElement>('import-dialog').open) renderImport();
   if (byId<HTMLDialogElement>('removed-dialog').open) renderRemoved();
+  if (homeMode === 'workspace' && byId<HTMLDialogElement>('pins-dialog').open) renderPins();
   persistView();
 }
 
@@ -574,9 +651,10 @@ async function pumpImport(): Promise<void> {
 }
 
 function changePeriod(delta: number): void {
-  view.k = Math.max(0, view.k + delta); renderWorkspace(); window.scrollTo(0, 0); persistView();
-  announce(view.k === 0 ? '最近 30 天' : '已切换到相邻的 30 天');
-  (document.getElementById(delta > 0 ? 'period-older' : 'period-newer') || document.getElementById('period-older'))?.focus({ preventScroll: true });
+  view.k = Math.max(0, view.k + delta); recentMoreOpen = false; renderWorkspace(); window.scrollTo(0, 0); persistView();
+  announce(view.k === 0 ? '已回到最新时段' : '已切换到相邻时段');
+  const preferred = document.getElementById(delta > 0 ? 'period-older' : 'period-newer') as HTMLButtonElement | null;
+  (preferred && !preferred.disabled ? preferred : document.getElementById('period-older'))?.focus({ preventScroll: true });
 }
 
 function clearSiteForm(): void {
@@ -597,15 +675,46 @@ document.addEventListener('click', event => {
   if (control.dataset.close) { closeDialog(control.dataset.close); return; }
   if (control.dataset.filter) { chooseFilter(control.dataset.filter as Filter); return; }
   if (control.dataset.searchFilter) { searchFilter = control.dataset.searchFilter as Filter; searchProjectKey = null; renderSearch(); return; }
+  if (control.dataset.spatialExpand) {
+    const key = control.dataset.spatialExpand, opening = spatialView.expandedProject !== key;
+    spatialView.expandedProject = opening ? key : null; spatialView.projectsCollapsed = false;
+    preservePosition(renderWorkspace); persistView();
+    if (opening && event.detail === 0) document.getElementById(`${spatialPanelId(key)}-title`)?.focus({ preventScroll: true });
+    if (!opening) document.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(`spatial-expand:${key}`)}"]`)?.focus({ preventScroll: true });
+    announce(opening ? '已展开项目的其余会话' : '已收起项目会话'); return;
+  }
+  if (control.dataset.spatialDateToggle) {
+    const key = control.dataset.spatialDateToggle;
+    spatialView.collapsedDates = spatialView.collapsedDates.includes(key) ? spatialView.collapsedDates.filter(item => item !== key) : [...spatialView.collapsedDates, key];
+    preservePosition(renderWorkspace); persistView(); return;
+  }
+  if (control.dataset.spatialDateMore) {
+    const key = control.dataset.spatialDateMore, previousLimit = spatialView.dateLimits[key] || SPATIAL_DATE_ROWS;
+    spatialView.dateLimits[key] = previousLimit + SPATIAL_DATE_STEP;
+    preservePosition(renderWorkspace); persistView();
+    if (!document.querySelector(`[data-spatial-date-more="${CSS.escape(key)}"]`)) {
+      document.getElementById(`spatial-date-${encodeURIComponent(key)}`)?.querySelectorAll<HTMLAnchorElement>('a[data-record-key]')[previousLimit]?.focus({ preventScroll: true });
+    }
+    announce('已显示更多会话'); return;
+  }
+  if (control.dataset.spatialProjectMore) {
+    const key = control.dataset.spatialProjectMore, previousLimit = spatialView.projectLimits?.[key] || SPATIAL_PROJECT_ROWS;
+    (spatialView.projectLimits ||= {})[key] = previousLimit + SPATIAL_PROJECT_STEP;
+    preservePosition(renderWorkspace); persistView();
+    if (!document.querySelector(`[data-spatial-project-more="${CSS.escape(key)}"]`)) {
+      document.getElementById(spatialPanelId(key))?.querySelectorAll<HTMLAnchorElement>('a[data-record-key]')[previousLimit]?.focus({ preventScroll: true });
+    }
+    announce('已显示更多会话'); return;
+  }
+  if (control.dataset.spatialProjectSearch) {
+    const project = snapshot ? searchProjects(snapshot, '', selectedScope || 'unassigned').find(item => item.key === control.dataset.spatialProjectSearch) : null;
+    if (project) openSearch(project); return;
+  }
   if (control.dataset.older) {
     const key = control.dataset.older; view.older = view.older.includes(key) ? view.older.filter(item => item !== key) : [...view.older, key];
     preservePosition(renderWorkspace); persistView(); return;
   }
   if (control.dataset.more) { const key = control.dataset.more; view.limits[key] = (view.limits[key] || 5) + 12; preservePosition(renderWorkspace); persistView(); return; }
-  if (control.dataset.projectMenu) {
-    currentProject = snapshot ? searchProjects(snapshot, '', selectedScope || 'unassigned').find(project => project.key === control.dataset.projectMenu) || null : null;
-    if (currentProject) { byId('project-title').textContent = currentProject.nativeTitle || '未命名项目'; for (const id of ['project-native', 'project-new']) byId<HTMLAnchorElement>(id).href = currentProject.canonicalUrl; showDialog('project-dialog'); } return;
-  }
   if (control.dataset.recordMenu) { const record = snapshot?.conversations.find(item => item.key === control.dataset.recordMenu); if (record) showRecord(record); return; }
   if (control.dataset.editSite) {
     const site = snapshot?.shortcuts.find(item => item.id === control.dataset.editSite); if (!site) return;
@@ -630,13 +739,15 @@ document.addEventListener('click', event => {
       const firstNew = list.querySelectorAll<HTMLElement>('.search-result')[previousCount];
       firstNew?.focus({ preventScroll: true }); firstNew?.scrollIntoView({ block: 'nearest' }); break;
     }
-    case 'project-find': if (currentProject) openSearch(currentProject); break;
     case 'settings-trigger': showDialog('settings-dialog'); settingsView.open(); break;
     case 'legacy-sites': case 'site-edit': case 'add-site': renderSites(); renderEditor(); showDialog('sites-dialog'); if (control.id === 'add-site') byId('site-name').focus(); break;
     case 'cancel-site-edit': clearSiteForm(); break;
     case 'site-toggle': if (snapshot) void mutate('SETTINGS_UPDATE', { patch: { shortcutSectionCollapsed: !snapshot.settings.shortcutSectionCollapsed } }); break;
     case 'show-more-sites': allSitesVisible = !allSitesVisible; renderSites(); break;
     case 'earlier-projects-toggle': view.earlierProjectsOpen = !view.earlierProjectsOpen; preservePosition(renderWorkspace); persistView(); break;
+    case 'recent-manage-pins': byId<HTMLInputElement>('pins-search').value = ''; pinsVisibleLimit = SEARCH_PAGE_SIZE; byId('pins-status').textContent = ''; renderPins(); showDialog('pins-dialog'); byId('pins-search').focus(); break;
+    case 'recent-toggle-more': recentMoreOpen = !recentMoreOpen; preservePosition(renderWorkspace); document.getElementById('recent-toggle-more')?.focus({ preventScroll: true }); persistView(); break;
+    case 'pins-more': pinsVisibleLimit += SEARCH_PAGE_SIZE; renderPins(); break;
     case 'period-newer': changePeriod(-1); break;
     case 'period-older': changePeriod(1); break;
     case 'settings-import': case 'first-import': renderImport(); showDialog('import-dialog'); break;
@@ -647,14 +758,15 @@ document.addEventListener('click', event => {
     case 'remove-record': if (currentRecord) { const key = currentRecord.key; void mutate('RECORD_REMOVE', { recordKey: key }, () => { closeDialog('record-dialog'); toast('已从首页移除，ChatGPT 会话仍然保留。', { label: '恢复收录', run: () => { void mutate('RECORD_RESTORE', { recordKey: key }); } }); }); } break;
     case 'show-removed': renderRemoved(); showDialog('removed-dialog'); break;
     case 'clear-local': settingsView.showStatus('', false, 'clear-status'); showDialog('clear-dialog'); byId<HTMLButtonElement>('clear-dialog').querySelector<HTMLButtonElement>('.dialog-foot [data-close]')?.focus(); break;
-    case 'confirm-clear': if (event.isTrusted) void mutate('CLEAR_LOCAL', {}, () => { selectedScope = 'unassigned'; timezoneDirty = false; view.k = 0; view.filter = 'all'; view.older = []; view.limits = {}; closeDialog('clear-dialog'); settingsView.showStatus('Start 本地数据已清除。'); void refresh(true).catch(() => {}); }); break;
+    case 'confirm-clear': if (event.isTrusted) void mutate('CLEAR_LOCAL', {}, () => { selectedScope = 'unassigned'; timezoneDirty = false; view.k = 0; view.filter = 'all'; view.older = []; view.limits = {}; Object.assign(spatialView, { expandedProject: null, projectsCollapsed: false, collapsedDates: [], dateLimits: {}, projectLimits: {} }); saveSpatialView(spatialView); closeDialog('clear-dialog'); settingsView.showStatus('Start 本地数据已清除。'); void refresh(true).catch(() => {}); }); break;
   }
 });
 
 document.addEventListener('auxclick', event => { const target = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[data-record-key]') : null; if (target) void openConversation(event, target); });
 document.addEventListener('change', event => {
   const target = event.target as HTMLInputElement | HTMLSelectElement;
-  if (target.id === 'scope-selector') { selectedScope = target.value; view.k = 0; view.older = []; searchProjectKey = null; void refresh(true).catch(fail); persistView(); }
+  if (target instanceof HTMLInputElement && target.dataset.recentPin) { void toggleRecentPin(target.dataset.recentPin, target.checked); return; }
+  if (target.id === 'scope-selector') { selectedScope = target.value; view.k = 0; recentMoreOpen = false; view.older = []; searchProjectKey = null; void refresh(true).catch(fail); persistView(); }
   if (target.id === 'capture-enabled' && target instanceof HTMLInputElement) {
     if (target.checked && !snapshot?.capabilities.chatgpt) { target.checked = false; toast('请先连接 ChatGPT，再开启继续收录。'); return; }
     const enabled = target.checked; target.disabled = true;
@@ -663,6 +775,7 @@ document.addEventListener('change', event => {
   }
 });
 byId('search-input').addEventListener('input', renderSearch);
+byId('pins-search').addEventListener('input', () => { pinsVisibleLimit = SEARCH_PAGE_SIZE; renderPins(); });
 byId<HTMLFormElement>('add-site-form').addEventListener('submit', event => {
   event.preventDefault(); const label = byId<HTMLInputElement>('site-name').value.trim(); const url = allowedWebsiteUrl(byId<HTMLInputElement>('site-url').value.trim());
   if (!label || [...label].length > 64 || !url) { byId('site-error').textContent = '请输入名称和不带账号密码的 HTTP(S) 网址。'; byId('site-error').hidden = false; return; }
@@ -716,10 +829,10 @@ byId('site-editor').addEventListener('drop', event => {
 });
 byId('site-editor').addEventListener('dragend', () => { siteDragId = null; for (const row of document.querySelectorAll('.drag-over')) row.classList.remove('drag-over'); });
 
-window.addEventListener('pagehide', () => { stopped = true; persistView(); clearTimeout(clockTimer); });
+window.addEventListener('pagehide', () => { stopped = true; persistView(); clearTimeout(clockTimer); clearTimeout(calendarTimer); disposeProjectLayouts(); });
 window.addEventListener('pageshow', event => { stopped = false; if (event.persisted) { if (homeMode === 'life') updateClock(); if (workspaceAccessAllowed()) void refresh().then(() => pumpImport()).catch(fail); } });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { clearTimeout(clockTimer); return; }
+  if (document.hidden) { clearTimeout(clockTimer); clearTimeout(calendarTimer); return; }
   if (homeMode === 'life') updateClock();
   if (workspaceAccessAllowed()) void refresh().then(() => pumpImport()).catch(fail);
 });
@@ -738,6 +851,7 @@ function releaseSettingsWorkspace(): void {
   }
 }
 async function visitSettings(page: SettingsPage): Promise<void> {
+  if (page === 'newtab') { void homeTheme.refresh(); void homePreferences.refresh(); }
   const sequence = ++settingsVisit;
   const needsWorkspace = ['workspace', 'data', 'legacy', 'diagnostics'].includes(page);
   if (!needsWorkspace) { releaseSettingsWorkspace(); settingsView.setLoading(false); nativeExperience.refresh(); return; }
@@ -785,13 +899,15 @@ function updateClock(): void {
 }
 
 function clearWorkspaceSurface(): void {
+  disposeProjectLayouts();
   byId('workspace-content').replaceChildren();
+  byId('theme-controls').replaceChildren(); byId('theme-controls').hidden = true;
   byId('history-rail').replaceChildren(); byId('history-rail').hidden = true;
-  for (const id of ['search-results', 'record-details', 'removed-list', 'import-progress', 'site-strip', 'site-editor', 'source-details']) byId(id).replaceChildren();
+  for (const id of ['search-results', 'record-details', 'removed-list', 'import-progress', 'site-strip', 'site-editor', 'source-details', 'pins-list']) byId(id).replaceChildren();
   byId<HTMLInputElement>('search-input').value = '';
-  for (const id of ['project-native', 'project-new']) byId(id).removeAttribute('href');
-  byId('record-title').textContent = '会话详情'; byId('project-title').textContent = '项目';
-  currentProject = null; currentRecord = null; snapshot = null;
+  byId('record-title').textContent = '会话详情';
+  currentRecord = null; snapshot = null; currentRecentGroups = [];
+  byId<HTMLInputElement>('pins-search').value = ''; byId('pins-status').textContent = ''; clearTimeout(calendarTimer);
   byId('toast').hidden = true; byId('live').textContent = '';
   clearTimeout(toastTimer);
 }
@@ -827,11 +943,13 @@ function applyHomeMode(next: HomeMode): void {
   document.documentElement.dataset.homeMode = next;
   document.documentElement.dataset.startReady = next === 'life' ? 'true' : 'false';
   byId('mode-loading').hidden = true;
-  const target = next === 'workspace' ? '生活' : '工作空间';
+  const target = next === 'workspace' ? '生活' : '工作';
+  const current = next === 'workspace' ? '工作' : '生活';
   const control = byId<HTMLButtonElement>('mode-toggle');
-  control.replaceChildren(icon(next === 'workspace' ? 'sun' : 'grid'), el('span', {}, [target]));
-  control.setAttribute('aria-label', `切换到${target}`); control.title = `切换到${target}，新标签页将沿用此模式`;
+  control.replaceChildren(icon(next === 'workspace' ? 'grid' : 'sun'), el('span', {}, [current]), icon('switch', 'mode-switch-icon'));
+  control.setAttribute('aria-label', `当前为${current}模式，切换到${target}`); control.title = `当前为${current}模式，切换到${target}`;
   control.disabled = false;
+  renderThemeChrome();
   byId('home').setAttribute('aria-label', next === 'life' ? '回到生活首页' : '回到工作区首页');
   const search = byId('search-trigger');
   search.setAttribute('aria-label', next === 'life' ? '搜索网页，页面非编辑状态按斜杠键' : '搜索所有本地会话，页面非编辑状态按斜杠键');
@@ -879,6 +997,7 @@ async function restoreHomeMode(): Promise<void> {
     byId('mode-status').textContent = '暂时无法读取首页偏好。可以重新读取，或点击“生活”继续浏览。';
     byId('mode-load-retry').hidden = false;
     byId<HTMLButtonElement>('mode-toggle').disabled = false;
+    renderThemeChrome();
     document.documentElement.dataset.startReady = 'true';
   }
 }
@@ -897,5 +1016,37 @@ byId('life-search-form').addEventListener('submit', event => {
   });
 });
 
-// No storage.onChanged subscription for HOME_MODE_KEY: an open tab owns its mode.
-void restoreHomeMode();
+// These preferences belong to the presentation layer, independently of theme,
+// native project membership, source timestamps, and the work/life catalog gate.
+const homePreferences = initHomePreferences({ onChange: (next, previous) => {
+  safe.renderAfterPending(() => {
+    document.documentElement.dataset.projectLayout = homePreferences.value.projectLayout;
+    if (homeMode !== 'workspace' || !snapshot) return;
+    if (next.periodDays !== previous.periodDays) recentMoreOpen = false;
+    renderWorkspace(); persistView();
+    if (byId<HTMLDialogElement>('pins-dialog').open) renderPins();
+  }, true);
+} });
+document.documentElement.dataset.projectLayout = homePreferences.value.projectLayout;
+
+// Theme is an independent local display preference. Changing it never loads a
+// life page's catalog, changes the mode, or mutates a projected relationship.
+const homeTheme = initHomeTheme({ onChange: next => {
+  activeHomeTheme = next;
+  safe.renderAfterPending(() => {
+    document.documentElement.dataset.homeTheme = activeHomeTheme;
+    lastSpatialColumns = spatialColumns(window.innerWidth, activeHomeTheme);
+    if (homeMode === 'workspace' && snapshot) renderWorkspace();
+    else renderThemeChrome();
+    nativeExperience.refresh();
+  }, true);
+} });
+window.addEventListener('resize', () => {
+  const columns = spatialColumns(window.innerWidth, activeHomeTheme);
+  if (columns === lastSpatialColumns) return;
+  lastSpatialColumns = columns;
+  if (homeMode === 'workspace' && spatialView.expandedProject) safe.renderAfterPending(renderWorkspace);
+});
+// Restore the appearance before workspace construction. Mode stays owned by each
+// open tab; theme changes may synchronize without opening any workspace data.
+void Promise.all([homeTheme.ready, homePreferences.ready]).then(() => restoreHomeMode());

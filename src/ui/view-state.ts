@@ -5,6 +5,7 @@ export interface SavedView {
   older: string[];
   limits: Record<string, number>;
   earlierProjectsOpen: boolean;
+  recentMoreOpen?: boolean;
   scrollY: number;
 }
 const KEY = 'vaiwl-start-view/1';
@@ -18,7 +19,7 @@ export function readView(): SavedView {
     return { ...empty, k: value.k, filter: value.filter === 'unknown' ? 'all' : value.filter, selectedScope: typeof value.selectedScope === 'string' ? value.selectedScope : undefined,
       older: Array.isArray(value.older) ? value.older.filter((item: unknown) => typeof item === 'string').slice(0, 500) : [],
       limits: typeof value.limits === 'object' && value.limits !== null ? Object.fromEntries(Object.entries(value.limits).filter(([key, n]) => key.length <= 200 && Number.isSafeInteger(n) && Number(n) >= 5 && Number(n) <= 10000)) as Record<string, number> : {},
-      earlierProjectsOpen: value.earlierProjectsOpen === true, scrollY: Number.isFinite(value.scrollY) ? Math.max(0, value.scrollY) : 0 };
+      earlierProjectsOpen: value.earlierProjectsOpen === true, recentMoreOpen: value.recentMoreOpen === true, scrollY: Number.isFinite(value.scrollY) ? Math.max(0, value.scrollY) : 0 };
   } catch { return empty; }
 }
 
@@ -53,6 +54,11 @@ export class SafeRendering {
       if (this.timer !== null) clearTimeout(this.timer);
       this.timer = null; this.pending = null; preservePosition(callback);
     } else this.schedule(callback);
+  }
+  /** A presentation-only update must not discard an already received catalog commit. */
+  renderAfterPending(callback: () => void, immediate = false): void {
+    const pending = this.pending;
+    this.render(() => { pending?.(); callback(); }, immediate);
   }
   private get interacting(): boolean { return this.pointers.size > 0 || this.keys.size > 0 || this.composing || this.dragging; }
   schedule(callback: () => void): void { this.pending = callback; this.flushSoon(); }
@@ -90,7 +96,7 @@ export function preservePosition(apply: () => void): void {
     // Keep a meaningful keyboard position without retaining a duplicate stale row.
     const target = focusKey.startsWith('search:')
       ? document.querySelector<HTMLElement>('#search-dialog[open] [data-search-filter][aria-pressed="true"]')
-      : document.querySelector<HTMLElement>('#workspace-content [data-filter][aria-selected="true"]');
+      : document.querySelector<HTMLElement>('#theme-controls [data-filter][aria-selected="true"], #workspace-content [data-filter][aria-selected="true"]');
     if (usable(target)) target!.focus({ preventScroll: true });
   }
   const newAnchor = anchorKey ? document.querySelector<HTMLElement>(`#workspace-content [data-record-key="${CSS.escape(anchorKey)}"]`) : null;

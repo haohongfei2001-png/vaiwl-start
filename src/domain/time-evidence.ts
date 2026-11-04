@@ -1,7 +1,8 @@
 import type { ConversationRecord, NativeTimeOrderEvidence, RecordOwner, VerifiedDisplayTimeFact } from '../../contracts/free-v1.js';
 import { dayLabel, freeSegmentFor, instant, localDay } from './time.js';
+import type { PeriodDays } from './time.js';
 
-export interface TimeProjectionView { H: 30; T: number; Z: string; now?: string }
+export interface TimeProjectionView { H: PeriodDays; T: number; Z: string; now?: string }
 export interface DisplayTimeProjection {
   /** Exact display time only; inferred bounds must never be formatted as a day. */
   at: string | null;

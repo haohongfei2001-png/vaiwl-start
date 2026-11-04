@@ -1,5 +1,13 @@
 /** Pure calendar functions adapted from VAIWL at 1903b00f; see UPSTREAM.md. */
 const DAY = 86_400_000;
+export const PERIOD_DAYS = [7, 30, 90] as const;
+export type PeriodDays = (typeof PERIOD_DAYS)[number];
+export function isPeriodDays(value: unknown): value is PeriodDays {
+  return value === 7 || value === 30 || value === 90;
+}
+export function normalizePeriodDays(value: unknown, fallback: PeriodDays = 30): PeriodDays {
+  return isPeriodDays(value) ? value : fallback;
+}
 const dayFormatters = new Map<string, Intl.DateTimeFormat>();
 const instantCache = new Map<string, number | null>();
 export function instant(value: unknown): number | null {
@@ -42,9 +50,9 @@ export function localDay(value: string | number, timeZone: string): number {
   const date = new Date(0); date.setUTCFullYear(get('year'), get('month') - 1, get('day')); date.setUTCHours(0, 0, 0, 0);
   return date.getTime() / DAY;
 }
-export interface TimeSession { H: 30; T: number; Z: string; policyRevision: number }
-export function createFreeViewSession({ now, timeZone, H = 30, policyRevision = 0 }: { now: string; timeZone: string; H?: 30; policyRevision?: number }): TimeSession {
-  if (H !== 30 || !Number.isSafeInteger(policyRevision) || policyRevision < 0) throw Error('invalid-free-policy');
+export interface TimeSession { H: PeriodDays; T: number; Z: string; policyRevision: number }
+export function createFreeViewSession({ now, timeZone, H = 30, policyRevision = 0 }: { now: string; timeZone: string; H?: PeriodDays; policyRevision?: number }): TimeSession {
+  if (!isPeriodDays(H) || !Number.isSafeInteger(policyRevision) || policyRevision < 0) throw Error('invalid-free-policy');
   return Object.freeze({ H, T: localDay(now, timeZone), Z: timeZone, policyRevision });
 }
 export function freeSegmentFor(value: unknown, session: Pick<TimeSession, 'H' | 'T' | 'Z'>): number | null {
@@ -62,4 +70,12 @@ export function freeWindowFor(k: number, session: Pick<TimeSession, 'H' | 'T'>):
 }
 export function relocateFreeSegment({ candidateDay }: { candidateDay: number | null }, session: Pick<TimeSession, 'H' | 'T'>): number {
   return candidateDay === null ? 0 : Math.max(0, Math.floor((session.T - candidateDay) / session.H));
+}
+
+/** Keep the current period current; otherwise retain the old period's inclusive end-day as the anchor. */
+export function reanchorFreeSegment(k: number, previous: Pick<TimeSession, 'H' | 'T'>, next: Pick<TimeSession, 'H' | 'T'>): number {
+  if (!Number.isSafeInteger(k) || k < 0) throw Error('invalid-segment');
+  if (!isPeriodDays(previous.H) || !isPeriodDays(next.H) || !Number.isSafeInteger(previous.T) || !Number.isSafeInteger(next.T)) throw Error('invalid-free-policy');
+  if (k === 0) return 0;
+  return relocateFreeSegment({ candidateDay: previous.T - previous.H * k }, next);
 }

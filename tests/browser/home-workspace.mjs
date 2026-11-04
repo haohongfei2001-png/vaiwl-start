@@ -159,13 +159,13 @@ try {
   await page.reload(); await ready();
   const active = page.locator(`[data-project="${pkey('active')}"]`);
   await active.waitFor();
-  check('HOME-five-plus-twelve', await active.locator('.conversation-open:visible').count() === 5, 'Normal project rows begin at five.');
+  check('HOME-four-row-preview', await active.locator('.conversation-open:visible').count() === 4, 'Every project starts with four conversation previews.');
   await screenshot('workspace-default');
-  await active.locator('[data-more]').click();
-  check('HOME-more-adds-twelve', await active.locator('.conversation-open:visible').count() === 17, 'First show-more increases five to seventeen.');
-  await active.locator('[data-more]').click();
-  await active.locator('[data-older]').click();
-  check('HOME-active-all-members', await active.locator('.conversation-open:visible').count() === 21 && await active.locator(`[data-record-key="${key('active-unknown-a')}"]`).isVisible() && await active.locator(`[data-record-key="${key('active-unknown-b')}"]`).isVisible() && await active.locator(`[data-record-key="${key('active-old')}"]`).isVisible(), 'Eighteen timed rows, two entirely undated members and one older member remain inside the same project; removed member is excluded.');
+  await active.locator('[data-spatial-expand]').click();
+  const activePanel = page.locator(`.spatial-project-expanded[data-expanded-project="${pkey('active')}"]`);
+  check('HOME-keyed-project-expansion', await active.locator('.conversation-open:visible').count() === 4 && await activePanel.locator('.conversation-open:visible').count() === 17, 'The keyed panel contains the remaining seventeen members while the four-row preview stays unchanged.');
+  const activeMemberKeys = [...await active.locator('a[data-record-key]').evaluateAll(nodes => nodes.map(node => node.dataset.recordKey)), ...await activePanel.locator('a[data-record-key]').evaluateAll(nodes => nodes.map(node => node.dataset.recordKey))];
+  check('HOME-active-all-members', activeMemberKeys.length === 21 && new Set(activeMemberKeys).size === 21 && await activePanel.locator(`[data-record-key="${key('active-unknown-a')}"]`).isVisible() && await activePanel.locator(`[data-record-key="${key('active-unknown-b')}"]`).isVisible() && await activePanel.locator(`[data-record-key="${key('active-old')}"]`).isVisible() && !activeMemberKeys.includes(key('removed')), 'Eighteen timed rows, two entirely undated members and one older member remain reachable exactly once within their project preview and keyed panel; removed member is excluded.');
   check('HOME-undated-unaffiliated-search-only', await page.locator(`#workspace-content [data-record-key="${key('search-only')}"]`).count() === 0 && await page.locator(`#workspace-content [data-record-key="${key('conflict')}"]`).count() === 0, 'Undated unaffiliated and conflicted records remain out of home lists.');
   check('HOME-recent-history', await page.locator(`.recent-section [data-record-key="${key('recent')}"]`).isVisible(), 'An UNKNOWN record with browser history is in 最近 without changing formal membership.');
   check('HOME-same-title-identity-isolation', await page.getByRole('heading', { name: '同名项目', exact: true }).count() === 2 && await page.locator(`[data-project="${pkey('same-a')}"] [data-record-key="${key('same-a')}"]`).isVisible() && await page.locator(`[data-project="${pkey('same-b')}"] [data-record-key="${key('same-b')}"]`).isVisible() && !await page.getByText('Foreign Profile secret', { exact: true }).count() && !await page.getByText('Foreign scope secret', { exact: true }).count(), 'Equal names and native Project IDs remain separate across identity boundaries; other Profile/account records are absent.');
@@ -175,13 +175,13 @@ try {
   check('HOME-global-earlier-collapsed', await page.locator('#earlier-projects-toggle').isVisible() && await page.locator('#earlier-projects-toggle').getAttribute('aria-expanded') === 'false', 'Undated/empty known projects have one compact collapsed global 更早 entry.');
   await page.locator('#earlier-projects-toggle').click();
   const undated = page.locator(`[data-project="${pkey('undated')}"]`), empty = page.locator(`[data-project="${pkey('empty')}"]`);
-  await undated.locator('[data-older]').click();
   check('HOME-all-undated-project-preserved', await undated.locator('.conversation-open:visible').count() === 2 && await empty.getByRole('link', { name: '打开项目', exact: true }).isVisible() && await empty.locator('[data-record-key]').count() === 0, 'A fully undated project retains both members; the empty known project has a direct native link and no invented conversation.');
+  await active.locator('[data-spatial-expand]').click();
   const localStructure = await active.evaluate(node => [node.className, ...[...node.querySelectorAll(':scope > header, :scope > .project-body')].map(part => part.className)]);
   await screenshot('workspace-current');
 
   await page.locator('#period-older').click();
-  const history = page.locator(`[data-project="${pkey('history')}"]`); await history.waitFor(); await history.locator('[data-older]').click();
+  const history = page.locator(`[data-project="${pkey('history')}"]`); await history.waitFor();
   check('HOME-historical-project-complete', await history.locator('.conversation-open:visible').count() === 3 && await history.locator(`[data-record-key="${key('history-unknown')}"]`).isVisible() && await page.locator(`[data-project="${pkey('active')}"]`).count() === 0, 'The forty-day-old project appears once in its historical segment with its undated and older members.');
   check('HOME-history-recent-and-global-once', await page.locator(`.recent-section [data-record-key="${key('recent-old')}"]`).isVisible() && await page.locator('#earlier-projects-toggle').count() === 0, 'Historical unaffiliated history appears in that segment’s 最近; undated project entry is not duplicated across segments.');
   await screenshot('workspace-history');
@@ -228,6 +228,11 @@ try {
   // Publish a real worker revision from another Start while pointer/IME/drag gates hold.
   const publisher = await context.newPage(); await publisher.goto(extensionUrl); await publisher.waitForSelector('html[data-start-ready="true"]');
   await page.bringToFront();
+  await page.locator('#recent-toggle-more').click();
+  check('HOME-more-dates-reveals-earlier-recent', await page.locator(`.recent-section [data-record-key="${key('recent')}"]`).isVisible() && await page.locator('#recent-toggle-more').getAttribute('aria-expanded') === 'true', 'After the real Today open, the earlier actual-date record is reachable through the one more-dates disclosure.');
+  await page.locator(`[data-project="${pkey('active')}"] [data-spatial-expand]`).click();
+  const focusedMember = key('active-17');
+  await page.locator(`.spatial-project-expanded[data-expanded-project="${pkey('active')}"] a[data-record-key="${focusedMember}"]`).focus();
   await page.evaluate(() => { window.__homeRevisions = []; chrome.runtime.onMessage.addListener(message => { if (message.event === 'revision') window.__homeRevisions.push(message.revision); }); });
   for (const [startEvent, endEvent, label] of [['pointerdown', 'pointerup', 'pointer'], ['compositionstart', 'compositionend', 'composition'], ['dragstart', 'dragend', 'drag']]) {
     const marker = `独立的浏览记录 · ${label}`;
@@ -243,6 +248,12 @@ try {
     await page.evaluate(({ endEvent }) => { document.dispatchEvent(endEvent.startsWith('pointer') ? new PointerEvent(endEvent, { pointerId: 71, bubbles: true }) : new Event(endEvent, { bubbles: true })); }, { endEvent });
     await page.getByText(marker, { exact: true }).waitFor();
     check(`HOME-${label}-flushes-after-end`, true, 'The queued revision applies after the corresponding interaction ends.');
+    const continuity = await page.evaluate(({ projectKey, recordKey }) => {
+      const focused = document.activeElement;
+      const panels = [...document.querySelectorAll('.spatial-project-expanded')].filter(panel => panel.dataset.expandedProject === projectKey);
+      return { focused: focused?.getAttribute('data-record-key') === recordKey, inPanel: panels.length === 1 && panels[0].contains(focused), duplicates: document.querySelectorAll(`a[data-record-key="${recordKey}"]`).length };
+    }, { projectKey: pkey('active'), recordKey: focusedMember });
+    check(`HOME-${label}-preserves-expanded-member-focus`, continuity.focused && continuity.inPanel && continuity.duplicates === 1, 'The real metadata revision preserves focus on the same conversation key in its expanded project panel, with one live opening link.');
   }
   await publisher.close();
   const current = await command(page, 'SNAPSHOT');
@@ -268,9 +279,10 @@ try {
   await until(async () => { const snap = await command(page, 'SNAPSHOT'); return !snap.timeOrders?.some(order => order.recordKeys.includes(inferred.key) && !order.invalidated); }, 'Pinning evidence did not invalidate the saved ordering snapshot');
   await page.reload(); await ready();
   const invalidatedCard = page.locator(`[data-project="${inferred.localProject.projectKey}"]`);
-  await invalidatedCard.locator('[data-older]').click();
   const invalidated = (await command(page, 'SNAPSHOT')).conversations.find(row => row.key === inferred.key);
-  check('HOME-pinned-invalidates-relative-placement', await invalidatedCard.locator(`.old-list [data-record-key="${inferred.key}"]`).isVisible() && invalidated.activity === null && invalidated.browserLastVisitAt === null && !invalidated.displayTimeFacts?.length, 'Pinning interference revokes relative placement; the unchanged member remains in its project’s 更早 with no forged date or OpenDay.');
+  const invalidatedOrder = await invalidatedCard.locator('.conversation-open').evaluateAll(nodes => nodes.map(node => node.dataset.recordKey));
+  const nativeMemberKeys = orderIds.map(id => observed.conversations.find(row => row.conversationId === id).key);
+  check('HOME-pinned-invalidates-relative-placement', JSON.stringify(invalidatedOrder) === JSON.stringify([nativeMemberKeys[1], nativeMemberKeys[2], nativeMemberKeys[0]]) && await invalidatedCard.locator(`[data-record-key="${inferred.key}"]`).isVisible() && invalidated.activity === null && invalidated.browserLastVisitAt === null && !invalidated.displayTimeFacts?.length, 'Pinning interference revokes relative placement; the unchanged undated member remains once in its whole project after both dated anchors, with no forged date or OpenDay.');
   await native.locator('#home-panel > button').evaluate(node => node.remove());
   await until(async () => (await command(page, 'SNAPSHOT')).timeOrders?.some(order => order.recordKeys.includes(inferred.key)), 'Removing interference did not restore supported chronological evidence');
   check('HOME-relative-source-recovers', true, 'A later valid complete list can restore chronological evidence without an approval queue.');
