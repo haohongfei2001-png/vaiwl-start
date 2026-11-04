@@ -176,6 +176,39 @@ test('failed restoration resolves ready and refresh recovers without inferred pi
   } finally { f.close(); }
 });
 
+test('explicit clearing removes unread persisted pins even when effective defaults are empty', async () => {
+  const f = fixture({ [RECENT_PINNED_KEYS_KEY]: ['private-record'] });
+  try {
+    f.local.get = async () => { throw new Error('read failed'); };
+    const controller = f.init();
+    await controller.ready;
+    assert.deepEqual(controller.value.recentPinnedKeys, []);
+    assert.equal(await controller.clearPinnedKeys(), true);
+    assert.deepEqual(f.writes, [{ [RECENT_PINNED_KEYS_KEY]: [] }]);
+    assert.deepEqual(f.data[RECENT_PINNED_KEYS_KEY], []);
+    assert.deepEqual(controller.value.recentPinnedKeys, []);
+  } finally { f.close(); }
+});
+
+test('explicit clearing reports write failure and follows any already queued pin write', async () => {
+  const f = fixture();
+  try {
+    const controller = f.init();
+    await controller.ready;
+    const save = f.local.set;
+    f.local.set = async () => { throw new Error('write failed'); };
+    assert.equal(await controller.clearPinnedKeys(), false);
+    assert.equal(f.status('pins-status').dataset.state, 'error');
+    f.local.set = save;
+    const pin = controller.setPinnedKeys(['queued-before-clear']);
+    const clear = controller.clearPinnedKeys();
+    assert.deepEqual(await Promise.all([pin, clear]), [true, true]);
+    assert.deepEqual(f.writes, [{ [RECENT_PINNED_KEYS_KEY]: ['queued-before-clear'] }, { [RECENT_PINNED_KEYS_KEY]: [] }]);
+    assert.deepEqual(f.data[RECENT_PINNED_KEYS_KEY], []);
+    assert.deepEqual(controller.value.recentPinnedKeys, []);
+  } finally { f.close(); }
+});
+
 test('cross-tab events normalize every field and ignore unrelated keys and storage areas', async () => {
   const f = fixture();
   try {

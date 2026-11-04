@@ -369,7 +369,7 @@ function renderPins(): void {
     const checked = pins.has(record.key);
     const toggle = el('input', { type: 'checkbox', 'data-recent-pin': record.key, 'data-focus-key': `pin:${record.key}`, checked, disabled: pinsBusy });
     return el('label', { class: 'pin-choice', title: title(record) }, [toggle,
-      el('span', { class: 'pin-choice-text' }, [el('strong', {}, [title(record)]), el('small', {}, [current.has(record.key) ? checked ? '已置顶' : '当前页面的会话' : '已置顶 · 其他时段'])]), icon('pin')]);
+      el('span', { class: 'pin-choice-text' }, [el('strong', {}, [title(record)]), ...(!current.has(record.key) ? [el('small', {}, ['已置顶 · 其他时段'])] : [])]), icon('pin')]);
   }));
   if (!records.length) list.append(el('p', { class: 'pin-empty' }, [query ? '没有找到符合条件的会话' : '当前没有可置顶的会话']));
   if (records.length > pinsVisibleLimit) list.append(button('展开更多', { id: 'pins-more', class: 'text-button', 'data-focus-key': 'pins-more' }));
@@ -657,6 +657,23 @@ function changePeriod(delta: number): void {
   (preferred && !preferred.disabled ? preferred : document.getElementById('period-older'))?.focus({ preventScroll: true });
 }
 
+/** Once the backend confirms deletion, remove link-based display preferences
+ * even if the Life settings surface was closed while the request was in flight. */
+async function clearLocalData(): Promise<void> {
+  if (!await mutate('CLEAR_LOCAL', {})) return;
+  selectedScope = 'unassigned'; timezoneDirty = false; recentMoreOpen = false;
+  Object.assign(view, { k: 0, selectedScope, filter: 'all', older: [], limits: {}, earlierProjectsOpen: false, recentMoreOpen: false, scrollY: 0 });
+  Object.assign(spatialView, { expandedProject: null, projectsCollapsed: false, collapsedDates: [], dateLimits: {}, projectLimits: {} });
+  saveView(view); saveSpatialView(spatialView);
+  clearWorkspaceSurface(); closeDialog('clear-dialog');
+  if (homeMode === 'workspace') { byId('workspace-content').replaceChildren(firstUse()); renderThemeChrome(); }
+  if (settingsView.isOpen) settingsView.showStatus('本地会话已清除，正在清除置顶偏好…');
+  const savingPins = homePreferences.clearPinnedKeys();
+  if (workspaceAccessAllowed()) void refresh(true).catch(() => {});
+  const saved = await savingPins;
+  if (settingsView.isOpen && workspaceAccessAllowed()) settingsView.showStatus(saved ? 'Start 本地数据已清除。' : '本地会话已清除，但置顶偏好未能清除。请重试清除本地数据。', !saved);
+}
+
 function clearSiteForm(): void {
   siteEditingId = null; byId<HTMLFormElement>('add-site-form').reset(); byId('site-error').hidden = true;
   byId('cancel-site-edit').hidden = true; byId('save-site').textContent = '添加网站'; renderEditor();
@@ -758,7 +775,7 @@ document.addEventListener('click', event => {
     case 'remove-record': if (currentRecord) { const key = currentRecord.key; void mutate('RECORD_REMOVE', { recordKey: key }, () => { closeDialog('record-dialog'); toast('已从首页移除，ChatGPT 会话仍然保留。', { label: '恢复收录', run: () => { void mutate('RECORD_RESTORE', { recordKey: key }); } }); }); } break;
     case 'show-removed': renderRemoved(); showDialog('removed-dialog'); break;
     case 'clear-local': settingsView.showStatus('', false, 'clear-status'); showDialog('clear-dialog'); byId<HTMLButtonElement>('clear-dialog').querySelector<HTMLButtonElement>('.dialog-foot [data-close]')?.focus(); break;
-    case 'confirm-clear': if (event.isTrusted) void mutate('CLEAR_LOCAL', {}, () => { selectedScope = 'unassigned'; timezoneDirty = false; recentMoreOpen = false; view.k = 0; view.filter = 'all'; view.older = []; view.limits = {}; Object.assign(spatialView, { expandedProject: null, projectsCollapsed: false, collapsedDates: [], dateLimits: {}, projectLimits: {} }); saveSpatialView(spatialView); closeDialog('clear-dialog'); settingsView.showStatus('本地会话已清除，正在清除置顶偏好…'); void homePreferences.setPinnedKeys([]).then(saved => { if (settingsView.isOpen) settingsView.showStatus(saved ? 'Start 本地数据已清除。' : '本地会话已清除，但置顶偏好未能清除。请重试清除本地数据。', !saved); }); void refresh(true).catch(() => {}); }); break;
+    case 'confirm-clear': if (event.isTrusted) void clearLocalData(); break;
   }
 });
 

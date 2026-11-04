@@ -195,10 +195,35 @@ async function interactions(info) {
   check('LAYOUT-earlier-preserves-members', await members.getByRole('link', { name: '在 ChatGPT 中打开：更早的计算记录', exact: true }).isVisible() && await members.getByRole('link', { name: '在 ChatGPT 中打开：暂未访问的项目成员', exact: true }).isVisible(), 'Old and undated members remain associated with their original project.');
   const last = members.locator('.conversation-open:visible').last(); await last.focus();
   const lastKey = await last.getAttribute('data-focus-key');
+  const lastRecordKey = await last.getAttribute('data-record-key');
   await page.setViewportSize({ width: 540, height: 800 });
+  // The viewport can change before the idle resize render and absolute card
+  // placement finish. Observe the actual one-column layout before pressing Tab.
+  await page.waitForFunction(() => innerWidth === 540 && [...document.querySelectorAll('.spatial-project-grid')]
+    .filter(grid => grid.getClientRects().length).every(grid => {
+      const bounds = grid.getBoundingClientRect();
+      return getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length === 1
+        && [...grid.children].filter(child => child.getClientRects().length).every(child => {
+          const rect = child.getBoundingClientRect();
+          return Math.abs(rect.left - bounds.left) <= 1 && Math.abs(rect.right - bounds.right) <= 1;
+        });
+    }));
   check('LAYOUT-resize-preserves-focus', await page.evaluate(key => document.activeElement?.getAttribute('data-focus-key') === key, lastKey), 'Responsive layout does not reconstruct the focused record.');
   await page.keyboard.press('Tab');
-  check('LAYOUT-keyboard-menu-visible', await page.locator(':focus').evaluate(el => el.matches('.record-menu') && Number(getComputedStyle(el).opacity) > 0), 'Record actions become visible in the actual keyboard focus path.');
+  await page.waitForFunction(key => {
+    const active = document.activeElement;
+    return active?.matches('.record-menu') && active.getAttribute('data-record-menu') === key && Number(getComputedStyle(active).opacity) > 0;
+  }, lastRecordKey, { timeout: 5000 }).catch(() => {});
+  // Read the live active element atomically: a locator resolved before a queued
+  // render can otherwise inspect a detached predecessor with no computed style.
+  const keyboardMenu = await page.evaluate(() => {
+    const active = document.activeElement;
+    return { isMenu: !!active?.matches('.record-menu'), recordKey: active?.getAttribute('data-record-menu'),
+      focusKey: active?.getAttribute('data-focus-key'), opacity: active ? Number(getComputedStyle(active).opacity) : 0,
+      connected: !!active?.isConnected, viewport: innerWidth };
+  });
+  check('LAYOUT-keyboard-menu-visible', keyboardMenu.isMenu && keyboardMenu.recordKey === lastRecordKey && keyboardMenu.connected && keyboardMenu.opacity > 0,
+    { description: 'Tab reaches the visible action for the same focused conversation after the responsive layout settles.', expectedRecordKey: lastRecordKey, ...keyboardMenu });
   await page.keyboard.press('Enter');
   await page.locator('#record-dialog').waitFor({ state: 'visible' });
   check('LAYOUT-full-title-detail', (await page.locator('#record-dialog').innerText()).includes('暂未访问的项目成员'), 'The existing detail surface keeps the complete title accessible.');

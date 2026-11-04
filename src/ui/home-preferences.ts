@@ -11,6 +11,8 @@ export type HomePreferencesController = {
   readonly ready: Promise<void>;
   refresh(): Promise<void>;
   setPinnedKeys(keys: readonly string[]): Promise<boolean>;
+  /** Explicit data clearing must also erase unread or malformed persisted pins. */
+  clearPinnedKeys(): Promise<boolean>;
   /** Compute from the effective value when the queued operation starts. */
   togglePinnedKey(key: string): Promise<boolean>;
   dispose(): void;
@@ -126,11 +128,11 @@ export function initHomePreferences(options: {
   // A single queue keeps overlapping settings and pin operations in invocation order.
   // Each item writes only its own storage key, preserving unrelated preferences.
   let queue: Promise<unknown>;
-  const enqueue = (field: Field, makeNext: (current: HomePreferences) => HomePreferences): Promise<boolean> => {
+  const enqueue = (field: Field, makeNext: (current: HomePreferences) => HomePreferences, force = false): Promise<boolean> => {
     const result = queue.then(async (): Promise<boolean> => {
       if (disposed) return false;
       const next = makeNext(value);
-      if (equalField(field, value, next)) return true;
+      if (!force && equalField(field, value, next)) return true;
       const operation = { field, next, latestEvent: null as HomePreferences | null };
       pending = operation;
       revisions[field] += 1;
@@ -209,6 +211,9 @@ export function initHomePreferences(options: {
     setPinnedKeys(keys) {
       const next = normalizePinnedKeys(keys);
       return enqueue('recentPinnedKeys', current => Object.freeze({ ...current, recentPinnedKeys: next }));
+    },
+    clearPinnedKeys() {
+      return enqueue('recentPinnedKeys', current => Object.freeze({ ...current, recentPinnedKeys: normalizePinnedKeys([]) }), true);
     },
     togglePinnedKey(key) {
       if (normalizePinnedKeys([key]).length === 0) return Promise.resolve(false);

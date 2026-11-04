@@ -75,6 +75,15 @@ async function geometry(target) {
       columns:grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length : 0, gridWidth:grid?.getBoundingClientRect().width, gap:grid ? parseFloat(getComputedStyle(grid).columnGap)||0 : 0, gridMode:grid?.dataset.projectLayout, cards:cards.map(r) };
   });
 }
+async function settledAdaptive(target, label) {
+  return until(async () => {
+    const g = await geometry(target);
+    const width = (g.gridWidth - g.gap * (g.columns - 1)) / g.columns;
+    return g.gridMode === 'adaptive' && g.cards.length > 0 && g.width <= g.viewport + 1
+      && g.cards.every(card => Math.abs(card.w - width) < 1 && card.x >= -1 && card.x + card.w <= g.viewport + 1)
+      ? g : false;
+  }, label);
+}
 try {
   const harness = await mkdtemp(join(tmpdir(), 'vaiwl-home-guardrails-extension-'));
   await cp(resolve('dist'), harness, { recursive:true });
@@ -131,8 +140,9 @@ try {
     }
     await page.setViewportSize({width:1440,height:1000});
     const zoom=await page.evaluate(async()=>{const t=await chrome.tabs.getCurrent();await chrome.tabs.setZoom(t.id,2);return chrome.tabs.getZoom(t.id)});
-    const zg=await geometry(page);check(`R6-${selectedTheme}-real-browser-zoom-200`,zoom===2&&zg.width<=zg.viewport+1,{zoom,...zg});
+    const zg=await settledAdaptive(page,'adaptive layout after real browser zoom');check(`R6-${selectedTheme}-real-browser-zoom-200`,zoom===2&&zg.width<=zg.viewport+1,{zoom,...zg});
     await page.evaluate(async()=>{const t=await chrome.tabs.getCurrent();await chrome.tabs.setZoom(t.id,1)});
+    await settledAdaptive(page,'adaptive layout after restoring browser zoom');
   }
   await page.locator('#recent-manage-pins').click();
   const pin=page.locator('#pins-list input[data-recent-pin]').first(); const pinnedKey=await pin.getAttribute('data-recent-pin');
