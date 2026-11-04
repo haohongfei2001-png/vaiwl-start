@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "evaluatedAt": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "verdict": "PARTIAL_INTEGRATION_VERIFIED",
+  "repositoryBaseline": "7dfba31cc8942d0c8c7a49c950697cf404dd1ea0",
+  "source": {
+    "kind": "session_authorized_ChatGPT_automations_tool",
+    "extensionCallable": false,
+    "realUserDataRead": true,
+    "publicRecordRedacted": true
+  },
+  "discovery": {
+    "recordsReturned": 25,
+    "cursor": null,
+    "enabledRecords": 1,
+    "coverage": "current_tool_visibility_not_verified_against_browser_account",
+    "disabledIsNotNecessarilyPaused": true,
+    "categoryCountsAreNotAdditive": true
+  },
+  "detailSample": {
+    "uniqueRealTasks": 7,
+    "observedPlatformStatuses": [
+      "completed"
+    ],
+    "fullTextAvailable": true,
+    "nullNextRunTimeObserved": true,
+    "nullChatRefObserved": true,
+    "businessFailureTextWithCompletedAndFailureFlagFalseObserved": true,
+    "modelReplay": {
+      "source": "seven_real_authorized_tool_observations_replayed_as_one_research_batch",
+      "tasks": 7,
+      "runs": 7,
+      "resultRevisions": 7,
+      "exactBodiesPreserved": true,
+      "matchesActualRunIds": true,
+      "unclassifiedOutputs": 7,
+      "nullNextRunCount": 7,
+      "nullOriginalResultLinkCount": 3,
+      "nonePromotedToValuable": true,
+      "invalidClaimGuard": "this_batch_time_is_replay_time_not_a_simultaneous_new_source_observation",
+      "codeSha": "eed7119a631a3590c605a586481122deb572cca1"
+    }
+  },
+  "repeatObservation": {
+    "requestStartedAt": [
+      "2026-11-04T15:08:05.906Z",
+      "2026-11-04T15:08:15.901Z"
+    ],
+    "sameTaskId": true,
+    "sameRunId": true,
+    "sameResultCreatedAt": true,
+    "sameBody": true,
+    "bodyJavaScriptCharacters": 519,
+    "contentTruncated": false,
+    "resultMatchesLatestRun": true,
+    "resultCreatedAfterAttemptStart": true,
+    "pureModelReplay": {
+      "status": "PASS",
+      "codeSha": "eed7119a631a3590c605a586481122deb572cca1",
+      "checks": {
+        "oneTask": true,
+        "oneRun": true,
+        "oneResultRevision": true,
+        "actualBodyPreserved": true,
+        "runCorrespondence": true,
+        "noInventedBusinessSuccess": true,
+        "nullNextRunKept": true,
+        "opaqueCitationsNotUrls": true,
+        "lifeHidden": true,
+        "scopeProjectionEmpty": true,
+        "serializationRoundTrip": true
+      },
+      "scopeNote": "local_experiment_label_not_browser_identity_verification",
+      "persistenceNote": "JSON_roundtrip_not_IndexedDB_or_browser_restart"
+    }
+  },
+  "environment": {
+    "browserBootstrap": "UNAVAILABLE",
+    "browserError": "Browser access requires the originating browser context.",
+    "localExecutor": "UNAVAILABLE",
+    "executorError": "No usable execution environment is available."
+  },
+  "checks": {
+    "realTaskMetadata": "PASS_INTERNAL_TOOL",
+    "realTaskResultAssociation": "PASS_INTERNAL_TOOL",
+    "realFullText": "PASS_INTERNAL_TOOL_TEXT_ONLY",
+    "stableRepeatRead": "PASS_INTERNAL_TOOL",
+    "actualBrowserEndpoint": "NOT_RUN",
+    "closedTaskPageBackgroundSync": "NOT_RUN",
+    "temporaryPageSync": "NOT_RUN",
+    "actualPauseTransition": "NOT_RUN",
+    "realAccountSwitch": "NOT_RUN",
+    "realRunUpdateTransition": "NOT_RUN",
+    "nativeNextRun": "UNAVAILABLE_IN_SAMPLED_RESPONSE",
+    "fullCitationUrlResolution": "NOT_VERIFIED",
+    "originalChatNavigation": "NOT_VERIFIED",
+    "browserPersistence": "NOT_RUN",
+    "sourceNotificationsMail": {
+      "status": "NO_MATCHING_SAMPLE",
+      "matched": 0,
+      "conclusion": "does_not_prove_no_notifications_exist"
+    }
+  },
+  "syntheticTests": {
+    "status": "PASS",
+    "tests": 41,
+    "pass": 41,
+    "fail": 0,
+    "skipped": 0,
+    "scope": "pure_model_only_not_browser_platform_integration",
+    "codeSha": "eed7119a631a3590c605a586481122deb572cca1",
+    "nodeVersion": 22,
+    "ciRunId": 41856345988,
+    "ciUrl": "https://github.com/haohongfei2001-png/vaiwl-start/actions/runs/41856345988",
+    "execution": "GitHub_Actions_Node_and_functions_V8"
+  },
+  "production": {
+    "runtimeChanged": false,
+    "permissionsChanged": false,
+    "conversationDatabaseChanged": false,
+    "automationsModified": false,
+    "automationsTriggered": false,
+    "mvpImplemented": false
+  },
+  "redaction": "No actual task titles, task/run/chat/account IDs, task bodies, email addresses, tokens or credentials are committed.",
+  "independentReview": {
+    "status": "PASS_FOR_MODEL_ONLY",
+    "reviewedCodeSha": "eed7119a631a3590c605a586481122deb572cca1",
+    "threeReproducedDefectsFixed": true,
+    "original34Retained": true,
+    "all41V8TestsPassed": true,
+    "browserClaim": false
+  }
+}
