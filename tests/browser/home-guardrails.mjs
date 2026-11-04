@@ -75,14 +75,26 @@ async function geometry(target) {
       columns:grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length : 0, gridWidth:grid?.getBoundingClientRect().width, gap:grid ? parseFloat(getComputedStyle(grid).columnGap)||0 : 0, gridMode:grid?.dataset.projectLayout, cards:cards.map(r) };
   });
 }
-async function settledAdaptive(target, label) {
+async function settledAdaptive(target, label, expectedViewport) {
   return until(async () => {
     const g = await geometry(target);
     const width = (g.gridWidth - g.gap * (g.columns - 1)) / g.columns;
-    return g.gridMode === 'adaptive' && g.cards.length > 0 && g.width <= g.viewport + 1
+    return (expectedViewport === undefined || Math.abs(g.viewport - expectedViewport) <= 1)
+      && g.gridMode === 'adaptive' && g.cards.length > 0 && g.width <= g.viewport + 1
       && g.cards.every(card => Math.abs(card.w - width) < 1 && card.x >= -1 && card.x + card.w <= g.viewport + 1)
       ? g : false;
   }, label);
+}
+async function setPeriod(target, days) {
+  await settings(target);
+  const previous = await target.locator('#workspace-content > *').first().elementHandle();
+  await target.locator('#home-period-days').selectOption(String(days));
+  await stored('native.homePeriodDays', days);
+  // Persistence can finish before the interaction-safe projection render. Wait
+  // for that visible content replacement before using the disclosure controls.
+  await until(() => previous.evaluate(el => !el.isConnected), 'period projection render');
+  await previous.dispose();
+  await closeSettings(target);
 }
 try {
   const harness = await mkdtemp(join(tmpdir(), 'vaiwl-home-guardrails-extension-'));
@@ -139,10 +151,11 @@ try {
       if(g.columns>1) check(`R6-${selectedTheme}-fills-short-column-${width}`,g.cards.some((card,i)=>i>=g.columns&&card.y<Math.max(...g.cards.slice(0,g.columns).map(c=>c.bottom))-1),g);
     }
     await page.setViewportSize({width:1440,height:1000});
+    await settledAdaptive(page,'unzoomed viewport before browser zoom',1440);
     const zoom=await page.evaluate(async()=>{const t=await chrome.tabs.getCurrent();await chrome.tabs.setZoom(t.id,2);return chrome.tabs.getZoom(t.id)});
-    const zg=await settledAdaptive(page,'adaptive layout after real browser zoom');check(`R6-${selectedTheme}-real-browser-zoom-200`,zoom===2&&zg.width<=zg.viewport+1,{zoom,...zg});
+    const zg=await settledAdaptive(page,'adaptive layout after real browser zoom',720);check(`R6-${selectedTheme}-real-browser-zoom-200`,zoom===2&&zg.viewport===720&&zg.width<=zg.viewport+1,{zoom,...zg});
     await page.evaluate(async()=>{const t=await chrome.tabs.getCurrent();await chrome.tabs.setZoom(t.id,1)});
-    await settledAdaptive(page,'adaptive layout after restoring browser zoom');
+    await settledAdaptive(page,'adaptive layout after restoring browser zoom',1440);
   }
   await page.locator('#recent-manage-pins').click();
   const pin=page.locator('#pins-list input[data-recent-pin]').first(); const pinnedKey=await pin.getAttribute('data-recent-pin');
@@ -151,10 +164,11 @@ try {
   check('R5-explicit-pin-single-instance',await page.locator('.recent-section a[data-record-key]').evaluateAll((nodes,key)=>nodes.filter(n=>n.dataset.recordKey===key).length,pinnedKey)===1,'Pinned record is omitted from its date group.');
   await page.reload(); await ready(page);
   check('R5-pin-survives-reload',await page.locator('[data-recent-kind="pinned"] a[data-record-key]').count()===1,'Explicit local preference restored.');
-  await page.locator('#recent-manage-pins').click(); await page.locator('#pins-list input[data-recent-pin]:checked').uncheck(); await stored('native.recentPinnedKeys',[]); await page.keyboard.press('Escape');
+  await page.locator('#recent-manage-pins').click(); await page.locator(`#pins-list input[data-recent-pin="${pinnedKey}"]`).uncheck(); await stored('native.recentPinnedKeys',[]); await page.keyboard.press('Escape');
+  await until(async()=>await page.locator('[data-recent-kind="pinned"]').count()===0,'unpin removes rendered group');
   check('R5-no-empty-pin-frame',await page.locator('[data-recent-kind="pinned"]').count()===0,'Unpin removes the empty section.');
   for(const days of [7,90,30]) {
-    await settings(page); await page.locator('#home-period-days').selectOption(String(days)); await stored('native.homePeriodDays',days);await closeSettings(page);
+    await setPeriod(page, days);
     if(await page.locator('#recent-toggle-more').count()) await page.locator('#recent-toggle-more').click();
     const todayNumber=Math.floor(Date.now()/86400000);
     const expectedDates=[...new Set(Object.values(before).flat().filter(row=>row?.conversationId&&!row.localProject&&row.browserLastVisitAt).map(row=>row.browserLastVisitAt.slice(0,10)).filter(date=>{const day=Math.floor(Date.parse(date+'T00:00:00Z')/86400000);return day<=todayNumber&&day>=todayNumber-days+1}))].sort();
@@ -164,12 +178,12 @@ try {
   }
   await page.locator('#period-older').click();
   check('R2-historical-date-fallback',await page.locator('.spatial-date-band').count()===1&&!/今天|昨天/.test(await page.locator('.spatial-date-band').textContent()),'Historical period shows its newest real date.');
-  await settings(page);await page.locator('#home-period-days').selectOption('7');await stored('native.homePeriodDays',7);await closeSettings(page);
+  await setPeriod(page, 7);
   check('R2-historical-reanchor-by-end-day',await page.evaluate(()=>JSON.parse(sessionStorage.getItem('vaiwl-start-view/1')).k)===4,'Old current-minus-30 end-day is relocated into the appropriate weekly period.');
   check('R2-weekly-empty-reanchor',await page.locator('.period-empty').count()===1,'The relocated weekly period is empty without borrowing records.');
   await page.locator('#period-older').click();
   check('R2-weekly-adjacent-reveals-history',await page.getByRole('link',{name:'在 ChatGPT 中打开：上一个 30 天区间中的讨论',exact:true}).isVisible(),'One adjacent weekly step reveals the real record aged forty days.');
-  await settings(page);await page.locator('#home-period-days').selectOption('30');await stored('native.homePeriodDays',30);await closeSettings(page);
+  await setPeriod(page, 30);
   check('R2-historical-reanchor-return',await page.getByRole('link',{name:'在 ChatGPT 中打开：上一个 30 天区间中的讨论',exact:true}).isVisible(),'The chosen historical end-day remains within the new thirty-day period.');
   await page.locator('#period-older').click();
   check('R2-empty-period-navigation',await page.locator('.period-empty').count()===1&&await page.locator('#period-newer').isEnabled()&&await page.locator('#period-older').isEnabled(),'Empty period remains navigable.');
@@ -178,6 +192,7 @@ try {
   check('R1-R6-catalog-facts-untouched',JSON.stringify(await raw(page))===JSON.stringify(before),'Only local presentation preferences changed; catalog, memberships and source timestamps are byte-equivalent.');
   await capture('guardrails-complete');
   await page.locator('#mode-toggle').click();
+  await until(()=>page.evaluate(()=>document.documentElement.dataset.homeMode==='life'),'persisted Life mode');
   check('R3-life-clears-private-dom',await page.evaluate(()=>document.documentElement.dataset.homeMode==='life'&&document.querySelector('#workspace-content').children.length===0&&document.querySelector('#pins-list').children.length===0&&document.querySelector('#mode-toggle').getAttribute('aria-label').includes('切换到工作')),'Same button reverses direction; private pin titles are cleared.');
   check('GUARDRAILS-no-runtime-errors',errors.length===0,errors);
 } catch(error) {
