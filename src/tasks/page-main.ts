@@ -1,4 +1,5 @@
-import { extractPacket, sourceKind } from './source.js';
+import { extractPacket, sourceKind, sourceTarget } from './source.js';
+import { responseFailure, SOURCE_ERRORS } from './failures.js';
 import type { SourcePacket } from './types.js';
 // Passive observation only: the native page owns its normal requests and authentication.
 // This module never reads request headers, session responses or credentials.
@@ -21,12 +22,23 @@ window.addEventListener('message', event => {
 window.postMessage({channel:'vaiwl-task-init/1'}, 'https://chatgpt.com');
 window.fetch = async function (...args: Parameters<typeof fetch>): Promise<Response> {
   const pageHref = location.href, observedAt = new Date().toISOString();
-  const response = await Reflect.apply(originalFetch, this, args);
+  let response: Response;
+  try { response = await Reflect.apply(originalFetch, this, args); }
+  catch (error) {
+    // Read the URL only; never inspect headers, request bodies or credentials.
+    try {
+      const input = args[0];
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, pageHref).href;
+      const target = sourceTarget(url, pageHref);
+      if (target && !(error instanceof DOMException && error.name === 'AbortError')) emit({kind:'error',code:'NETWORK_ERROR',target,observedAt,pageHref});
+    } catch { /* Invalid native request inputs retain their original error. */ }
+    throw error; // Preserve the native caller's rejection.
+  }
   if (!stopped && sourceKind(response.url, pageHref)) {
     void (async () => {
       let packet: SourcePacket | null;
       try {
-        if (response.status === 429) throw Error('RATE_LIMITED');
+        const failure = responseFailure(response); if (failure) throw Error(failure);
         if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw Error('SOURCE_UNAVAILABLE');
         const stream = response.clone().body?.getReader();
         if (!stream) throw Error('SOURCE_CHANGED');
@@ -42,7 +54,7 @@ window.fetch = async function (...args: Parameters<typeof fetch>): Promise<Respo
         for (const part of chunks) { joined.set(part, offset); offset += part.byteLength; }
         const data: unknown = JSON.parse(new TextDecoder().decode(joined));
         packet = extractPacket(response.url, pageHref, observedAt, data);
-      } catch (e) { packet = {kind:'error', code:e instanceof Error && ['RATE_LIMITED','SOURCE_UNAVAILABLE'].includes(e.message) ? e.message : 'SOURCE_CHANGED', pageHref, observedAt}; }
+      } catch (e) { packet = {kind:'error', code:e instanceof Error && (SOURCE_ERRORS as readonly string[]).includes(e.message) ? e.message : 'SOURCE_CHANGED', target:sourceTarget(response.url,pageHref)!, pageHref, observedAt}; }
       if (packet) emit(packet);
     })();
   }

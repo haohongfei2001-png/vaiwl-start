@@ -1,4 +1,5 @@
 import { ingest, project } from '../../research/chatgpt-tasks/result-model.mjs';
+import { recordFailure, recoverSource } from './failures.js';
 import type { CatalogTask, NativeTask, SourcePacket, TaskState, TaskView } from './types.js';
 export function taskKey(principal: string, task: NativeTask): string { return JSON.stringify([principal,task.team_id,task.id]); }
 export function selectedKeys(state: TaskState): string[] {
@@ -10,7 +11,7 @@ export function selectedKeys(state: TaskState): string[] {
 }
 export function applyPacket(state: TaskState, principal: string, packet: SourcePacket): TaskState {
   if (state.principal !== principal) throw Error('STALE_DOCUMENT');
-  if (packet.kind === 'error') { state.sync.code = packet.code; if(state.sync.status !== 'syncing') state.sync.status='error'; return state; }
+  if (packet.kind === 'error') { recordFailure(state,packet.target || 'legacy',packet.code,packet.observedAt); return state; }
   if (packet.kind === 'list') {
     const coverage = state.coverage[principal] ||= {filters:{},at:null};
     if (!coverage.filters[packet.filter] || packet.observedAt > coverage.filters[packet.filter].observedAt) coverage.filters[packet.filter]={cursor:packet.cursor,observedAt:packet.observedAt,firstPage:packet.firstPage};
@@ -19,13 +20,16 @@ export function applyPacket(state: TaskState, principal: string, packet: SourceP
       const key=taskKey(principal,task), old=state.catalog[key];
       if (old && old.observedAt >= packet.observedAt) continue;
       const scope={provider:'chatgpt',profileId:'browser-profile',accountId:principal+':'+(task.team_id || 'personal')};
-      state.catalog[key]={key,scope,task,observedAt:packet.observedAt,resultSyncedAt:old?.resultSyncedAt || null};
+      state.catalog[key]={key,scope,task,observedAt:packet.observedAt,resultSyncedAt:old?.resultSyncedAt || null,readOutcome:old?.readOutcome};
       state.model=ingest(state.model,{scope,observedAt:packet.observedAt,tasks:[task]});
     }
   } else {
     const matches=Object.values(state.catalog).filter(c=>c.scope.accountId.startsWith(principal+':') && c.task.id===packet.taskId && c.task.conversation_id===packet.conversationId);
     if(matches.length!==1)throw Error('TASK_NOT_DISCOVERED');
     const entry=matches[0];
+    if (entry.resultSyncedAt && packet.observedAt < entry.resultSyncedAt) return state;
+    const version = () => { const t=project(state.model,entry.scope,{now:packet.observedAt}).tasks.find((t:any)=>t.taskId===entry.task.id); return JSON.stringify([t?.latestAvailableResult?.runId,t?.latestAvailableResult?.revision]); };
+    const before=version();
     for (const result of packet.results) {
       // Native turn IDs are real stable output associations, NOT scheduler run IDs.
       // No attempt start, completion time or scheduler status is invented.
@@ -36,11 +40,16 @@ export function applyPacket(state: TaskState, principal: string, packet: SourceP
       }}]});
       state.sourceEvidence[JSON.stringify([entry.key,runId])] = {messageId:result.messageId,turnId:result.turnId,conversationId:result.conversationId,complete:result.complete};
     }
+    entry.readOutcome=!packet.results.length?'empty':before===version()?'unchanged':'updated';
     entry.resultSyncedAt=packet.observedAt > (entry.resultSyncedAt || '') ? packet.observedAt : entry.resultSyncedAt;
   }
   for (const bucket of Object.values(state.model.scopes)) if (bucket.scope.accountId.startsWith(principal+':')) bucket.sync.sourceChannel='chatgpt-native-page';
-  if (state.sync.status !== 'syncing') {
-    state.sync={...state.sync,status:'ok',succeededAt:packet.observedAt,code:null,mode:'visit'};
+  recoverSource(state,packet.kind==='list'?'list:'+packet.filter:'results:'+packet.conversationId+':'+packet.taskId,packet.observedAt);
+  if(packet.kind==='list' && (packet.cursor!==null || !packet.firstPage))recordFailure(state,'list:'+packet.filter,'PARTIAL_LIST',packet.observedAt);
+  if (state.sync.status !== 'syncing' && !state.sync.code) {
+    // Metadata-only visits do not certify a fresh result read.
+    state.sync={...state.sync,status:packet.kind==='results'?'ok':state.sync.succeededAt?'ok':'never',
+      succeededAt:packet.kind==='results'?packet.observedAt:state.sync.succeededAt,mode:'visit'};
   }
   return state;
 }
@@ -52,7 +61,7 @@ export function projectTasks(state: TaskState, includeBodies=false): TaskView[] 
     const scopeKey=JSON.stringify(entry.scope);
     if(!views.has(scopeKey)) views.set(scopeKey,project(state.model,entry.scope,{now:new Date().toISOString(),includeBodies}));
     const task=views.get(scopeKey).tasks.find((t:any)=>t.taskId===entry.task.id);
-    return {...task,key:entry.key,selected:selected.has(entry.key),readable:!!entry.task.conversation_id,resultSyncedAt:entry.resultSyncedAt,
+    return {...task,key:entry.key,selected:selected.has(entry.key),readable:!!entry.task.conversation_id,resultSyncedAt:entry.resultSyncedAt,readOutcome:entry.readOutcome,
       sourceUrl: entry.task.conversation_id ? `https://chatgpt.com/c/${entry.task.conversation_id}?automationId=${entry.task.id}&messageId=finalAgentTurnStart` : 'https://chatgpt.com/scheduled'} as TaskView;
   }).sort((a,b)=>(b.latestAvailableResult?.createdAt || b.lastRunAt || '').localeCompare(a.latestAvailableResult?.createdAt || a.lastRunAt || '') || a.taskId.localeCompare(b.taskId));
 }

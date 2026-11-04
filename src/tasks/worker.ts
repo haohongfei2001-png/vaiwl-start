@@ -2,6 +2,7 @@ import { classify } from '../../research/chatgpt-tasks/result-model.mjs';
 import { trustedCollectorSender, trustedExtensionSender } from '../shared/protocol.js';
 import { TaskDatabase, initialState } from './database.js';
 import { applyPacket, selectedKeys, projectTasks, listComplete } from './state.js';
+import { recordFailure, recoverSource, SOURCE_ERRORS } from './failures.js';
 import { validatePacket } from './source.js';
 import type { TaskSnapshot, TaskState } from './types.js';
 export const TASK_PROTOCOL='vaiwl-tasks/1';
@@ -18,7 +19,7 @@ function stopCollectors(){for(const [tabId,binding] of bindings)void chrome.tabs
 let owned: {id:number;url:string}[]=[];
 const notify=()=>{void chrome.runtime.sendMessage({protocol:TASK_PROTOCOL,event:'changed'}).catch(()=>{});};
 const authorized=()=>chrome.permissions.contains(TASK_PERMISSIONS);
-function safeError(e:unknown) {const code=e instanceof Error?e.message:'';return ['PERMISSION_REQUIRED','DISABLED','SOURCE_CHANGED','SOURCE_UNAVAILABLE','RATE_LIMITED','IDENTITY_UNAVAILABLE','STALE_DOCUMENT','TASK_NOT_DISCOVERED','SOURCE_TIMEOUT','PARTIAL_LIST','CACHE_WRITE_FAILED','INVALID_MESSAGE','RESULT_NOT_FOUND','FAILURE_NOT_VALUABLE'].includes(code)?code:'SYNC_UNAVAILABLE';}
+function safeError(e:unknown) {const code=e instanceof Error?e.message:'';return [...SOURCE_ERRORS,'PERMISSION_REQUIRED','DISABLED','SOURCE_CHANGED','SOURCE_UNAVAILABLE','RATE_LIMITED','IDENTITY_UNAVAILABLE','STALE_DOCUMENT','TASK_NOT_DISCOVERED','SOURCE_TIMEOUT','PARTIAL_LIST','CACHE_WRITE_FAILED','INVALID_MESSAGE','RESULT_NOT_FOUND','FAILURE_NOT_VALUABLE'].includes(code)?code:'SYNC_UNAVAILABLE';}
 async function closeOwned(tab: {id:number;url:string}) {
   if(!owned.some(t=>t.id===tab.id))return;
   try {const current=await chrome.tabs.get(tab.id);if(!current.active) await chrome.tabs.remove(tab.id);}catch{/* already closed or user adopted it */}
@@ -52,9 +53,18 @@ async function sourceCommand(m:any,sender:chrome.runtime.MessageSender) {
     const at=epoch;
     if(m.principalKey!==null && (typeof m.principalKey!=='string'||!/^principal:[a-f0-9]{64}$/.test(m.principalKey)||!Number.isFinite(Date.parse(m.expiresAt))||Date.parse(m.expiresAt)<=Date.now()))throw Error('IDENTITY_UNAVAILABLE');
     const state=await db.update(s=>{if(at!==epoch)throw Error('STALE_DOCUMENT');if(!s.settings.enabled)throw Error('DISABLED');
-      if(s.principal!==m.principalKey){const first=s.principal===null && !!m.principalKey;s.principal=m.principalKey;s.generation++;bindings.clear();
-        if(!first || s.sync.status!=='syncing')s.sync={status:'never',attemptedAt:null,succeededAt:null,code:m.principalKey?null:'IDENTITY_UNAVAILABLE',mode:null};}return s;});
-    if(!m.principalKey){notify();throw Error('IDENTITY_UNAVAILABLE');}
+      if(!m.principalKey) {
+        const code=[...SOURCE_ERRORS,'SOURCE_TIMEOUT'].includes(m.failureCode)?m.failureCode:'IDENTITY_UNAVAILABLE';
+        bindings.delete(tabId);
+        // Transient verification/network failure does not erase the last confirmed
+        // account's cache. Proven logout hides it, without deleting any records.
+        if(code==='LOGIN_REQUIRED' && s.principal){s.principal=null;s.generation++;bindings.clear();}
+        recordFailure(s,'identity',code,new Date().toISOString());return s;
+      }
+      if(s.principal!==m.principalKey){const first=s.principal===null;s.principal=m.principalKey;s.generation++;bindings.clear();s.sourceFailures={};s.sourceReads={};
+        if(!first || s.sync.status!=='syncing')s.sync={status:'never',attemptedAt:null,succeededAt:null,code:null,mode:null};}
+      recoverSource(s,'identity',new Date().toISOString());return s;});
+    if(!m.principalKey){notify();throw Error(state.sync.code||'IDENTITY_UNAVAILABLE');}
     const binding={documentId:sender.documentId!,principal:m.principalKey,token:crypto.randomUUID(),epoch:at,generation:state.generation,expiresAt:Date.parse(m.expiresAt)};
     bindings.set(tabId,binding);notify();return {token:binding.token};
   }
@@ -77,7 +87,7 @@ async function openTemporary(url:string, since:string, done:(state:TaskState)=>b
       // A native page can recover an initial authentication/challenge response by
       // itself. Do not close it before its ordinary requests finish. No challenge
       // is solved or bypassed here; rate limits still stop immediately.
-      if(state.sync.code==='RATE_LIMITED')throw Error('RATE_LIMITED');
+      if(['RATE_LIMITED','LOGIN_REQUIRED'].includes(state.sync.code||''))throw Error(state.sync.code!);
       if(done(state))return;
       await new Promise(r=>setTimeout(r,350));
     }
@@ -88,8 +98,9 @@ async function sync() {
   const start=new Date().toISOString(), at=epoch;
   await reconcile();
   const initial=await db.read();if(!initial.settings.enabled)throw Error('DISABLED');if(!await authorized())throw Error('PERMISSION_REQUIRED');
+  if(initial.sync.retryAt && Date.parse(initial.sync.retryAt)>Date.now())throw Error('RATE_LIMITED');
   if(!initial.settings.automatic){await chrome.tabs.create({url:'https://chatgpt.com/scheduled',active:true});return;}
-  await db.update(s=>{s.sync={...s.sync,status:'syncing',attemptedAt:start,code:null,mode:'temporary'};return s;});notify();
+  await db.update(s=>{s.sourceFailures={};s.sync={...s.sync,status:'syncing',attemptedAt:start,code:null,retryAt:null,retrySource:null,mode:'temporary'};return s;});notify();
   try {
     // Wait for all three native categories, including empty ones. Non-null cursors
     // remain PARTIAL_LIST; we never invent or replay authenticated pagination.
@@ -105,7 +116,7 @@ async function sync() {
       catch(e){failure=safeError(e);if(['RATE_LIMITED','STALE_DOCUMENT','DISABLED','PERMISSION_REQUIRED'].includes(failure))throw e;break;}
       state=await db.read();if(state.principal!==principal)throw Error('STALE_DOCUMENT');
     }
-    await db.update(s=>{if(epoch!==at||s.principal!==principal||!s.settings.enabled)throw Error('STALE_DOCUMENT');s.sync={status:failure?'error':'ok',attemptedAt:start,succeededAt:failure?s.sync.succeededAt:new Date().toISOString(),code:failure,mode:'temporary'};return s;});
+    await db.update(s=>{if(epoch!==at||s.principal!==principal||!s.settings.enabled)throw Error('STALE_DOCUMENT');failure ||= s.sync.code; s.sync={...s.sync,status:failure?'error':'ok',attemptedAt:start,succeededAt:failure?s.sync.succeededAt:new Date().toISOString(),code:failure,mode:'temporary'};return s;});
   } catch(e) {if(epoch===at)await db.update(s=>{s.sync={...s.sync,status:'error',code:safeError(e),mode:'temporary'};return s;});}
   finally{notify();}
 }
@@ -121,7 +132,8 @@ export async function clearTaskCache() {
 async function uiCommand(m:any,sender:chrome.runtime.MessageSender) {
   if(!trustedExtensionSender(sender,chrome.runtime.id))throw Error('UNAUTHORIZED_SENDER');
   if(m.command==='SNAPSHOT')return snapshot();
-  if(m.command==='SYNC'){startSync();return {started:true};}
+  if(m.command==='SYNC'){const s=await db.read();if(s.sync.retryAt&&Date.parse(s.sync.retryAt)>Date.now())throw Error('RATE_LIMITED');startSync();return {started:true};}
+  if(m.command==='OPEN_SOURCE'){if(!(await db.read()).settings.enabled)throw Error('DISABLED');await chrome.tabs.create({url:'https://chatgpt.com/scheduled',active:true});return {opened:true};}
   if(m.command==='CONFIGURE') {
     const p=m.patch;if(!p||Object.keys(p).some(k=>!['enabled','automatic','showWidget','preview','selected'].includes(k)))throw Error('INVALID_MESSAGE');
     for(const k of ['enabled','automatic','showWidget','preview'])if(k in p&&typeof p[k]!=='boolean')throw Error('INVALID_MESSAGE');

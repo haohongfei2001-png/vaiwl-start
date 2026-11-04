@@ -1,3 +1,4 @@
+import { SOURCE_ERRORS } from './failures.js';
 import type { NativeTask, NativeResult, SourcePacket } from './types.js';
 const record = (x: unknown): x is Record<string, any> => !!x && typeof x === 'object' && !Array.isArray(x);
 export const id = (x: unknown): x is string => typeof x === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(x);
@@ -53,6 +54,12 @@ export function sourceKind(responseUrl: string, pageHref: string): 'list' | 'res
   } catch { /* unsupported source */ }
   return null;
 }
+export function sourceTarget(responseUrl: string, pageHref: string): string | null {
+  const kind = sourceKind(responseUrl, pageHref);
+  if (kind === 'list') return 'list:' + new URL(responseUrl).searchParams.get('filter');
+  if (kind === 'results') { const p = new URL(pageHref); return 'results:' + p.pathname.slice(3) + ':' + p.searchParams.get('automationId'); }
+  return null;
+}
 export function extractPacket(responseUrl: string, pageHref: string, observedAt: string, data: unknown): SourcePacket | null {
   const kind = sourceKind(responseUrl, pageHref); if (!kind) return null;
   const u = new URL(responseUrl), p = new URL(pageHref);
@@ -82,6 +89,10 @@ export function validatePacket(value: unknown): SourcePacket {
     });
     return {kind:'results',taskId:value.taskId,conversationId:value.conversationId,pageHref:value.pageHref,observedAt:value.observedAt,results};
   }
-  if (value.kind === 'error' && ['SOURCE_CHANGED','SOURCE_UNAVAILABLE','RATE_LIMITED'].includes(value.code)) return {kind:'error',code:value.code,pageHref:value.pageHref,observedAt:value.observedAt};
+  if (value.kind === 'error' && (SOURCE_ERRORS as readonly string[]).includes(value.code)) {
+    const p = new URL(value.pageHref), target = value.target;
+    if (target !== undefined && (typeof target!=='string' || !['list:scheduled','list:paused','list:finished',uuid(p.pathname.slice(3)) && id(p.searchParams.get('automationId')) ? 'results:'+p.pathname.slice(3)+':'+p.searchParams.get('automationId') : null].includes(target))) throw Error('SOURCE_CHANGED');
+    return {kind:'error',code:value.code,target,pageHref:value.pageHref,observedAt:value.observedAt};
+  }
   throw Error('SOURCE_CHANGED');
 }

@@ -22,8 +22,12 @@ const errors:Record<string,string>={
   IDENTITY_UNAVAILABLE:'未确认 ChatGPT 登录账户。请打开任务页完成登录。',
   SOURCE_TIMEOUT:'本次未取得最新来源。已有成果仍保留，可打开任务页同步。',
   SOURCE_CHANGED:'ChatGPT 来源格式发生变化，已保留本地成果。',
+  LOGIN_REQUIRED:'ChatGPT 当前未登录，请打开任务页登录。原账户缓存仍保留，确认账户后恢复显示。',
+  VERIFICATION_REQUIRED:'ChatGPT 要求 Cloudflare 验证。请打开任务页完成正常验证，再重试同步。',
+  SOURCE_FORBIDDEN:'ChatGPT 拒绝了本次读取（403），尚不能确定原因。可打开任务页检查后重试。',
+  NETWORK_ERROR:'本次网络请求失败。已有成果仍保留，网络恢复后可重试。',
   SOURCE_UNAVAILABLE:'ChatGPT 来源暂时不可用，已保留本地成果。',
-  RATE_LIMITED:'ChatGPT 暂时限制请求，本次同步已停止。',
+  RATE_LIMITED:'ChatGPT 暂时限制请求，本次同步已停止，最多每 30 分钟重试一次。',
   PARTIAL_LIST:'已读取当前页面的任务。来源还有未读取的分页，列表并非全部。',
   STALE_DOCUMENT:'账户或页面已变化，等待重新同步。',
   SYNC_INTERRUPTED:'上次同步因浏览器后台停止而中断，已有成果仍保留。',
@@ -40,12 +44,17 @@ export function initTaskResults() {
   function clearPrivate(){data=null;detail=null;detailsResult=null;root.replaceChildren();root.hidden=true;byId('tasks-selection').replaceChildren();
     for(const id of ['task-result-body','task-result-meta','task-result-warning','tasks-sync-status','tasks-coverage','tasks-settings-status'])byId(id).textContent='';
     byId('task-result-title').textContent='任务结果';byId('task-result-links').replaceChildren();if(modal.open)modal.close();if(clearModal.open)clearModal.close();}
+  const readLabel=(t:TaskView)=>t.readOutcome==='updated'?'此次收录了新输出':t.readOutcome==='unchanged'?'已重新读取，暂无新输出':t.readOutcome==='empty'?'本次来源未返回完成正文，已有成果仍保留':'已保存的来源正文';
+  const needsSource=()=>!!data?.sync.code&&['LOGIN_REQUIRED','VERIFICATION_REQUIRED','SOURCE_FORBIDDEN','IDENTITY_UNAVAILABLE','SOURCE_TIMEOUT'].includes(data.sync.code);
   function syncLabel(s:TaskSnapshot):string {
     if(!s.settings.enabled)return '同步已关闭 · 本地缓存';
     if(!s.permission)return '访问权限已撤销 · 本地缓存';
     if(s.sync.status==='syncing')return '正在同步…';
-    if(s.sync.status==='error')return '同步未完成 · 上次成功 '+time(s.sync.succeededAt);
-    return (s.settings.automatic?'后台页面自动同步':'访问 ChatGPT 时同步')+' · '+time(s.sync.succeededAt);
+    const selected=s.tasks.filter(t=>t.selected&&t.readable), reads=selected.filter(t=>t.resultSyncedAt);
+    const lastRead=reads.map(t=>t.resultSyncedAt!).sort().at(-1)||null;
+    if(s.sync.status==='error')return '同步未完成 · 本地缓存 · 正文读取 '+time(lastRead);
+    const outcome=reads.some(t=>t.readOutcome==='updated')?'已收录新输出':reads.some(t=>t.readOutcome==='empty')?'来源未返回完成正文':reads.length?'已重新读取，暂无新输出':'尚未读取正文';
+    return '本地成果 · '+(s.sync.mode==='visit'?'最近访问读取':'最近后台读取')+' '+time(lastRead)+' · '+outcome;
   }
   function renderHome(){
     root.replaceChildren();root.hidden=mode!=='workspace'||!data?.settings.showWidget||!data?.principal||!data.tasks.length;
@@ -64,7 +73,7 @@ export function initTaskResults() {
     if(expanded){const list=el('div',{class:'tasks-list'});
       for(const task of chosen){const r=task.latestAvailableResult,row=button('',{class:'task-row','aria-label':'查看任务结果：'+task.title});row.append(el('span',{class:'task-row-title'},[task.title]),el('span',{class:'task-excerpt'},[r&&data.settings.preview?r.preview:status(task)]),el('small',{},[status(task)+(r?' · '+time(r.createdAt):'')+(task.nextRunAt?' · 下次 '+time(task.nextRunAt):'')]));row.addEventListener('click',()=>{void showDetail(task.key,'latest');});list.append(row);}
       const foot=el('div',{class:'task-list-footer'},[el('span',{},[data.sync.code?errors[data.sync.code]||'本次同步未完成，已有成果仍保留。':'显示已收录的最终输出；业务结果以正文为准。'])]);
-      const sync=button(data.settings.automatic?'立即同步':'打开 ChatGPT 同步',{class:'text-button',disabled:busy||!data.settings.enabled});sync.addEventListener('click',()=>{void action('SYNC');});foot.append(sync);list.append(foot);root.append(list);
+      const sync=button(data.settings.automatic?'立即同步':'打开 ChatGPT 同步',{class:'text-button',disabled:busy||data.sync.status==='syncing'||!data.settings.enabled});sync.addEventListener('click',()=>{void action('SYNC');});foot.append(sync);if(needsSource()){const recover=button('打开 ChatGPT 检查',{class:'text-button'});recover.addEventListener('click',()=>{void action('OPEN_SOURCE');});foot.append(recover);}list.append(foot);root.append(list);
     }
   }
   function renderSettings(){
@@ -74,7 +83,9 @@ export function initTaskResults() {
     byId<HTMLInputElement>('tasks-preview').checked=data.settings.preview;
     byId<HTMLSelectElement>('tasks-mode').value=data.settings.automatic?'temporary':'visit';
     byId('tasks-sync-status').textContent=syncLabel(data)+(data.sync.code?'。'+(errors[data.sync.code]||'已有成果仍保留。'):'');
-    byId<HTMLButtonElement>('tasks-sync-now').disabled=busy||!data.settings.enabled;
+    byId<HTMLButtonElement>('tasks-sync-now').disabled=busy||data.sync.status==='syncing'||!data.settings.enabled||!!(data.sync.retryAt&&Date.parse(data.sync.retryAt)>Date.now());
+    let recover=document.getElementById('tasks-recover');if(!recover){recover=button('打开 ChatGPT 检查',{id:'tasks-recover',class:'text-button'});recover.addEventListener('click',()=>{void action('OPEN_SOURCE');});byId('tasks-sync-now').after(recover);}recover.hidden=!needsSource();
+    if(data.sync.retryAt&&Date.parse(data.sync.retryAt)>Date.now())byId('tasks-sync-status').textContent+=' 下次可重试：'+time(data.sync.retryAt)+'。';
     for(const selector of ['tasks-enabled','tasks-widget','tasks-preview','tasks-mode'])byId<HTMLInputElement>(selector).disabled=busy;
     const list=byId('tasks-selection');list.replaceChildren();
     if(!data.principal){byId('tasks-coverage').textContent='';list.append(el('p',{class:'settings-note'},['首次开启后同步任务列表，再选择首页展示的任务。']));return;}
@@ -91,7 +102,7 @@ export function initTaskResults() {
     byId('task-result-version-label').hidden=!different;
     byId<HTMLSelectElement>('task-result-version').value=which==='latest'?'latest':'valuable';
     byId('task-result-title').textContent=t.title;byId('task-result-body').textContent=r?.bodyText||'尚未收录这项任务的最终输出。';
-    byId('task-result-meta').textContent=[different&&which!=='latest'?'保留的重要成果；最近输出：'+status(t):status(t),r?'成果产生于 '+time(r.createdAt):'',t.resultSyncedAt?'来源读取于 '+time(t.resultSyncedAt):'',t.recordedStatus==='unknown'?'来源未提供调度运行状态':'运行状态：'+t.recordedStatus,t.nextRunAt?'下次运行：'+time(t.nextRunAt):'来源未提供下次运行时间'].filter(Boolean).join(' · ');
+    byId('task-result-meta').textContent=[different&&which!=='latest'?'保留的重要成果；最近输出：'+status(t):status(t),r?'成果产生于 '+time(r.createdAt):'',t.resultSyncedAt?'本地缓存 · 来源读取于 '+time(t.resultSyncedAt)+' · '+readLabel(t):'',t.recordedStatus==='unknown'?'来源未提供调度运行状态':'运行状态：'+t.recordedStatus,t.nextRunAt?'下次运行：'+time(t.nextRunAt):'来源未提供下次运行时间'].filter(Boolean).join(' · ');
     const links=byId('task-result-links');links.replaceChildren(el('a',{href:t.sourceUrl,target:'_blank',rel:'noopener noreferrer'},['在 ChatGPT 查看原始来源']));
     if(r)for(const url of r.sourceUrls.slice(0,20)){try{const u=new URL(url);if(!['https:','http:'].includes(u.protocol)||u.username||u.password)continue;links.append(el('a',{href:url,target:'_blank',rel:'noopener noreferrer'},[u.hostname]));}catch{}}
     byId<HTMLSelectElement>('task-classification').disabled=!r;byId<HTMLSelectElement>('task-classification').value=r?.classification?.outcome||'';

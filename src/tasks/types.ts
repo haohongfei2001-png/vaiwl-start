@@ -13,18 +13,21 @@ export type SourcePacket = {
   kind: 'list'; filter: 'scheduled' | 'paused' | 'finished'; cursor: string | null;
   firstPage: boolean; tasks: NativeTask[]; observedAt: string; pageHref: string;
 } | { kind: 'results'; results: NativeResult[]; taskId: string; conversationId: string; observedAt: string; pageHref: string }
-  | { kind: 'error'; code: string; observedAt: string; pageHref: string };
+  | { kind: 'error'; code: string; target?: string; observedAt: string; pageHref: string };
 export interface TaskSettings {
   enabled: boolean; automatic: boolean; showWidget: boolean; preview: boolean;
   // An absent account selection uses the five most recently run readable tasks.
   selections: Record<string, string[]>;
 }
-export interface CatalogTask { key: string; scope: TaskScope; task: NativeTask; observedAt: string; resultSyncedAt: string | null }
+export type ReadOutcome = 'updated' | 'unchanged' | 'empty';
+export interface CatalogTask { key: string; scope: TaskScope; task: NativeTask; observedAt: string; resultSyncedAt: string | null; readOutcome?: ReadOutcome }
 export interface TaskState {
   version: 1; generation: number; model: ModelStore; settings: TaskSettings;
   principal: string | null; catalog: Record<string, CatalogTask>;
   coverage: Record<string, { filters: Record<string, { cursor: string | null; observedAt: string; firstPage: boolean }>; at: string | null }>;
-  sync: { status: 'never' | 'syncing' | 'ok' | 'error'; attemptedAt: string | null; succeededAt: string | null; code: string | null; mode: 'temporary' | 'visit' | null };
+  sync: { status: 'never' | 'syncing' | 'ok' | 'error'; attemptedAt: string | null; succeededAt: string | null; code: string | null; mode: 'temporary' | 'visit' | null; retryAt?: string | null; retrySource?: string | null };
+  sourceReads?: Record<string, string>;
+  sourceFailures?: Record<string, {code: string; observedAt: string}>;
   sourceEvidence: Record<string, { messageId: string; turnId: string | null; conversationId: string; complete: boolean }>;
 }
 export interface ResultView {
@@ -38,7 +41,7 @@ export interface TaskView {
   lastRunAt: string | null; timeZone: string | null; selected: boolean; readable: boolean;
   recordedStatus: string; displayState: string; latestRunId: string | null;
   latestAvailableResult: ResultView | null; lastValuableResult: ResultView | null;
-  currentResult: ResultView | null; resultSyncedAt: string | null; sourceUrl: string;
+  currentResult: ResultView | null; resultSyncedAt: string | null; readOutcome?: ReadOutcome; sourceUrl: string;
 }
 export interface TaskSnapshot {
   settings: TaskSettings; principal: string | null; tasks: TaskView[];

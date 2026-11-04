@@ -1,8 +1,13 @@
 import { createLocalPrincipalReader } from '../collectors/chatgpt/identity.js';
+import { responseFailure } from './failures.js';
 import { validatePacket } from './source.js';
 import type { SourcePacket } from './types.js';
 const PROTOCOL = 'vaiwl-tasks/1';
-const reader = createLocalPrincipalReader();
+let identityFailure: string | null = null;
+const reader = createLocalPrincipalReader({fetch: async (...args: Parameters<typeof fetch>) => {
+  try { const response = await fetch(...args); identityFailure = responseFailure(response); return response; }
+  catch (error) { identityFailure = error instanceof DOMException && error.name === 'AbortError' ? 'SOURCE_TIMEOUT' : 'NETWORK_ERROR'; throw error; }
+}});
 let refreshing: Promise<{token:string}> | null = null;
 let pinnedPrincipal: string | null = null;
 let stopped = false;
@@ -11,10 +16,12 @@ async function identity(): Promise<{token:string}> {
   if(stopped)throw Error('DISABLED');
   if(refreshing)return refreshing;
   refreshing=(async()=>{
+    identityFailure=null;
     const local=await reader.read();
+    const failureCode=identityFailure || (local.code==='session-unauthorized'?'LOGIN_REQUIRED':local.code==='session-challenged'?'VERIFICATION_REQUIRED':'IDENTITY_UNAVAILABLE');
     if(stopped)throw Error('DISABLED');
     const changed=!!local.principalKey&&!!pinnedPrincipal&&local.principalKey!==pinnedPrincipal;
-    const result=await chrome.runtime.sendMessage({protocol:PROTOCOL,command:'HELLO',principalKey:local.principalKey,expiresAt:local.expiresAt});
+    const result=await chrome.runtime.sendMessage({protocol:PROTOCOL,command:'HELLO',principalKey:local.principalKey,expiresAt:local.expiresAt,failureCode});
     // A document is pinned to its initial principal. A fresh identity observation
     // may switch the visible account, but cannot relabel this document's replies.
     if(changed){stop();throw Error('STALE_DOCUMENT');}

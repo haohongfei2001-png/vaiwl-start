@@ -4,6 +4,7 @@ import { indexedDB } from 'fake-indexeddb';
 import { extractPacket, taskResults, normalizeTask, validatePacket, sourceKind } from '../../src/tasks/source.js';
 import { initialState, TaskDatabase } from '../../src/tasks/database.js';
 import { applyPacket, projectTasks, listComplete, selectedKeys } from '../../src/tasks/state.js';
+import { responseFailure } from '../../src/tasks/failures.js';
 import { classify } from '../../research/chatgpt-tasks/result-model.mjs';
 import type { SourcePacket } from '../../src/tasks/types.js';
 const cid='00000000-0000-4000-8000-000000000001',tid='synthetic-task',principal='principal:'+'a'.repeat(64);
@@ -34,3 +35,44 @@ test('independent IndexedDB survives reopen and atomic update failure without to
 test('terminal later page never masquerades as complete first-page coverage',()=>{const s=listed();for(const filter of ['paused','finished'])applyPacket(s,principal,{kind:'list',firstPage:true,filter,cursor:null,tasks:[],observedAt:at,pageHref:'https://chatgpt.com/scheduled'} as SourcePacket);const p=extractPacket('https://chatgpt.com/backend-api/automations?filter=scheduled&limit=25&cursor=next','https://chatgpt.com/scheduled','2026-11-01T12:00:00.000Z',{items:[],cursor:null})!;applyPacket(s,principal,p);assert.equal(listComplete(s),false);});
 
 test('ambiguous team association fails closed instead of selecting the first matching task',()=>{const s=listed();applyPacket(s,principal,{kind:'list',firstPage:true,filter:'scheduled',cursor:null,tasks:[normalizeTask({...task(),team_id:'another-team'})],observedAt:'2026-11-01T10:00:30.000Z',pageHref:'https://chatgpt.com/scheduled'});assert.throws(()=>applyPacket(s,principal,results()),/TASK_NOT_DISCOVERED/);});
+
+
+test('explicit HTTP failure signals separate verification, login, rate limit and unclassified 403',()=>{
+ const response=(status:number,headers:Record<string,string>={})=>({status,headers:new Headers(headers)});
+ assert.equal(responseFailure(response(403,{'cf-mitigated':'challenge'})),'VERIFICATION_REQUIRED');
+ assert.equal(responseFailure(response(403)),'SOURCE_FORBIDDEN');assert.equal(responseFailure(response(401)),'LOGIN_REQUIRED');
+ assert.equal(responseFailure(response(429)),'RATE_LIMITED');assert.equal(responseFailure(response(502)),'SOURCE_UNAVAILABLE');assert.equal(responseFailure(response(200)),null);
+});
+test('fresh unchanged, newly revised and empty reads preserve inherited result semantics',()=>{
+ const s=applyPacket(listed(),principal,results());assert.equal(projectTasks(s)[0].readOutcome,'updated');
+ applyPacket(s,principal,results(message(),'2026-11-01T10:02:00Z'));assert.equal(projectTasks(s)[0].readOutcome,'unchanged');
+ assert.equal(projectTasks(s)[0].latestAvailableResult?.classification,null);
+ applyPacket(s,principal,results(message({content:{content_type:'text',parts:['Revised final']}}),'2026-11-01T10:03:00Z'));assert.equal(projectTasks(s)[0].readOutcome,'updated');
+ const empty=results(message(),'2026-11-01T10:04:00Z') as Extract<SourcePacket,{kind:'results'}>;empty.results=[];applyPacket(s,principal,empty);
+ assert.equal(projectTasks(s)[0].readOutcome,'empty');assert.equal(projectTasks(s,true)[0].latestAvailableResult?.bodyText,'Revised final');
+});
+test('list-only reads never certify fresh output and unrelated success cannot erase a result failure',()=>{
+ const s=listed();assert.equal(s.sync.succeededAt,null);
+ applyPacket(s,principal,results());const success=s.sync.succeededAt;
+ const failure={kind:'error',code:'VERIFICATION_REQUIRED',target:'results:'+cid+':'+tid,pageHref:href,observedAt:'2026-11-01T10:02:00Z'} as const;
+ applyPacket(s,principal,failure);
+ applyPacket(s,principal,{kind:'list',firstPage:true,filter:'scheduled',cursor:null,tasks:[normalizeTask(task())],pageHref:'https://chatgpt.com/scheduled',observedAt:'2026-11-01T10:03:00Z'});
+ assert.equal(s.sync.code,'VERIFICATION_REQUIRED');assert.equal(s.sync.succeededAt,success);
+ applyPacket(s,principal,results(message(),'2026-11-01T10:04:00Z'));assert.equal(s.sync.code,null);assert.equal(s.sync.status,'ok');
+});
+test('failure bridge binds result errors to the actual task route',()=>{
+ const p={kind:'error',code:'NETWORK_ERROR',target:'results:'+cid+':'+tid,pageHref:href,observedAt:at};assert.equal(validatePacket(p).kind,'error');
+ for(const target of ['results:'+cid+':other',null,123,'identity'])assert.throws(()=>validatePacket({...p,target}),/SOURCE_CHANGED/);
+});
+test('rate-limit cooldown persists across unrelated successful reads',()=>{
+ const s=listed();applyPacket(s,principal,{kind:'error',code:'RATE_LIMITED',target:'list:scheduled',pageHref:href,observedAt:at});
+ applyPacket(s,principal,results());assert.equal(s.sync.retryAt,'2026-11-01T10:30:00.000Z');assert.equal(s.sync.code,'RATE_LIMITED');
+ applyPacket(s,principal,{kind:'error',code:'NETWORK_ERROR',target:'list:scheduled',pageHref:href,observedAt:'2026-11-01T10:03:00Z'});
+ applyPacket(s,principal,results(message(),'2026-11-01T10:04:00Z'));assert.equal(s.sync.retryAt,'2026-11-01T10:30:00.000Z');
+});
+
+test('late failure cannot turn a newer successful source read into stale cache',()=>{
+ const s=applyPacket(listed(),principal,results(message(),'2026-11-01T10:04:00Z'));
+ applyPacket(s,principal,{kind:'error',code:'NETWORK_ERROR',target:'results:'+cid+':'+tid,pageHref:href,observedAt:'2026-11-01T10:03:00Z'});
+ assert.equal(s.sync.status,'ok');assert.equal(s.sync.code,null);
+});

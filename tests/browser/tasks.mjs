@@ -13,7 +13,7 @@ const family=process.env.VAIWL_TEST_BROWSER_FAMILY||'chrome';
 const checks=[],errors=[],requests=[],methods=[],sourceActivity=[];
 const cid='00000000-0000-4000-8000-000000000001', tid='synthetic-task';
 const originalBody='Synthetic full task report.\n\nBusiness success is not inferred from a completed message.\nhttps://example.com/result';
-let body=originalBody,turn='turn-one',account='synthetic-account-a',rateLimited=false,cursor=null,delayResult=null,transientFailures=new Set();
+let body=originalBody,turn='turn-one',account='synthetic-account-a',rateLimited=false,cursor=null,delayResult=null,transientFailures=new Set(), resultFailure=null, sessionFailure=null, emptyResult=false;
 let context,page,worker,server,version='',failure;
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const check=(id,pass,observed)=>{checks.push({id,status:pass?'PASS':'FAIL',observed});assert.ok(pass,id+': '+JSON.stringify(observed));};
@@ -23,7 +23,7 @@ const sourceTabs=()=>worker.evaluate(()=>chrome.tabs.query({url:'https://chatgpt
 async function rawTasks(){return page.evaluate(async()=>{const db=await new Promise((res,rej)=>{const r=indexedDB.open('vaiwl-start-chatgpt-tasks');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});const s=await new Promise(res=>{const r=db.transaction('state').objectStore('state').get('current');r.onsuccess=()=>res(r.result)});db.close();return s})}
 async function sync(){const since=new Date().toISOString();await request('SYNC');return until(async()=>{const s=await request('SNAPSHOT');return s.sync.attemptedAt>=since&&['ok','error'].includes(s.sync.status)?s:false},'sync result',35000)}
 const task=()=>({id:tid,title:'Synthetic monitored task',team_id:null,conversation_id:cid,is_enabled:true,schedule:'RRULE:FREQ=DAILY',default_timezone:'UTC',next_run_times:[],last_run_time:'2026-11-01T09:00:00Z',prompt:'PRIVATE PROMPT EXCLUDED'});
-const conversation=()=>({conversation_id:cid,current_node:'final-message',mapping:{
+const conversation=()=>({conversation_id:cid,current_node:emptyResult?'reasoning':'final-message',mapping:{
  'user-message':{parent:null,message:{id:'user-message',author:{role:'user'},content:{parts:['PRIVATE USER TEXT EXCLUDED']}}},
  reasoning:{parent:'user-message',message:{id:'reasoning',author:{role:'assistant'},channel:'analysis',content:{parts:['PRIVATE REASONING EXCLUDED']}}},
  'final-message':{parent:'reasoning',message:{id:'final-message',author:{role:'assistant'},channel:'final',recipient:'all',end_turn:true,status:'finished_successfully',create_time:turn==='turn-one'?1793523600:1793527200,metadata:{automation_id:tid,working_turn_id:turn,is_complete:true},content:{content_type:'text',parts:[body]}}}
@@ -38,21 +38,21 @@ try{
   const url=new URL(route.request().url());requests.push(url.pathname);methods.push(route.request().method());
   if(url.origin!=='https://chatgpt.com')return route.abort();
   const json=x=>route.fulfill({contentType:'application/json',body:JSON.stringify(x)});
-  if(url.pathname==='/api/auth/session')return json({user:{id:account},expires:'2099-01-01T00:00:00Z',accessToken:'SYNTHETIC SECRET NEVER READ OR STORED'});
+  if(url.pathname==='/api/auth/session'){if(sessionFailure==='logout')return json({});if(sessionFailure)return route.fulfill({status:403,headers:{'cf-mitigated':'challenge'},body:'Verification'});return json({user:{id:account},expires:'2099-01-01T00:00:00Z',accessToken:'SYNTHETIC SECRET NEVER READ OR STORED'});}
   if(url.pathname==='/backend-api/automations'){
    if(rateLimited)return route.fulfill({status:429,contentType:'application/json',body:'{}'});
-   const filter=url.searchParams.get('filter');if(transientFailures.delete(filter))return route.fulfill({status:403,contentType:'application/json',body:'{}'});return json({items:filter==='scheduled'?[task(),{...task(),id:'synthetic-dot',title:'Synthetic unsupported source',conversation_id:null,aeon_id:'unsupported-dot'}]:[],cursor:filter==='scheduled'?cursor:null});
+   const filter=url.searchParams.get('filter');if(transientFailures.delete(filter))return route.fulfill({status:403,headers:{'cf-mitigated':'challenge'},contentType:'application/json',body:'{}'});return json({items:filter==='scheduled'?[task(),{...task(),id:'synthetic-dot',title:'Synthetic unsupported source',conversation_id:null,aeon_id:'unsupported-dot'}]:[],cursor:filter==='scheduled'?cursor:null});
   }
-  if(url.pathname==='/backend-api/conversation/'+cid){if(delayResult)await delayResult;return json(conversation())}
+  if(url.pathname==='/backend-api/conversation/'+cid){if(resultFailure==='network')return route.abort();if(resultFailure)return route.fulfill({status:resultFailure==='login'?401:403,headers:resultFailure==='challenge'?{'cf-mitigated':'challenge'}:{},body:'Source unavailable'});if(delayResult)await delayResult;return json(conversation())}
   if(url.pathname==='/scheduled'||url.pathname==='/c/'+cid){
    sourceActivity.push({path:url.pathname,tabs:await sourceTabs().then(ts=>ts.map(t=>({active:t.active}))) });
    const calls=url.pathname==='/scheduled'?['scheduled','paused','finished'].map(f=>`nativeRead('/backend-api/automations?filter=${f}&limit=25')`).join(';'):`nativeRead('/backend-api/conversation/${cid}')`;
-   return route.fulfill({contentType:'text/html',body:`<!doctype html><title>Synthetic native task source</title><a href="/c/${cid}?automationId=${tid}">Task output</a><script>function nativeRead(url){fetch(url).then(r=>{if(r.status===403)setTimeout(()=>fetch(url),100)})}${calls}</script>`});
+   return route.fulfill({contentType:'text/html',body:`<!doctype html><title>Synthetic native task source</title><a href="/c/${cid}?automationId=${tid}">Task output</a><script>function nativeRead(url){fetch(url).then(r=>{if(r.status===403)setTimeout(()=>fetch(url).catch(()=>{}),100)}).catch(()=>{})}${calls}</script>`});
   }
   return route.fulfill({status:404,body:'synthetic fixture not defined'});
  };
  server=createServer({key:await readFile(join(tls,'key.pem')),cert:await readFile(join(tls,'cert.pem'))},(req,res)=>{
-  const route={request:()=>({url:()=>`https://chatgpt.com${req.url}`,method:()=>req.method}),abort:()=>{res.writeHead(404);res.end()},fulfill:async({status=200,contentType='text/plain',body=''})=>{res.writeHead(status,{'Content-Type':contentType});res.end(body)}};
+  const route={request:()=>({url:()=>`https://chatgpt.com${req.url}`,method:()=>req.method}),abort:()=>{res.destroy()},fulfill:async({status=200,contentType='text/plain',body='',headers={}})=>{res.writeHead(status,{'Content-Type':contentType,...headers});res.end(body)}};
   void handle(route).catch(error=>{errors.push(String(error));res.writeHead(500);res.end()});
  });
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
@@ -83,6 +83,30 @@ try{
  check('life-clears-task-private-dom',await page.evaluate(()=>!document.body.textContent.includes('Synthetic monitored task')&&!document.body.textContent.includes('Synthetic full task report')&&document.querySelector('#tasks-home').childNodes.length===0),'Titles, output, selections and closed-dialog contents cleared.');
  await page.locator('#mode-toggle').click();await page.waitForSelector('.task-featured');
  transientFailures=new Set(['scheduled','paused','finished']);snapshot=await sync();check('native-page-can-recover-transient-response',snapshot.sync.status==='ok'&&transientFailures.size===0,'Wait for the native page’s own successful reads; no extension-auth retry or challenge solving.');
+
+ snapshot=await sync();check('fresh-unchanged-is-not-business-no-information',snapshot.tasks.find(t=>t.taskId===tid).readOutcome==='unchanged'&&snapshot.sync.status==='ok'&&(await page.locator('.tasks-sync').textContent()).includes('暂无新输出'),'Fresh source read recorded without changing business classification.');
+ emptyResult=true;snapshot=await sync();check('empty-source-preserves-prior-output',snapshot.tasks.find(t=>t.taskId===tid).readOutcome==='empty'&&snapshot.tasks.find(t=>t.taskId===tid).latestAvailableResult.preview===body,'An empty completed-output list does not remove cached results.');emptyResult=false;
+ // Failure classifications use native response/header signals in visit mode.
+ const native=await context.newPage();await native.goto(`https://chatgpt.com/c/${cid}?automationId=${tid}`);
+ await until(async()=>(await request('SNAPSHOT')).tasks.find(t=>t.taskId===tid).readOutcome==='unchanged','native visit ready');
+ for(const [fixture,expected] of [['challenge','VERIFICATION_REQUIRED'],['forbidden','SOURCE_FORBIDDEN'],['login','LOGIN_REQUIRED'],['network','NETWORK_ERROR']]){
+  resultFailure=fixture;await native.evaluate(path=>fetch(path).catch(()=>{}),'/backend-api/conversation/'+cid);
+  await until(async()=>(await request('SNAPSHOT')).sync.code===expected,'native '+expected);
+  await native.evaluate(()=>fetch('/backend-api/automations?filter=scheduled&limit=25'));await pause(150);
+  snapshot=await request('SNAPSHOT');check('failure-'+fixture,snapshot.sync.code===expected&&snapshot.tasks.find(t=>t.taskId===tid).lastValuableResult?.preview.startsWith('Synthetic full'),'Unrelated list success cannot erase the failed result read; cache retained.');
+  if(fixture==='challenge'){
+   await page.locator('#settings-trigger').click();await page.locator('#settings-nav-workspace').click();await page.locator('#tasks-recover').waitFor({state:'visible'});
+   check('verification-recovery-control',await page.locator('#tasks-sync-status').textContent().then(t=>t.includes('Cloudflare')),'Normal verification entry is available with an explicit reason.');
+   await page.locator('#tasks-recover').click();const recovery=await until(()=>context.pages().find(p=>p.url()==='https://chatgpt.com/scheduled'),'recovery page');
+   check('recovery-page-belongs-to-user',!(await worker.evaluate(()=>chrome.storage.session.get('tasks.ownedTabs')))['tasks.ownedTabs']?.length,'User-requested normal page is not automatically closed.');await recovery.close();await page.locator('[data-close="settings-dialog"]').click();
+  }
+  resultFailure=null;await native.evaluate(path=>fetch(path),'/backend-api/conversation/'+cid);await until(async()=>(await request('SNAPSHOT')).sync.status==='ok','native recovery');
+ }
+ sessionFailure='challenge';await native.evaluate(path=>fetch(path),'/backend-api/conversation/'+cid);await until(async()=>(await request('SNAPSHOT')).sync.code==='VERIFICATION_REQUIRED','identity challenge');
+ check('identity-challenge-keeps-cache',(await request('SNAPSHOT')).tasks.some(t=>t.latestAvailableResult),'Unavailable identity is not mistaken for logout or cached data deletion.');
+ sessionFailure='logout';await native.evaluate(path=>fetch(path),'/backend-api/conversation/'+cid);await until(async()=>(await request('SNAPSHOT')).sync.code==='LOGIN_REQUIRED'&&!(await request('SNAPSHOT')).principal,'proven logout');
+ check('proven-logout-hides-but-retains',Object.keys((await rawTasks()).catalog).length>0&&(await request('SNAPSHOT')).tasks.length===0,'Proven logout hides account data while retaining its partition.');
+ sessionFailure=null;await native.reload();await until(async()=>(await request('SNAPSHOT')).sync.status==='ok','same account returns');await native.close();
  // An explicitly adopted temporary tab belongs to the user after activation.
  let adoptRelease;delayResult=new Promise(r=>adoptRelease=r);const adoptedSince=new Date().toISOString();await request('SYNC');
  const adopted=await until(async()=>(await sourceTabs()).find(t=>t.url?.includes('/c/')),'pending page for user adoption');await worker.evaluate(id=>chrome.tabs.update(id,{active:true}),adopted.id);adoptRelease();delayResult=null;
@@ -102,6 +126,7 @@ try{
  snapshot=await request('SNAPSHOT');check('C-visit-only',snapshot.sync.mode==='visit'&&!(await worker.evaluate(()=>chrome.alarms.get('vaiwl-task-sync')))&&!manual.isClosed(),'Visit captures actual fixture response; does not close user page.');await manual.close();
  await request('CONFIGURE',{patch:{automatic:true}});cursor='native-next-page';snapshot=await sync();check('pagination-never-claimed-complete',snapshot.sync.code==='PARTIAL_LIST'&&!snapshot.completeList,'Non-null native cursor remains partial, existing rows retained.');cursor=null;
  rateLimited=true;snapshot=await sync();check('rate-limit-stops-keeps-cache',snapshot.sync.code==='RATE_LIMITED'&&snapshot.tasks.find(t=>t.taskId===tid).lastValuableResult?.preview.startsWith('Synthetic full'),'No retry loop, cached important output survives.');rateLimited=false;
+ const attempts=requests.length;await assert.rejects(request('SYNC'),/RATE_LIMITED/);await pause(150);check('rate-limit-cooldown-no-repeat',requests.length===attempts,'Persisted cooldown rejects immediate repeats without creating a page.');
  // A new principal sees no cached title/output from the previous account.
  const helloBefore=await worker.evaluate(()=>globalThis.taskDebug.filter(x=>x.command==='HELLO').length);const manualB=await context.newPage();await manualB.goto('https://chatgpt.com/');
  await until(async()=>await worker.evaluate(n=>globalThis.taskDebug.filter(x=>x.command==='HELLO').length>n,helloBefore),'document principal pinned');
