@@ -1,9 +1,10 @@
 import type { ConversationRecord, LocalObservedProject, ProjectRecord } from '../../contracts/free-v1.js';
 import type { CatalogSnapshot } from '../storage/repository.js';
-import { instant } from './time.js';
+import { instant, isPeriodDays } from './time.js';
+import type { PeriodDays } from './time.js';
 import { deriveDisplayTimes, directDisplayAt } from './time-evidence.js';
 import type { DisplayTimeProjection } from './time-evidence.js';
-export interface ProjectionView { H: 30; T: number; Z: string; k: number; selectedScope: string; now?: string }
+export interface ProjectionView { H: PeriodDays; T: number; Z: string; k: number; selectedScope: string; now?: string }
 export interface ProjectCard { project: ProjectRecord; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestActiveAt: string | null; latestDisplayAt: string | null; segment: number | null; sortTime: number | null }
 export type LocalProjectCandidate = NonNullable<ConversationRecord['localProjectCandidate']>;
 export interface CandidateProjectCard { candidate: LocalProjectCandidate; recent: ConversationRecord[]; older: ConversationRecord[]; undated: ConversationRecord[]; latestDisplayAt: string | null; segment: number | null; sortTime: number | null; stableRank: number }
@@ -36,7 +37,7 @@ function observedProject(record: ConversationRecord, projects: Map<string, Local
 }
 /** The arrays retain internal provenance; all use the same user-facing card. */
 export function projectCatalog(snapshot: CatalogSnapshot, view: ProjectionView): CatalogProjection {
-  if (view.H !== 30 || !Number.isSafeInteger(view.k) || view.k < 0) throw Error('invalid-view');
+  if (!isPeriodDays(view.H) || !Number.isSafeInteger(view.k) || view.k < 0) throw Error('invalid-view');
   view = { ...view, now: view.now ?? new Date().toISOString() };
   const records = scoped(snapshot, view.selectedScope);
   const orders = snapshot.timeOrders ?? [];

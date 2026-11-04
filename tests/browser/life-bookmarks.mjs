@@ -150,7 +150,7 @@ try {
   await mode(page, 'life'); await noWork(page);
   assert.deepEqual((await worker.evaluate(() => chrome.tabs.query({}))).map(tab => tab.id).sort(), realTabsBefore);
   pass('L-switch-does-not-close-real-tabs', 'Mode switch leaves all actual browser tab IDs unchanged.');
-  check('L-switch-removes-work-material', (await page.locator('#mode-toggle').innerText()).includes('工作空间'), 'Life has its own web-search surface and no visible project, conversation, pending record or date rail.');
+  check('L-switch-removes-work-material', (await page.locator('#mode-toggle').getAttribute('aria-label')).includes('当前为生活模式，切换到工作'), 'Life has its own web-search surface and no visible project, conversation, pending record or date rail.');
   await page.screenshot({ path: join(out, 'life.png'), fullPage: true });
   const lifePeer = await nativePage(); await noWork(lifePeer);
   check('L-new-native-tab-inherits-life-no-projection', await lifePeer.evaluate(() => !window.__startCommands.includes('SNAPSHOT')), 'New native tab reads only home preferences/bookmarks; no catalog SNAPSHOT IPC.');

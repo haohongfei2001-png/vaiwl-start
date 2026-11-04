@@ -1,0 +1,62 @@
+/* Functional rules shared by every theme; theme files retain color and detail. */
+.spatial-project-grid { --project-equal-height: 252px; }
+html[data-home-theme="classic"] :is(.spatial-project-grid, .recent-section .date-grid) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.spatial-project-grid > .project { display: flex; flex-direction: column; min-width: 0; }
+.spatial-project-grid > .project > .project-head { flex: none; }
+.spatial-project-grid > .project > .project-head h3 { flex: 1; min-width: 0; }
+.spatial-project-grid > .project > .project-head .project-create { margin-left: auto; opacity: .55; cursor: default; }
+.spatial-project-grid > .project:hover > .project-head .project-create,
+.spatial-project-grid > .project:focus-within > .project-head .project-create { opacity: .8; }
+.spatial-project-grid > .project > .project-head .project-create:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+html .spatial-project-grid[data-project-layout="equal"] > .project,
+html[data-project-layout="equal"] .spatial-project-grid > .project { height: var(--project-equal-height); }
+html .spatial-project-grid[data-project-layout="equal"] > .project > .project-body,
+html[data-project-layout="equal"] .spatial-project-grid > .project > .project-body { flex: 1; min-height: 0; overflow: hidden; }
+html .spatial-project-grid[data-project-layout="equal"] > .project > .project-head h3,
+html[data-project-layout="equal"] .spatial-project-grid > .project > .project-head h3 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.spatial-project-grid[data-project-layout="adaptive"] > .project { height: auto; }
+.spatial-project-footer { display: flex; align-items: center; min-height: 32px; padding: 2px 13px 6px; flex: none; }
+.spatial-project-footer.is-complete { min-height: 9px; height: 9px; padding: 0; }
+.spatial-expand, .spatial-project-more, .spatial-date-more { display: inline-flex; gap: 5px; align-items: center; padding: 6px 4px; font-size: 11px; color: var(--muted); }
+.spatial-expand svg, .spatial-project-more svg, .spatial-date-more svg { width: 12px; height: 12px; }
+.spatial-expand[aria-expanded="true"] svg { transform: rotate(180deg); }
+.spatial-project-expanded { grid-column: 1 / -1; min-width: 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 11px; background: var(--bg); }
+.spatial-expanded-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.spatial-expanded-head h3 { font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
+.spatial-expanded-actions { display: flex; flex: none; align-items: center; gap: 5px; }
+.spatial-expanded-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 22px; }
+.spatial-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.spatial-section-heading h2 { font-size: 12px; font-weight: 550; color: var(--muted); }
+.spatial-projects { min-width: 0; margin-bottom: 28px; }
+.spatial-date-heading { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 6px 0; text-align: left; }
+.spatial-date-heading strong { font-size: 12px; font-weight: 550; }
+.spatial-date-heading svg { width: 11px; height: 11px; }
+.spatial-date-heading[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.spatial-remaining-dates, .spatial-neutral-dates { margin-top: 16px; }
+.recent-toggle-more { display: flex; margin: 12px auto 0; width: 30px; height: 28px; }
+.recent-toggle-more svg { width: 13px; height: 13px; }
+.recent-toggle-more[aria-expanded="true"] svg { transform: rotate(180deg); }
+@media (max-width: 1180px) { html[data-home-theme="classic"] :is(.spatial-project-grid, .recent-section .date-grid) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1050px) { .spatial-expanded-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 850px) { html[data-home-theme="classic"] :is(.spatial-project-grid, .recent-section .date-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  html[data-home-theme="classic"] :is(.spatial-project-grid, .recent-section .date-grid) { grid-template-columns: minmax(0, 1fr); }
+  .spatial-project-grid { --project-equal-height: 280px; }
+  .spatial-expanded-list { grid-template-columns: minmax(0, 1fr); }
+  .spatial-expanded-head { align-items: flex-start; }
+  .spatial-expanded-actions .text-button { max-width: 110px; }
+}
+
+/* A shared preference, with a visible selected state in every theme. */
+.project-layout-options { display: inline-flex; flex: none; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--side); }
+.project-layout-options .secondary { min-height: 31px; padding: 6px 10px; border-color: transparent; background: transparent; border-radius: 5px; color: var(--muted); font-size: 12px; }
+.project-layout-options .secondary[aria-pressed="true"] { color: #fff; background: var(--text); border-color: var(--text); }
+.project-layout-options .secondary[aria-pressed="false"]:hover { background: var(--hover); color: var(--text); }
+@media(max-width:560px) {
+  .home-layout-row { flex-direction: column; align-items: stretch; gap: 12px; }
+  .project-layout-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:760px) {
+  /* The retired floating time rail no longer needs a reserved right gutter. */
+  html[data-home-theme="classic"] :is(.topbar,.workspace) { width:calc(100% - 40px); margin-inline:20px; }
+}

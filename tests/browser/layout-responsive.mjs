@@ -20,7 +20,7 @@ const root = await mkdtemp(join(tmpdir(), 'vaiwl-responsive-'));
 const out = resolve('artifacts', 'layout-responsive', family);
 await mkdir(out, { recursive: true });
 const checks = [], screenshots = [], measurements = [], errors = [], limitations = [];
-const anchorIso = new Date(Date.now() - 300000).toISOString();
+const anchorIso = new Date().toISOString();
 
 const fixtureHash = createHash('sha256').update(JSON.stringify({ anchorIso, fixtures })).digest('hex');
 const viewports = [
@@ -31,7 +31,7 @@ const viewports = [
   { name: 'desktop-1440', width: 1440, height: 900, columns: 4 },
   { name: 'desktop-1280', width: 1280, height: 800, columns: 4 },
   { name: 'desktop-1024', width: 1024, height: 768, columns: 3 },
-  { name: 'boundary-900', width: 900, height: 900, columns: 2 },
+  { name: 'boundary-900', width: 900, height: 900, columns: 3 },
   { name: 'split-800', width: 800, height: 900, columns: 2 },
   { name: 'boundary-600', width: 600, height: 800, columns: 1 },
   { name: 'narrow-540', width: 540, height: 800, columns: 1 },
@@ -57,8 +57,16 @@ async function raw(target) {
   });
 }
 async function seed(target, state) {
+  // Closing through the real control also resets the in-memory view. Clearing
+  // sessionStorage alone is undone when the outgoing page persists on pagehide.
+  const moreDates = target.locator('#recent-toggle-more');
+  if (await moreDates.count() && await moreDates.getAttribute('aria-expanded') === 'true') await moreDates.click();
   const receipt = await seedLayoutCatalog(target, state, anchorIso);
   await target.reload(); await ready(target); await target.evaluate(() => scrollTo(0, 0)); return receipt;
+}
+async function revealMoreDates(target) {
+  const toggle = target.locator('#recent-toggle-more');
+  if (await toggle.count() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
 }
 
 async function layout(target) {
@@ -71,8 +79,8 @@ async function layout(target) {
       return { ...rect(el), tracks: getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).map(parseFloat), columnGap: parseFloat(getComputedStyle(el).columnGap), rowGap: parseFloat(getComputedStyle(el).rowGap) };
     };
     const cards = all('.project').map(el => ({ key: el.dataset.project, ...rect(el), rows: [...el.querySelectorAll('.conversation-open')].filter(shown).length }));
-    const dates = all('.date-window').map(el => ({ date: el.dataset.date, ...rect(el) }));
-    const hitErrors = all('#home,#search-trigger,#mode-toggle,#settings-trigger,.project-head .icon-button,.record-menu,#history-rail button').flatMap(el => {
+    const dates = all('.date-window').map(el => ({ date: el.dataset.date, kind: el.dataset.recentKind, ...rect(el) }));
+    const hitErrors = all('#home,#search-trigger,#mode-toggle,#settings-trigger,.project-head .icon-button,.record-menu,#period-newer,#period-older').flatMap(el => {
       const r = el.getBoundingClientRect(); if (r.bottom <= 0 || r.top >= innerHeight) return [];
       const x = (r.left + r.right) / 2, y = Math.min(innerHeight - 1, (r.top + r.bottom) / 2), hit = document.elementFromPoint(x, y);
       return hit && (hit === el || el.contains(hit)) ? [] : [{ label: el.getAttribute('aria-label') || el.id, ...rect(el), hit: hit?.className || hit?.tagName }];
@@ -168,22 +176,54 @@ async function interactions(info) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await seed(page, 'dense');
   const before = await raw(page), project = page.locator('[data-project="local-project:layout-0"]');
-  const railBefore = await page.locator('#history-rail').boundingBox();
-  await page.evaluate(() => scrollTo(0, 500));
-  const railAfter = await page.locator('#history-rail').boundingBox();
-  check('LAYOUT-rail-fixed-on-scroll', Math.abs(railBefore.y - railAfter.y) <= 1 && Math.abs(railBefore.x - railAfter.x) <= 1, { before: railBefore, after: railAfter, scrollY: await page.evaluate(() => scrollY) });
-  await page.evaluate(() => scrollTo(0, 0));
-  check('LAYOUT-default-five', await project.locator('.conversation-open:visible').count() === 5, 'Five project previews remain visible by default.');
-  await project.locator('[data-more]').click();
-  check('LAYOUT-more-plus-twelve', await project.locator('.conversation-open:visible').count() === 17, 'Show more adds twelve, preserving the existing contract.');
-  await project.locator('[data-older]').click();
-  check('LAYOUT-earlier-preserves-members', await project.getByRole('link', { name: '在 ChatGPT 中打开：更早的计算记录', exact: true }).isVisible() && await project.getByRole('link', { name: '在 ChatGPT 中打开：暂未访问的项目成员', exact: true }).isVisible(), 'Old and undated project members remain in the same project.');
-  const last = project.locator('.conversation-open:visible').last(); await last.focus();
+  const periodNavigation = await page.evaluate(() => {
+    const rail = document.querySelector('#history-rail');
+    const newer = document.querySelector('#period-newer'), older = document.querySelector('#period-older');
+    const navigation = older?.closest('nav');
+    return {
+      retiredRail: !!rail?.hidden && rail.childElementCount === 0,
+      adjacentArrows: !!newer?.getClientRects().length && !!older?.getClientRects().length && navigation?.querySelectorAll('button').length === 2,
+      atCurrentPeriod: newer?.disabled === true && older?.disabled === false,
+      visibleLabel: navigation?.textContent?.trim(),
+    };
+  });
+  check('LAYOUT-compact-adjacent-period-navigation', periodNavigation.retiredRail && periodNavigation.adjacentArrows && periodNavigation.atCurrentPeriod && periodNavigation.visibleLabel === '', periodNavigation);
+  check('LAYOUT-default-four', await project.locator('.conversation-open:visible').count() === 4, 'The shared project renderer begins with four preview rows.');
+  await project.locator('[data-spatial-expand]').click();
+  const members = page.locator('[data-project="local-project:layout-0"], [data-expanded-project="local-project:layout-0"]');
+  check('LAYOUT-expanded-complete-membership', await members.locator('.conversation-open:visible').count() === fixtures.dense.projectRows[0] + 2 && await page.locator('.spatial-project-expanded').count() === 1, 'The preview and associated full-width panel expose every original timed, old, and undated member once.');
+  check('LAYOUT-earlier-preserves-members', await members.getByRole('link', { name: '在 ChatGPT 中打开：更早的计算记录', exact: true }).isVisible() && await members.getByRole('link', { name: '在 ChatGPT 中打开：暂未访问的项目成员', exact: true }).isVisible(), 'Old and undated members remain associated with their original project.');
+  const last = members.locator('.conversation-open:visible').last(); await last.focus();
   const lastKey = await last.getAttribute('data-focus-key');
+  const lastRecordKey = await last.getAttribute('data-record-key');
   await page.setViewportSize({ width: 540, height: 800 });
+  // The viewport can change before the idle resize render and absolute card
+  // placement finish. Observe the actual one-column layout before pressing Tab.
+  await page.waitForFunction(() => innerWidth === 540 && [...document.querySelectorAll('.spatial-project-grid')]
+    .filter(grid => grid.getClientRects().length).every(grid => {
+      const bounds = grid.getBoundingClientRect();
+      return getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length === 1
+        && [...grid.children].filter(child => child.getClientRects().length).every(child => {
+          const rect = child.getBoundingClientRect();
+          return Math.abs(rect.left - bounds.left) <= 1 && Math.abs(rect.right - bounds.right) <= 1;
+        });
+    }));
   check('LAYOUT-resize-preserves-focus', await page.evaluate(key => document.activeElement?.getAttribute('data-focus-key') === key, lastKey), 'Responsive layout does not reconstruct the focused record.');
   await page.keyboard.press('Tab');
-  check('LAYOUT-keyboard-menu-visible', await page.locator(':focus').evaluate(el => el.matches('.record-menu') && Number(getComputedStyle(el).opacity) > 0), 'Record actions become visible in the actual keyboard focus path.');
+  await page.waitForFunction(key => {
+    const active = document.activeElement;
+    return active?.matches('.record-menu') && active.getAttribute('data-record-menu') === key && Number(getComputedStyle(active).opacity) > 0;
+  }, lastRecordKey, { timeout: 5000 }).catch(() => {});
+  // Read the live active element atomically: a locator resolved before a queued
+  // render can otherwise inspect a detached predecessor with no computed style.
+  const keyboardMenu = await page.evaluate(() => {
+    const active = document.activeElement;
+    return { isMenu: !!active?.matches('.record-menu'), recordKey: active?.getAttribute('data-record-menu'),
+      focusKey: active?.getAttribute('data-focus-key'), opacity: active ? Number(getComputedStyle(active).opacity) : 0,
+      connected: !!active?.isConnected, viewport: innerWidth };
+  });
+  check('LAYOUT-keyboard-menu-visible', keyboardMenu.isMenu && keyboardMenu.recordKey === lastRecordKey && keyboardMenu.connected && keyboardMenu.opacity > 0,
+    { description: 'Tab reaches the visible action for the same focused conversation after the responsive layout settles.', expectedRecordKey: lastRecordKey, ...keyboardMenu });
   await page.keyboard.press('Enter');
   await page.locator('#record-dialog').waitFor({ state: 'visible' });
   check('LAYOUT-full-title-detail', (await page.locator('#record-dialog').innerText()).includes('暂未访问的项目成员'), 'The existing detail surface keeps the complete title accessible.');
@@ -193,11 +233,12 @@ async function interactions(info) {
   await page.locator('[data-filter="none"]').click();
   check('LAYOUT-recent-filter', await page.locator('.project:visible').count() === 0 && await page.locator('.date-window:visible').count() > 0, 'The existing 最近 filter remains functional.');
   const date = page.locator('.date-window').first();
-  check('LAYOUT-recent-default-five', await date.locator('.conversation-open:visible').count() === 5, 'Date windows also begin with five records.');
-  await date.locator('[data-more]').click();
-  check('LAYOUT-recent-plus-twelve', await date.locator('.conversation-open:visible').count() === 17, 'Date show more adds twelve.');
+  check('LAYOUT-recent-default-preview', await date.locator('.conversation-open:visible').count() === 9, 'The shared date renderer begins with its bounded preview.');
+  await date.locator('[data-spatial-date-more]').click();
+  check('LAYOUT-recent-all-members', await date.locator('.conversation-open:visible').count() === fixtures.dense.dayRows[0], 'Date expansion exposes every synthetic conversation without changing its date.');
   await page.locator('[data-filter="all"]').click();
   await page.locator('#period-older').click();
+  await revealMoreDates(page);
   check('LAYOUT-period-navigation', await page.getByRole('link', { name: '在 ChatGPT 中打开：上一个 30 天区间中的讨论', exact: true }).isVisible(), 'History navigation still opens the preceding thirty-day interval.');
   await page.locator('#period-older').click();
   check('LAYOUT-empty-interval', await page.getByText('这一段没有记录', { exact: true }).isVisible(), 'An empty thirty-day interval is not skipped.');
@@ -287,11 +328,24 @@ try {
         check('LAYOUT-natural-card-heights', new Set(state.cards.map(c => c.height)).size > 1, state.cards.map(c => c.height));
       }
       if (version === 'after' && name === 'dense') {
-        const rows = state.cards.reduce((result, card) => { (result[card.top] ??= []).push(card); return result; }, {});
-        check('LAYOUT-stable-rows-no-masonry', Object.values(rows).every(row => row.length === 4) && Object.keys(rows).length === 3, Object.values(rows).map(row => row.map(c => c.top)));
-        check('LAYOUT-dense-date-completeness', state.dates.length === fixtures.dense.dayRows.length, { visibleDateWindows: state.dates.length, expected: fixtures.dense.dayRows.length });
+        const columns = state.cards.reduce((result, card) => { (result[card.left] ??= []).push(card); return result; }, {});
+        const expectedProjectOrder = fixtures.dense.projectRows.map((_, index) => index).sort((a, b) => a % 3 - b % 3 || a - b).map(index => `local-project:layout-${index}`);
+        check('LAYOUT-adaptive-columns-and-stable-order', Object.keys(columns).length === 4 && JSON.stringify(state.cards.map(card => card.key)) === JSON.stringify(expectedProjectOrder) && Object.values(columns).every(column => column.every((card, index) => !index || Math.abs(card.top - column[index - 1].bottom - state.projectGrid.rowGap) <= 2)), { columns, expectedProjectOrder, rowGap: state.projectGrid.rowGap });
+        check('LAYOUT-recent-default-primary-groups', state.dates.length === 2 && state.dates.every(date => date.kind === 'date') && await page.locator('#recent-toggle-more').getAttribute('aria-expanded') === 'false', 'Only non-empty Today and Yesterday are initially shown for the unpinned fixture.');
+        await revealMoreDates(page);
+        const expandedDates = await layout(page);
+        check('LAYOUT-dense-date-completeness', expandedDates.dates.length === fixtures.dense.dayRows.length, { visibleDateWindows: expandedDates.dates.length, expected: fixtures.dense.dayRows.length });
       }
-      if (version === 'after' && name === 'recent-only') check('LAYOUT-no-projects', state.cards.length === 0 && state.dates.length === 8 && state.dateGrid.tracks.length === 4, 'Recent-only home uses the same grid without an empty project placeholder.');
+      if (version === 'after' && name === 'recent-only') {
+        await revealMoreDates(page);
+        const expandedDates = await layout(page);
+        check('LAYOUT-no-projects', state.cards.length === 0 && state.dates.length === 2 && expandedDates.dates.length === fixtures['recent-only'].dayRows.length && state.dateGrid.tracks.length === 4, {
+          description: 'Recent-only home starts with non-empty priority dates and reveals every remaining date without an empty project placeholder.',
+          projectKeys: state.cards.map(card => card.key), initialDates: state.dates.map(date => date.date),
+          expandedDates: expandedDates.dates.map(date => date.date), expectedDates: fixtures['recent-only'].dayRows.length,
+          columns: state.dateGrid.tracks.length,
+        });
+      }
     }
     if (version === 'after') { await interactions(info); await zoomTests(info); }
     await context.close(); context = null;

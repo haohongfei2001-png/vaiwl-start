@@ -17,7 +17,7 @@ for (const [entry, output, format] of entries) {
   metadata[output] = result.metafile;
 }
 const record = { contract: 'VAIWL-START-FREE/1.0', amendment: '2026-11-03-home-time-projection', sha, dirty, version: manifest.version, sourceGate: 'LOCAL_WORKSPACE_READY', nativeAttribution: 'UNVERIFIED', nativeProjectLocalGrouping: 'IMPLEMENTED', displayTimeProjection: 'INTERVAL_EVIDENCE', nativeTimeLiveSource: 'UNVERIFIED', accountWorkspaceCertification: 'UNVERIFIED', fullProjectSync: 'NOT_IMPLEMENTED', adapterVersion: 'chatgpt-native-project-local/4', files: {} };
-for (const name of ['manifest.json', 'service-worker.js', 'content.js', 'newtab.js', 'newtab.html', 'newtab.css', 'bookmarks.css', 'life.css', 'settings.css', 'source-check.js', 'source-check.html', 'source-check.css', 'tab-chrome.svg', 'tab-edge.svg', 'tab-product.svg']) record.files[name] = createHash('sha256').update(await readFile('dist/' + name)).digest('hex');
+for (const name of ['manifest.json', 'service-worker.js', 'content.js', 'newtab.js', 'newtab.html', 'newtab.css', 'bookmarks.css', 'life.css', 'settings.css', 'spatial-theme.css', 'workbench-theme.css', 'folio-theme.css', 'home-layout.css', 'source-check.js', 'source-check.html', 'source-check.css', 'tab-chrome.svg', 'tab-edge.svg', 'tab-product.svg']) record.files[name] = createHash('sha256').update(await readFile('dist/' + name)).digest('hex');
 await writeFile('dist/build.json', JSON.stringify(record, null, 2) + '\n');
 await mkdir('artifacts', { recursive: true });
 await writeFile('artifacts/build-meta.json', JSON.stringify(metadata, null, 2));
