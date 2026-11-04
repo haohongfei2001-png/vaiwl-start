@@ -119,7 +119,7 @@ try {
   page = await context.newPage(); await page.goto(extensionUrl); await ready(page);
   await page.evaluate(async () => { await chrome.storage.local.remove('native.homeTheme'); await chrome.storage.local.set({ 'native.homeMode': 'workspace' }); });
   assert.ok(layoutFixtures.dense, 'dense synthetic layout fixture exists');
-  const receipt = await seedLayoutCatalog(page, 'dense', new Date(Date.now() - 300000).toISOString());
+  const receipt = await seedLayoutCatalog(page, 'dense', new Date().toISOString());
   await page.reload(); await ready(page); await theme(page, 'classic');
   const before = await raw(page), classicProjects = await projectSummary(page), classicLinks = await visibleLinks(page);
   check('THEME-default-missing-classic', classicProjects.length >= 4 && classicLinks.length > 4 && await page.locator('.spatial-project-expanded').count() === 0 && await page.locator('.spatial-date-band').count() > 0 && await page.locator('.spatial-expand').count() > 0 && await page.getAttribute('html', 'data-home-theme') === 'classic',

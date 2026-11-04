@@ -46,3 +46,17 @@ html[data-project-layout="equal"] .spatial-project-grid > .project > .project-he
   .spatial-expanded-head { align-items: flex-start; }
   .spatial-expanded-actions .text-button { max-width: 110px; }
 }
+
+/* A shared preference, with a visible selected state in every theme. */
+.project-layout-options { display: inline-flex; flex: none; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--side); }
+.project-layout-options .secondary { min-height: 31px; padding: 6px 10px; border-color: transparent; background: transparent; border-radius: 5px; color: var(--muted); font-size: 12px; }
+.project-layout-options .secondary[aria-pressed="true"] { color: #fff; background: var(--text); border-color: var(--text); }
+.project-layout-options .secondary[aria-pressed="false"]:hover { background: var(--hover); color: var(--text); }
+@media(max-width:560px) {
+  .home-layout-row { flex-direction: column; align-items: stretch; gap: 12px; }
+  .project-layout-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:760px) {
+  /* The retired floating time rail no longer needs a reserved right gutter. */
+  html[data-home-theme="classic"] :is(.topbar,.workspace) { width:calc(100% - 40px); margin-inline:20px; }
+}

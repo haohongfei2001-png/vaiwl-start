@@ -20,7 +20,7 @@ const root = await mkdtemp(join(tmpdir(), 'vaiwl-responsive-'));
 const out = resolve('artifacts', 'layout-responsive', family);
 await mkdir(out, { recursive: true });
 const checks = [], screenshots = [], measurements = [], errors = [], limitations = [];
-const anchorIso = new Date(Date.now() - 300000).toISOString();
+const anchorIso = new Date().toISOString();
 
 const fixtureHash = createHash('sha256').update(JSON.stringify({ anchorIso, fixtures })).digest('hex');
 const viewports = [
@@ -57,6 +57,10 @@ async function raw(target) {
   });
 }
 async function seed(target, state) {
+  // Closing through the real control also resets the in-memory view. Clearing
+  // sessionStorage alone is undone when the outgoing page persists on pagehide.
+  const moreDates = target.locator('#recent-toggle-more');
+  if (await moreDates.count() && await moreDates.getAttribute('aria-expanded') === 'true') await moreDates.click();
   const receipt = await seedLayoutCatalog(target, state, anchorIso);
   await target.reload(); await ready(target); await target.evaluate(() => scrollTo(0, 0)); return receipt;
 }
@@ -76,7 +80,7 @@ async function layout(target) {
     };
     const cards = all('.project').map(el => ({ key: el.dataset.project, ...rect(el), rows: [...el.querySelectorAll('.conversation-open')].filter(shown).length }));
     const dates = all('.date-window').map(el => ({ date: el.dataset.date, kind: el.dataset.recentKind, ...rect(el) }));
-    const hitErrors = all('#home,#search-trigger,#mode-toggle,#settings-trigger,.project-head .icon-button,.record-menu,#history-rail button').flatMap(el => {
+    const hitErrors = all('#home,#search-trigger,#mode-toggle,#settings-trigger,.project-head .icon-button,.record-menu,#period-newer,#period-older').flatMap(el => {
       const r = el.getBoundingClientRect(); if (r.bottom <= 0 || r.top >= innerHeight) return [];
       const x = (r.left + r.right) / 2, y = Math.min(innerHeight - 1, (r.top + r.bottom) / 2), hit = document.elementFromPoint(x, y);
       return hit && (hit === el || el.contains(hit)) ? [] : [{ label: el.getAttribute('aria-label') || el.id, ...rect(el), hit: hit?.className || hit?.tagName }];
@@ -172,11 +176,18 @@ async function interactions(info) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await seed(page, 'dense');
   const before = await raw(page), project = page.locator('[data-project="local-project:layout-0"]');
-  const railBefore = await page.locator('#history-rail').boundingBox();
-  await page.evaluate(() => scrollTo(0, 500));
-  const railAfter = await page.locator('#history-rail').boundingBox();
-  check('LAYOUT-rail-fixed-on-scroll', Math.abs(railBefore.y - railAfter.y) <= 1 && Math.abs(railBefore.x - railAfter.x) <= 1, { before: railBefore, after: railAfter, scrollY: await page.evaluate(() => scrollY) });
-  await page.evaluate(() => scrollTo(0, 0));
+  const periodNavigation = await page.evaluate(() => {
+    const rail = document.querySelector('#history-rail');
+    const newer = document.querySelector('#period-newer'), older = document.querySelector('#period-older');
+    const navigation = older?.closest('nav');
+    return {
+      retiredRail: !!rail?.hidden && rail.childElementCount === 0,
+      adjacentArrows: !!newer?.getClientRects().length && !!older?.getClientRects().length && navigation?.querySelectorAll('button').length === 2,
+      atCurrentPeriod: newer?.disabled === true && older?.disabled === false,
+      visibleLabel: navigation?.textContent?.trim(),
+    };
+  });
+  check('LAYOUT-compact-adjacent-period-navigation', periodNavigation.retiredRail && periodNavigation.adjacentArrows && periodNavigation.atCurrentPeriod && periodNavigation.visibleLabel === '', periodNavigation);
   check('LAYOUT-default-four', await project.locator('.conversation-open:visible').count() === 4, 'The shared project renderer begins with four preview rows.');
   await project.locator('[data-spatial-expand]').click();
   const members = page.locator('[data-project="local-project:layout-0"], [data-expanded-project="local-project:layout-0"]');
@@ -303,7 +314,12 @@ try {
       if (version === 'after' && name === 'recent-only') {
         await revealMoreDates(page);
         const expandedDates = await layout(page);
-        check('LAYOUT-no-projects', state.cards.length === 0 && state.dates.length === 2 && expandedDates.dates.length === fixtures['recent-only'].dayRows.length && state.dateGrid.tracks.length === 4, 'Recent-only home starts with non-empty priority dates and reveals every remaining date without an empty project placeholder.');
+        check('LAYOUT-no-projects', state.cards.length === 0 && state.dates.length === 2 && expandedDates.dates.length === fixtures['recent-only'].dayRows.length && state.dateGrid.tracks.length === 4, {
+          description: 'Recent-only home starts with non-empty priority dates and reveals every remaining date without an empty project placeholder.',
+          projectKeys: state.cards.map(card => card.key), initialDates: state.dates.map(date => date.date),
+          expandedDates: expandedDates.dates.map(date => date.date), expectedDates: fixtures['recent-only'].dayRows.length,
+          columns: state.dateGrid.tracks.length,
+        });
       }
     }
     if (version === 'after') { await interactions(info); await zoomTests(info); }

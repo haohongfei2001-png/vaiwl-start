@@ -44,7 +44,7 @@ async function choose(target, value) {
   await settings(target);
   await target.locator(`[data-home-theme-choice="${value}"]`).click();
   await theme(target, value);
-  await until(() => target.evaluate(async v => (await chrome.storage.local.get('native.homeTheme'))['native.homeTheme'] === v, value), `stored theme ${value}`);
+  await until(() => target.evaluate(async v => ((await chrome.storage.local.get('native.homeTheme'))['native.homeTheme'] ?? 'classic') === v, value), `stored theme ${value}`);
 }
 async function closeSettings(target) {
   if (await target.locator('#settings-dialog').evaluate(el => el.open)) await target.keyboard.press('Escape');
@@ -72,7 +72,7 @@ async function geometry(target) {
     const cards = grid ? [...grid.children].filter(el => el.matches('.project')) : [];
     const r = el => { const x = el.getBoundingClientRect(); return {key:el.dataset.project,x:x.x,y:x.y,w:x.width,h:x.height,bottom:x.bottom}; };
     return { viewport:innerWidth, width:document.documentElement.scrollWidth, layout:document.documentElement.dataset.projectLayout,
-      columns:grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length : 0, cards:cards.map(r) };
+      columns:grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length : 0, gridWidth:grid?.getBoundingClientRect().width, gap:grid ? parseFloat(getComputedStyle(grid).columnGap)||0 : 0, gridMode:grid?.dataset.projectLayout, cards:cards.map(r) };
   });
 }
 try {
@@ -122,6 +122,7 @@ try {
     for(const width of [1720,1440,1280,960,768,390]) {
       await page.setViewportSize({width,height:1000});
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      await until(async()=>{const g=await geometry(page);const w=(g.gridWidth-g.gap*(g.columns-1))/g.columns;return g.gridMode==='adaptive'&&g.cards.length>0&&g.cards.every(c=>Math.abs(c.w-w)<1)},'layout after viewport change');
       const g=await geometry(page);measurements.push({theme:selectedTheme,mode:'adaptive',...g});
       check(`R6-${selectedTheme}-adaptive-bounds-${width}`,g.width<=g.viewport+1&&g.cards.every(c=>c.w>0&&c.x>=-1&&c.x+c.w<=g.viewport+1),g);
       const reading=g.cards.slice().sort((a,b)=>Math.abs(a.y-b.y)<1?a.x-b.x:a.y-b.y).map(c=>c.key);
