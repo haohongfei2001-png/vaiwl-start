@@ -327,3 +327,86 @@ test('partial metadata refresh exposes the older run observation timestamp', () 
   assert.equal(first(store).metadataObservedAt, at(5));
   assert.equal(first(store).runObservedAt, at(3));
 });
+
+test('failed retry with the same run ID preserves a valuable earlier attempt', () => {
+  let store = marked(observe(createStore(), fixture()));
+  const retry = anotherRun(fixture(), 'fixture-run-a', 'failed', 6);
+  store = observe(store, retry, 8);
+  const task = first(store);
+  assert.equal(task.recordedStatus, 'failed');
+  assert.equal(task.displayState, 'failed');
+  assert.equal(task.currentResult, null);
+  assert.equal(task.lastValuableResult.revision, 1);
+  assert.equal(task.lastValuableResult.attemptStartedAt, at(1));
+  assert.equal(task.lastValuableResult.attemptRecordedStatus, 'completed');
+});
+
+test('historical successful-attempt result can be classified after a failed retry', () => {
+  let store = observe(createStore(), fixture());
+  store = observe(store, anotherRun(fixture(), 'fixture-run-a', 'failed', 6), 8);
+  store = marked(store, 'new_information', 1, 9);
+  assert.equal(first(store).lastValuableResult.revision, 1);
+  assert.equal(first(store).lastValuableResult.attemptRecordedStatus, 'completed');
+});
+
+test('failed current-attempt output cannot be promoted even without its failure flag', () => {
+  let store = marked(observe(createStore(), fixture()));
+  const retry = anotherRun(fixture(), 'fixture-run-a', 'failed', 6);
+  Object.assign(retry.run_details.latest_result, {
+    created_at: at(7), content_text: 'Synthetic output from the failed retry', is_failure_message: false
+  });
+  store = observe(store, retry, 8);
+  assert.equal(first(store).currentResult.attemptStartedAt, at(6));
+  assert.equal(first(store).currentResult.attemptRecordedStatus, 'failed');
+  assert.throws(() => marked(store, 'new_information', 2, 9), /FAILURE_NOT_VALUABLE/);
+  assert.equal(first(store).lastValuableResult.revision, 1);
+});
+
+test('later failure of the same attempt is retained when another retry starts', () => {
+  let store = observe(createStore(), fixture());
+  const failed = fixture(); failed.run_details.last_run.recorded_status = 'failed';
+  store = observe(store, failed, 4);
+  store = observe(store, anotherRun(fixture(), 'fixture-run-a', 'in_progress', 6), 7);
+  assert.throws(() => marked(store, 'new_information', 1, 8), /FAILURE_NOT_VALUABLE/);
+});
+
+test('a partial last-run object does not erase known attempt evidence', () => {
+  let store = observe(createStore(), fixture());
+  const partial = fixture(); partial.run_details.last_run = { id: 'fixture-run-a' };
+  store = observe(store, partial, 5);
+  const task = first(store);
+  assert.equal(task.recordedStatus, 'completed');
+  assert.equal(task.runStartedAt, at(1));
+  assert.equal(task.runCompletedAt, at(2));
+  assert.equal(task.currentResult.revision, 1);
+  assert.equal(task.runObservedAt, at(3));
+});
+
+test('unknown fields retain current evidence but an explicit new attempt resets terminal time', () => {
+  let store = observe(createStore(), fixture());
+  const partial = fixture();
+  partial.run_details.last_run = { id: 'fixture-run-a', recorded_status: 'unknown',
+    started_at: null, scheduled_for: null, completed_at: null, chat_ref: null };
+  store = observe(store, partial, 5);
+  assert.equal(first(store).recordedStatus, 'completed');
+  assert.equal(first(store).runStartedAt, at(1));
+  const retry = fixture();
+  retry.run_details.last_run = { id: 'fixture-run-a', started_at: at(6) };
+  store = observe(store, retry, 7);
+  assert.equal(first(store).recordedStatus, 'unknown');
+  assert.equal(first(store).runCompletedAt, null);
+  assert.equal(first(store).currentResult, null);
+});
+
+test('actual retry start outranks an older schedule when choosing the latest run', () => {
+  let store = observe(createStore(), fixture());
+  const second = anotherRun(fixture(), 'fixture-run-b', 'completed', 10);
+  store = observe(store, second, 12);
+  const retry = anotherRun(fixture(), 'fixture-run-a', 'in_progress', 20);
+  retry.run_details.last_run.scheduled_for = at(0);
+  store = observe(store, retry, 21);
+  assert.equal(first(store).latestRunId, 'fixture-run-a');
+  assert.equal(first(store).runStartedAt, at(20));
+  store = observe(store, second, 13);
+  assert.equal(first(store).latestRunId, 'fixture-run-a');
+});

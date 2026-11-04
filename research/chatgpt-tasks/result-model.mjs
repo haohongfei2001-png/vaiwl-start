@@ -74,22 +74,54 @@ function newTask(scope, input) {
 function newRun(scope, taskId, runId) {
   return { key: keyFor(scope, taskId, runId), id: runId, recordedStatus: 'unknown',
     scheduledFor: null, startedAt: null, completedAt: null, chatRef: null,
-    statusObservedAt: null, lastResultObservedAt: null, results: [], latestResultRevision: null };
+    statusObservedAt: null, lastResultObservedAt: null, attempts: {}, results: [], latestResultRevision: null };
 }
-function runTime(run) { return run.scheduledFor || run.startedAt || run.completedAt || ''; }
+function runTime(run) { return run.startedAt || run.scheduledFor || run.completedAt || ''; }
+function knownAttempt(run, createdAt) {
+  if (!createdAt) return null;
+  return Object.keys(run.attempts).filter(start => start <= createdAt).sort().at(-1) || null;
+}
+function resultFailed(run, row) {
+  return row.isFailureMessage || (row.attemptStartedAt &&
+    run.attempts[row.attemptStartedAt]?.recordedStatus === 'failed');
+}
 function observeRun(task, input, scope, at) {
   if (!object(input) || typeof input.id !== 'string' || !input.id) return;
   const id = identifier(input.id, 'RUN_ID'), key = keyFor(scope, task.id, id);
   const run = task.runs[key] ||= newRun(scope, task.id, id);
-  const start = instant(input.started_at);
-  const state = RUN_STATES.has(input.recorded_status) ? input.recorded_status : 'unknown';
-  const newer = !run.statusObservedAt || at > run.statusObservedAt;
-  const earlierAttempt = run.startedAt && start && start < run.startedAt;
-  const regressedTerminal = start === run.startedAt && TERMINAL.has(run.recordedStatus) && state === 'in_progress';
-  if (newer && !earlierAttempt && !regressedTerminal) {
-    Object.assign(run, { recordedStatus: state, scheduledFor: instant(input.scheduled_for),
-      startedAt: start, completedAt: instant(input.completed_at),
-      chatRef: chatRef(input.chat_ref), statusObservedAt: at });
+  const start = instant(input.started_at), scheduled = instant(input.scheduled_for);
+  const completed = instant(input.completed_at), ref = chatRef(input.chat_ref);
+  const state = RUN_STATES.has(input.recorded_status) ? input.recorded_status : null;
+  const hasFields = !!(start || scheduled || completed || ref || state);
+  const newAttempt = !!(start && run.startedAt && start > run.startedAt);
+  const earlierAttempt = !!(run.startedAt && start && start < run.startedAt);
+
+  // Retain each observed attempt's state independently of the current retry.
+  const targetStart = start || run.startedAt;
+  if (targetStart && hasFields) {
+    const old = run.attempts[targetStart];
+    const regressed = old && TERMINAL.has(old.recordedStatus) && state === 'in_progress';
+    if ((!old || at > old.observedAt) && !regressed) {
+      run.attempts[targetStart] = { startedAt: targetStart,
+        recordedStatus: state || old?.recordedStatus || 'unknown', observedAt: at };
+    }
+  }
+
+  if ((!run.statusObservedAt || at > run.statusObservedAt) && !earlierAttempt && hasFields) {
+    const regressed = !newAttempt && TERMINAL.has(run.recordedStatus) && state === 'in_progress';
+    Object.assign(run, {
+      recordedStatus: regressed ? run.recordedStatus : state || (newAttempt ? 'unknown' : run.recordedStatus),
+      scheduledFor: scheduled || run.scheduledFor,
+      startedAt: start || run.startedAt,
+      completedAt: newAttempt ? completed : completed || run.completedAt,
+      chatRef: ref || (newAttempt ? null : run.chatRef),
+      statusObservedAt: regressed ? run.statusObservedAt : at
+    });
+  }
+  // Enrich an unbound old artifact if its attempt becomes known; never rebind a
+  // previously associated revision to a later retry just because the run ID matches.
+  for (const row of run.results) {
+    if (!row.attemptStartedAt) row.attemptStartedAt = knownAttempt(run, row.createdAt);
   }
   const current = task.runs[task.latestRunKey];
   if ((!task.latestRunObservedAt || at > task.latestRunObservedAt) &&
@@ -124,7 +156,8 @@ function observeResult(task, input, scope, at) {
   // An older source artifact in a later snapshot cannot replace a newer artifact.
   if (previous?.createdAt && (!payload.createdAt || payload.createdAt < previous.createdAt)) return;
   const revision = run.results.length + 1;
-  run.results.push({ ...payload, revision, observedAt: at, classification: null });
+  run.results.push({ ...payload, revision, observedAt: at,
+    attemptStartedAt: knownAttempt(run, payload.createdAt), classification: null });
   run.latestResultRevision = revision;
 }
 
@@ -185,7 +218,7 @@ export function classify(store, input) {
   const result = run?.results.find(row => row.revision === input.resultRevision);
   if (!result) throw Error('RESULT_NOT_FOUND');
   if (input.outcome === 'new_information' &&
-      (result.isFailureMessage || run.recordedStatus === 'failed')) throw Error('FAILURE_NOT_VALUABLE');
+      resultFailed(run, result)) throw Error('FAILURE_NOT_VALUABLE');
   if (at < result.observedAt) throw Error('CLASSIFICATION_BEFORE_RESULT');
   if (!result.classification || at > result.classification.classifiedAt) {
     result.classification = { outcome: input.outcome, evidence: clone(input.evidence), classifiedAt: at };
@@ -196,6 +229,8 @@ function resultView(run, row, includeBodies) {
   if (!row) return null;
   return {
     runId: run.id, revision: row.revision, createdAt: row.createdAt, observedAt: row.observedAt,
+    attemptStartedAt: row.attemptStartedAt,
+    attemptRecordedStatus: run.attempts[row.attemptStartedAt]?.recordedStatus || 'unknown',
     preview: previewText(row.bodyText), previewKind: 'mechanical_excerpt',
     sourceUrls: sourceUrls(row.bodyText), linkBasis: 'literal_urls_in_output', contentTruncated: row.contentTruncated,
     chatRef: clone(row.chatRef), resultConversationUrl: conversationUrl(row.chatRef),
@@ -208,13 +243,14 @@ function taskView(task, includeBodies) {
   const run = task.runs[task.latestRunKey] || null;
   const latest = run?.results.find(row => row.revision === run.latestResultRevision) || null;
   // Same ID alone is insufficient after a retry reuses that ID.
-  const current = latest && run.startedAt && latest.createdAt && latest.createdAt >= run.startedAt ? latest : null;
+  const current = latest && run.startedAt && latest.attemptStartedAt === run.startedAt &&
+    latest.createdAt && latest.createdAt >= run.startedAt ? latest : null;
   const all = Object.values(task.runs).flatMap(r => r.results.map(row => ({ run: r, row })))
     .sort((a, b) => (b.row.createdAt || b.row.observedAt).localeCompare(a.row.createdAt || a.row.observedAt) ||
       b.row.observedAt.localeCompare(a.row.observedAt) || b.row.revision - a.row.revision);
   const available = all[0] || null;
   const valuable = all.find(({ run: r, row }) => row.classification?.outcome === 'new_information' &&
-    !row.isFailureMessage && r.recordedStatus !== 'failed') || null;
+    !resultFailed(r, row)) || null;
   const declared = current?.classification?.outcome || 'unclassified';
   let displayState = 'awaiting_result';
   if (run?.recordedStatus === 'failed' || current?.isFailureMessage || declared === 'failed') displayState = 'failed';
