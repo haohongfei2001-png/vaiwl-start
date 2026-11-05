@@ -114,8 +114,8 @@ try {
   await start.locator('#earlier-projects-toggle').click();
   const observedCard = start.locator(`[data-local-project="${firstRecord.localProject.projectKey}"]`);
   await observedCard.getByRole('heading', { name: PROJECT_TITLE, exact: true }).waitFor();
-  await observedCard.locator('[data-older]').click();
-  check('PROJECT-B-Start-candidate-card', await observedCard.locator(`a[data-record-key="${firstRecord.key}"]`).isVisible() && await start.locator('[data-project]').count() === 1 && first.projects.length === 0 && firstRecord.membership.state === 'UNKNOWN', 'The actual Start page uses the common project component: its undated project is reachable through global 更早, and its undated member through project 更早. The underlying relation remains UNKNOWN with no certified Project asset.');
+  await observedCard.locator(`.spatial-project-preview a[data-record-key="${firstRecord.key}"]`).waitFor();
+  check('PROJECT-B-Start-candidate-card', await observedCard.locator(`.spatial-project-preview a[data-record-key="${firstRecord.key}"]`).isVisible() && await start.locator(`#workspace-content a[data-record-key="${firstRecord.key}"]`).count() === 1 && await start.locator('[data-project]').count() === 1 && first.projects.length === 0 && firstRecord.membership.state === 'UNKNOWN', 'The actual Start page uses the common project component: its undated project is reachable through global 更早, and its single undated member appears once in the shared card preview without an extra disclosure. The underlying relation remains UNKNOWN with no certified Project asset.');
 
   await native.locator('ol').evaluate((node, markup) => { node.insertAdjacentHTML('beforeend', markup); }, memberMarkup(2, 'Same conversation title') + memberMarkup(3, 'Same conversation title'));
   const added = await snapshotWith(start, s => [1, 2, 3].every(n => s.conversations.some(c => c.conversationId === cid(n) && localProjectFor(s, c)?.projectId === P)), 'Member additions were not collected incrementally');

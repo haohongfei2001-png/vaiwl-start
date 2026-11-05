@@ -39,7 +39,9 @@ async function ready() {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 async function capture(label, fullPage = false, version = 'after') {
+  await page.mouse.move(0, 0);
   await page.evaluate(() => { document.activeElement?.blur(); scrollTo(0, 0); });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const file = `${version}-${label}.png`;
   await page.screenshot({ path: join(output, file), fullPage, animations: 'disabled' });
   screenshots.push({ file: join('workspace-design', family, file), label, version, fullPage,
@@ -159,6 +161,7 @@ try {
   if (process.env.VAIWL_WORKSPACE_BASELINE_DIST) {
     activeVersion = 'before';
     baselineBuild = await launch(resolve(process.env.VAIWL_WORKSPACE_BASELINE_DIST));
+    assert.equal(baselineBuild.dirty, false, 'The preserved design baseline must have a clean source fingerprint.');
     for (const state of ['single-recent', 'dense']) {
       await seed(state); await page.setViewportSize({ width: 1440, height: 1000 });
       for (const theme of themes) { await chooseTheme(theme); await capture(`${theme}-${state}-1440`, false, 'before'); }

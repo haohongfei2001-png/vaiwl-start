@@ -75,8 +75,21 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Bound browser dependency downloads
+        run: |
+          # Match the existing task workflow's signed Ubuntu mirror fallback.
+          if test -f /etc/apt/apt-mirrors.txt; then
+            sudo sed -i 's|https\?://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          sudo tee /etc/apt/apt.conf.d/80-vaiwl-downloads > /dev/null <<'APT'
+          Acquire::Retries "1";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APT
       - run: npx playwright install --with-deps ${{ matrix.install }}
+        timeout-minutes: 5
       - run: sudo apt-get install -y fonts-noto-cjk
+        timeout-minutes: 3
       - run: npm run build
         id: build
       - name: Build the preserved design baseline
@@ -84,7 +97,15 @@ jobs:
         run: |
           baseline_dir="$RUNNER_TEMP/vaiwl-workspace-before"
           git worktree add --detach "$baseline_dir" 549f1e2794784586326ce114d98abbd3d36e2458
-          ln -s "$GITHUB_WORKSPACE/node_modules" "$baseline_dir/node_modules"
+          node --input-type=module - "$baseline_dir" <<'NODE'
+          import { mkdirSync, readdirSync, symlinkSync } from 'node:fs';
+          import { join, resolve } from 'node:path';
+          const target = join(process.argv[2], 'node_modules');
+          mkdirSync(target);
+          for (const entry of readdirSync('node_modules')) {
+            symlinkSync(resolve('node_modules', entry), join(target, entry));
+          }
+          NODE
           cd "$baseline_dir"
           node scripts/build.mjs
       - name: Five-width design matrix and sparse/dense browser screenshots

@@ -151,8 +151,8 @@ try {
   check('LOCAL-P-legacy-data-preserved', JSON.stringify(first.activity) === JSON.stringify(oldFirst.activity) && first.browserLastVisitAt === oldFirst.browserLastVisitAt && first.firstSeenAt === oldFirst.firstSeenAt && first.stableRank === oldFirst.stableRank && second.browserLastVisitAt === oldSecond.browserLastVisitAt && JSON.stringify((await stores(start, ['openDays']))[0]) === JSON.stringify(daysBefore), 'Adopting existing directory rows retains original keys, titles, visits, ranks, first-seen time and existing activity; passive observation creates no OpenDay.');
   const card = start.locator(`[data-local-project="${pKey}"]`);
   await card.locator(`a[data-record-key="${oldFirst.key}"]`).waitFor();
-  await card.getByRole('button', { name: '更早', exact: true }).click();
-  check('LOCAL-P-older-member-stays-in-project', await card.locator(`a[data-record-key="${oldSecond.key}"]`).isVisible() && await start.locator(`#workspace-content a[data-record-key="${oldSecond.key}"]`).count() === 1, 'A member older than the current 30-day window stays under its Project and appears once, through the existing earlier-conversations control.');
+  await card.locator(`.spatial-project-preview a[data-record-key="${oldSecond.key}"]`).waitFor();
+  check('LOCAL-P-older-member-stays-in-project', await card.locator(`.spatial-project-preview a[data-record-key="${oldSecond.key}"]`).isVisible() && await start.locator(`#workspace-content a[data-record-key="${oldSecond.key}"]`).count() === 1, 'A member older than the current 30-day window stays under its Project and appears once in the shared card preview; its older date does not require a separate per-card control.');
   await native.locator('ol').evaluate((node, markup) => node.insertAdjacentHTML('beforeend', markup), member(3, 'Same conversation title') + member(4, 'Same conversation title'));
   const expanded = await snapshot(start, s => members(s, pKey).length === 4, 'Incremental members were not observed');
   check('LOCAL-P-incremental-same-title-different-IDs', members(expanded, pKey).filter(r => r.nativeTitle === 'Same conversation title').length === 2 && new Set(members(expanded, pKey).map(r => r.key)).size === 4, 'Late members append to one stable Project; equal titles do not merge different conversation IDs.');
@@ -172,6 +172,21 @@ try {
   await native.reload(); await fill(native, panel([member(5)], RENAMED));
   const reloaded = await snapshot(start, s => members(s, pKey).some(r => r.conversationId === cid(5)), 'Reload did not continue the same local Project');
   check('LOCAL-P-reload-stable-project', localProjects(reloaded).filter(p => p.projectId === P).length === 1 && members(reloaded, pKey).length === 5 && (await binding(worker, native)).documentId !== beforeReload.documentId, 'A new real browser document for the same session principal and Project ID continues the same persistent Project card.');
+  const beforeDisclosure = await stores(start, ['conversations', 'openDays']);
+  await card.locator(`[data-spatial-expand="${pKey}"]`).click();
+  const expandedPanel = start.locator(`[data-expanded-project="${pKey}"]`);
+  await expandedPanel.waitFor();
+  const displayedMembers = await start.locator(`[data-project="${pKey}"] a.conversation-open,[data-expanded-project="${pKey}"] a.conversation-open`)
+    .evaluateAll(nodes => nodes.map(node => ({ key: node.dataset.recordKey, href: node.href, visible: !!node.getClientRects().length })));
+  const expectedMembers = members(reloaded, pKey);
+  check('LOCAL-P-shared-expansion-keeps-membership-and-links', await card.locator('.spatial-project-preview a.conversation-open').count() === 4
+    && await expandedPanel.locator('a.conversation-open').count() === expectedMembers.length - 4
+    && displayedMembers.length === expectedMembers.length && new Set(displayedMembers.map(row => row.key)).size === expectedMembers.length
+    && expectedMembers.every(record => displayedMembers.some(row => row.key === record.key && row.href === record.canonicalUrl && row.visible)),
+    'Four original members remain in the card; the associated full-width panel reveals the remainder once with the same record identities and native URLs.');
+  check('LOCAL-P-disclosure-does-not-write-catalog-or-activity', JSON.stringify(await stores(start, ['conversations', 'openDays'])) === JSON.stringify(beforeDisclosure),
+    'Opening the shared project panel changes only presentation, preserving conversation metadata, membership, source times and every OpenDay.');
+  await card.locator(`[data-spatial-expand="${pKey}"]`).click();
   const old = await staleObservation(worker, beforeReload.tabId, beforeReload, P, 91);
   check('LOCAL-P-expired-document-rejected', old?.ok === false && !(await command(start, 'SNAPSHOT')).conversations.some(r => r.conversationId === cid(91)), 'A real isolated-world message with an expired document binding cannot insert a member.');
   await native.goto(projectUrl(P, '-presentation-slug')); await fill(native, panel([member(6)], RENAMED));

@@ -143,7 +143,8 @@ try {
   for (const [index, project] of projects.entries()) {
     const membership = { state: 'PROJECT', projectId: project.projectId, evidenceId: `test-p-${index}`, confirmedAt: today };
     const names = ['工作区导航方案', '历史记录的整理方式', '页面布局的比较'];
-    for (let i = 0; i < (index === 0 ? 18 : 3); i++) records.push(conversation(index === 0 ? `设计讨论 ${i + 1}` : names[i], membership));
+    // Cross both real 24/48-row expansion boundaries; previews remain four rows.
+    for (let i = 0; i < (index === 0 ? 80 : 3); i++) records.push(conversation(index === 0 ? `设计讨论 ${i + 1}` : names[i], membership));
     records.push(conversation(`${project.nativeTitle}较早方案`, membership, old));
     if (index === 0) records.push(conversation('VAIWL另一旧会话', membership, old));
   }
@@ -208,18 +209,34 @@ try {
   await page.locator('.project').first().waitFor();
   assert.deepEqual(await readBusinessStores(), businessBeforeFilters);
   check('UI-filters-view-only', true, 'All business stores are byte-for-byte equivalent before and after all membership filters and both scope selections; settings/revision bookkeeping is excluded.');
-  const firstCard = page.locator('.project').first();
-  check('UI-initial-five', await firstCard.locator('.project-body > .conversation-list .conversation-row').count() === 5, 'Current project initially shows exactly 5 rows.');
-  await firstCard.getByRole('button', { name: '显示更多', exact: true }).click();
-  check('UI-add-twelve', await firstCard.locator('.project-body > .conversation-list .conversation-row').count() === 17, 'One Show More increases 5 to 17.');
-  await firstCard.getByRole('button', { name: '显示更多', exact: true }).click();
-  check('UI-project-more-complete', await firstCard.locator('.project-body > .conversation-list .conversation-row').count() === 18 && await firstCard.getByRole('button', { name: '显示更多', exact: true }).count() === 0, 'The final recent member is reachable and Show More ends at the actual collection boundary.');
-  await firstCard.getByRole('button', { name: '更早', exact: true }).click();
+  const firstCard = page.locator(`.project[data-project="${projects[0].key}"]`);
+  const firstProjectKeys = records.filter(record => record.owner.scopeKey === scope && record.membership.state === 'PROJECT' && record.membership.projectId === projects[0].projectId).map(record => record.key);
+  const previewKeys = () => firstCard.locator('.project-body a[data-record-key]').evaluateAll(links => links.map(link => link.dataset.recordKey));
+  const expandedProject = page.locator(`[data-expanded-project="${projects[0].key}"]`);
+  const expandedKeys = () => expandedProject.locator('a[data-record-key]').evaluateAll(links => links.map(link => link.dataset.recordKey));
+  check('UI-initial-four', JSON.stringify(await previewKeys()) === JSON.stringify(firstProjectKeys.slice(0, 4)), 'The shared project card previews the first four exact projected members.');
+  await firstCard.locator('[data-spatial-expand]').click();
+  check('UI-project-initial-expanded-page', JSON.stringify(await expandedKeys()) === JSON.stringify(firstProjectKeys.slice(4, 28))
+    && await firstCard.locator('[data-spatial-expand]').getAttribute('aria-controls') === await expandedProject.getAttribute('id'), 'The project disclosure owns one full-width panel containing the next 24 exact members, without repeating its preview.');
+  await expandedProject.locator('[data-spatial-project-more]').click();
+  check('UI-project-add-forty-eight', JSON.stringify(await expandedKeys()) === JSON.stringify(firstProjectKeys.slice(4, 76)), 'Show More adds 48 members to the same project panel in projected order.');
+  await expandedProject.locator('[data-spatial-project-more]').click();
+  const completeProjectKeys = [...await previewKeys(), ...await expandedKeys()];
+  check('UI-project-more-complete', JSON.stringify(completeProjectKeys) === JSON.stringify(firstProjectKeys)
+    && new Set(completeProjectKeys).size === firstProjectKeys.length && await expandedProject.locator('[data-spatial-project-more]').count() === 0,
+  'Every current and older member is reachable exactly once; Show More disappears at the actual project boundary.');
   const expectedOldKeys = records.filter(record => record.membership.state === 'PROJECT' && record.membership.projectId === projects[0].projectId && record.activity?.lastConfirmedOpenAt === old).map(record => record.key);
-  const renderedOldKeys = await firstCard.locator('.old-list [data-record-key]').evaluateAll(rows => rows.map(row => row.getAttribute('data-record-key')));
-  check('UI-old-stays-in-parent', expectedOldKeys.length === 2 && JSON.stringify(renderedOldKeys) === JSON.stringify(expectedOldKeys) && await firstCard.getByText('VAIWL较早方案', { exact: true }).isVisible() && await firstCard.getByText('VAIWL另一旧会话', { exact: true }).isVisible(), 'Exactly both old members expand under their one parent; no current member is mixed into the old-member list.');
-  await firstCard.getByRole('button', { name: '更早', exact: true }).click();
-  check('UI-no-top-arrow', await page.locator('#period-newer').count() === 0, 'k=0 has no newer-period button.');
+  const renderedOldKeys = (await expandedKeys()).filter(key => expectedOldKeys.includes(key));
+  check('UI-old-stays-in-parent', expectedOldKeys.length === 2 && JSON.stringify(renderedOldKeys) === JSON.stringify(expectedOldKeys)
+    && await expandedProject.getByText('VAIWL较早方案', { exact: true }).isVisible() && await expandedProject.getByText('VAIWL另一旧会话', { exact: true }).isVisible()
+    && await page.locator('.recent-section [data-record-key]').evaluateAll((links, keys) => links.every(link => !keys.includes(link.dataset.recordKey)), expectedOldKeys),
+  'Both older members stay in their owning project expansion and never duplicate into Recent.');
+  await firstCard.locator('[data-spatial-expand]').click();
+  check('UI-project-disclosure-collapse', await expandedProject.count() === 0 && await firstCard.locator('[data-spatial-expand]').getAttribute('aria-expanded') === 'false'
+    && JSON.stringify(await previewKeys()) === JSON.stringify(firstProjectKeys.slice(0, 4)), 'Collapsing removes the full-width panel while retaining its original four-member preview.');
+  await firstCard.locator('[data-spatial-expand]').click();
+  check('UI-project-disclosure-retains-limit', JSON.stringify([...await previewKeys(), ...await expandedKeys()]) === JSON.stringify(firstProjectKeys), 'Reopening retains this tab’s expanded page limit and every member identity.');
+  check('UI-latest-newer-disabled', await page.locator('#period-newer').isVisible() && await page.locator('#period-newer').isDisabled(), 'At k=0 the shared newer-period arrow is present and disabled.');
   await page.locator('#period-older').click();
   check('UI-empty-adjacent-segment', await page.evaluate(() => JSON.parse(sessionStorage.getItem('vaiwl-start-view/1')).k) === 1
     && await page.locator('.date-window').count() === 0 && await page.locator('.project').count() === 0
@@ -232,7 +249,7 @@ try {
   await page.locator('#period-newer').click();
   const returnedToEmpty = await page.getByText('这一段没有记录', { exact: true }).isVisible();
   await page.locator('#period-newer').click();
-  check('UI-empty-segment-to-known-and-back', earlierKnownVisible && olderProjectsAbsent && returnedToEmpty && await page.locator('.project').count() === 6 && await page.locator('#period-newer').count() === 0, 'k0 → empty k1 → known NONE at k2 → empty k1 → k0; no empty segment is skipped and old project members do not duplicate their current parent.');
+  check('UI-empty-segment-to-known-and-back', earlierKnownVisible && olderProjectsAbsent && returnedToEmpty && await page.locator('.project').count() === 6 && await page.locator('#period-newer').isDisabled(), 'k0 → empty k1 → known NONE at k2 → empty k1 → k0; no empty segment is skipped, the latest arrow is disabled again, and old project members do not duplicate their current parent.');
   check('UI-undated-search-only', await page.locator(`#workspace-content [data-record-key="${undated.key}"]`).count() === 0, 'A record with neither project nor valid time is absent from homepage normal lists and remains in the complete search catalog.');
   await page.keyboard.press('/'); await page.locator('#search-input').fill(undated.nativeTitle);
   assert.equal(await page.locator('.search-result').getAttribute('data-record-key'), undated.key);
@@ -440,7 +457,7 @@ try {
   check('UI-resume-persisted-batch', await page.locator(`[${recoveryAttribute}="synthetic-pending-batch"]`).isVisible() && await page.locator('#confirm-import').isHidden(), 'A paused checkpoint remains resumable under its original ID when only persisted candidates remain; missing actual history permission selects authorization before Resume, without offering a competing new job.');
   await page.locator('#import-dialog [data-close]').first().click();
   await page.locator('#settings-dialog [data-close]').first().click();
-  // A new tab starts with independent 5-row view limits, while reading the same real IDB.
+  // A new tab starts with independent four-row previews, while reading the same real IDB.
   const reviewPage = await context.newPage();
   reviewPage.on('pageerror', error => errors.push(error.message));
   await reviewPage.goto(`chrome-extension://${id}/newtab.html`);
@@ -482,16 +499,21 @@ try {
   await historyPage.locator('#period-older').click(); await historyPage.locator('#period-older').click();
   const oldNone = records.find(record => record.nativeTitle === '更早区间的独立会话');
   await historyPage.locator(`[data-record-key="${oldNone.key}"]`).waitFor();
-  const historicalRange = await historyPage.locator('#history-rail').textContent();
+  const historicalDate = await historyPage.locator(`[data-record-key="${oldNone.key}"]`).evaluate(link => link.closest('[data-date]').dataset.date);
+  assert.equal(historicalDate, oldNone.activity.lastActiveDate);
   await historyPage.clock.pauseAt(new Date(`${today.slice(0, 10)}T23:59:59.000Z`));
   await publishCommand('RECORD_REMOVE', { recordKey: oldNone.key }); await historyPage.clock.runFor(100);
   assert.equal(await historyPage.locator(`[data-record-key="${oldNone.key}"]`).count(), 0);
-  assert.equal(await historyPage.locator('#history-rail').textContent(), historicalRange);
+  assert.equal(await historyPage.evaluate(() => JSON.parse(sessionStorage.getItem('vaiwl-start-view/1')).k), 2);
+  assert.ok(await historyPage.locator('#period-newer').isEnabled());
   await historyPage.clock.runFor(2000);
   const midnightDate = await historyPage.evaluate(() => new Date().toISOString().slice(0, 10));
   assert.notEqual(midnightDate, today.slice(0, 10));
   await publishCommand('RECORD_RESTORE', { recordKey: oldNone.key }); await historyPage.clock.runFor(100);
-  check('UI-history-segment-tab-update-midnight', await historyPage.locator(`[data-record-key="${oldNone.key}"]`).count() === 1 && await historyPage.locator('#history-rail').textContent() === historicalRange && await historyPage.locator('#period-newer').count() === 1 && await historyPage.evaluate(() => JSON.parse(sessionStorage.getItem('vaiwl-start-view/1')).k) === 2, 'Actual commands from another Start page remove/restore a historical entry; each revision applies within 100 ms of controlled clock advancement. Crossing UTC midnight leaves the current k=2 segment and its frozen range unchanged.');
+  check('UI-history-segment-tab-update-midnight', await historyPage.locator(`[data-record-key="${oldNone.key}"]`).count() === 1
+    && await historyPage.locator(`[data-record-key="${oldNone.key}"]`).evaluate(link => link.closest('[data-date]').dataset.date) === historicalDate
+    && await historyPage.locator('#period-newer').isEnabled() && await historyPage.evaluate(() => JSON.parse(sessionStorage.getItem('vaiwl-start-view/1')).k) === 2,
+  'Actual commands from another Start page remove/restore the same historical entry within 100 ms of controlled clock advancement. Across UTC midnight the view stays at k=2 and the restored record retains its actual date; no hidden range-label text is used as an oracle.');
 
   // Contract-correction fixtures: real production projection/UI over isolated
   // IndexedDB. These 564 rows are synthetic, never the user's history or a source proof.
@@ -501,14 +523,16 @@ try {
     const req = indexedDB.open('vaiwl-start', 1); const db = await new Promise(resolve => { req.onsuccess = () => resolve(req.result); });
     const tx = db.transaction(['settings', 'conversations', 'openDays', 'revisions'], 'readwrite');
     const settings = tx.objectStore('settings').get('main'), beforeDays = tx.objectStore('openDays').count();
-    const at = new Date(Date.now() - 1000); const now = at.toISOString();
+    const at = new Date(); at.setUTCHours(0, 0, 0, 0); const now = at.toISOString();
     settings.onsuccess = () => {
       const profile = settings.result.localProfileKey;
       for (let n = 0; n < 564; n++) {
         const ordinal = 50000 + n, conversationId = `00000000-0000-4000-8000-${String(ordinal).padStart(12, '0')}`;
         tx.objectStore('conversations').put({ key: `staging:ui-history-${n}`, provider: 'chatgpt', conversationId, canonicalUrl: `https://chatgpt.com/c/${conversationId}`,
           nativeTitle: `合成历史 ${String(n + 1).padStart(5, '0')}`, titleBasis: 'browser-history', titleObservedAt: now, availability: 'unverified', firstSeenAt: now, lastSeenAt: now,
-          browserLastVisitAt: new Date(at.getTime() - (n % 94) * 86400000).toISOString(), activity: null, stableRank: ordinal, revision: 1,
+          // Preserve 564 records over 94 actual dates; ten on today exercise the
+          // real nine-row date preview without adding a second fixture catalog.
+          browserLastVisitAt: new Date(at.getTime() - (n >= 560 ? 0 : n % 94) * 86400000).toISOString(), activity: null, stableRank: ordinal, revision: 1,
           owner: { kind: 'unassigned', localProfileKey: profile, accountKey: null }, ownerKey: `unassigned:${profile}`,
           membership: { state: 'UNKNOWN', projectId: null, reason: 'scope-unverified' }, membershipState: 'UNKNOWN' });
       }
@@ -523,6 +547,12 @@ try {
   // Both scopes now use the same recent component. Its existence alone can
   // match the previous scope while the requested SNAPSHOT is still pending.
   await historySection.locator('[data-record-key="staging:ui-history-0"]').waitFor();
+  const primaryDates = await historySection.locator('.date-window').evaluateAll(groups => groups.map(group => group.dataset.date));
+  const seedDay = new Date(localSeed.now).getTime();
+  const expectedDates = Array.from({ length: 30 }, (_, index) => new Date(seedDay - index * 86400000).toISOString().slice(0, 10));
+  check('UI-local-history-primary-dates', JSON.stringify(primaryDates) === JSON.stringify(expectedDates.slice(0, 2))
+    && await localPage.locator('#recent-toggle-more').getAttribute('aria-expanded') === 'false', 'The local catalog initially shows its real today/yesterday groups; older active dates remain behind the single disclosure.');
+  await localPage.locator('#recent-toggle-more').click();
   const localHistoryWindow = {
     dateWindows: await historySection.locator('.date-window').count(),
     olderVisible: await localPage.locator('#period-older').isVisible(),
@@ -530,14 +560,17 @@ try {
     confirmedOpenSections: await localPage.locator('[data-date-basis="confirmed-open"]').count(),
     unknownSections: await localPage.locator('.unknown-section').count(),
   };
-  check('UI-local-564-history-date-windows', localHistoryWindow.dateWindows === 30 && localHistoryWindow.olderVisible
+  const renderedDates = await historySection.locator('.date-window').evaluateAll(groups => groups.map(group => group.dataset.date));
+  check('UI-local-564-history-date-windows', localHistoryWindow.dateWindows === 30 && JSON.stringify(renderedDates) === JSON.stringify(expectedDates) && localHistoryWindow.olderVisible
     && localHistoryWindow.recentHeadingVisible && localHistoryWindow.confirmedOpenSections === 0 && localHistoryWindow.unknownSections === 0,
-  `564 synthetic local histories occupy their browser-visit calendar windows; the current window has 30 dates, no false active-date section or unstructured pending list. ${JSON.stringify(localHistoryWindow)}`);
+  `The single disclosure reveals all 30 actual browser-visit dates in order, with no false active-date section or pending list. The full synthetic catalog still contains 564 histories. ${JSON.stringify(localHistoryWindow)}`);
   const firstHistoryDate = historySection.locator('.date-window').first();
-  assert.equal(await firstHistoryDate.locator('.conversation-row').count(), 5);
-  await firstHistoryDate.locator('[data-more]').click();
-  check('UI-history-date-show-more', await firstHistoryDate.locator('.conversation-row').count() === 6 && await firstHistoryDate.locator('[data-more]').count() === 0,
-    'Date windows use the existing bounded row expansion; all six same-day records are reachable without rendering the whole catalog.');
+  const todayHistoryKeys = Array.from({ length: 564 }, (_, n) => n).filter(n => n >= 560 || n % 94 === 0).map(n => `staging:ui-history-${n}`);
+  assert.deepEqual(await firstHistoryDate.locator('a[data-record-key]').evaluateAll(links => links.map(link => link.dataset.recordKey)), todayHistoryKeys.slice(0, 9));
+  await firstHistoryDate.locator('[data-spatial-date-more]').click();
+  check('UI-history-date-show-more', JSON.stringify(await firstHistoryDate.locator('a[data-record-key]').evaluateAll(links => links.map(link => link.dataset.recordKey))) === JSON.stringify(todayHistoryKeys)
+    && await firstHistoryDate.locator('[data-spatial-date-more]').count() === 0,
+    'The real nine-row date preview expands to every exact same-day record, with no duplicate and no stale Show More at the collection boundary.');
   await localPage.locator('[data-filter="none"]').click(); await localPage.locator('#period-older').click();
   check('UI-local-recent-30-day-navigation', await localPage.locator('#period-newer').isVisible() && await localPage.locator('[data-record-key="staging:ui-history-30"]').count() === 1
     && await localPage.locator('[data-record-key="staging:ui-history-0"]').count() === 0, 'The recent filter retains adjacent 30-day navigation and shows only that window.');
@@ -571,12 +604,14 @@ try {
   await localPage.reload(); await localPage.waitForSelector('html[data-start-ready="true"]');
   await localPage.locator('[data-filter="all"]').click();
   const candidateCard = localPage.locator('[data-candidate-project="local-project:ui-synthetic"]');
-  await candidateCard.waitFor(); await candidateCard.getByRole('button', { name: '更早', exact: true }).click();
+  await candidateCard.waitFor();
   check('UI-local-project-candidate-unified', (await candidateCard.getAttribute('class')) === 'project'
     && !(await candidateCard.textContent()).match(/本地候选|待确认|原生项目/)
     && await localPage.locator('[data-record-key="staging:ui-history-1"]').count() === 1 && await candidateCard.locator('[data-record-key="staging:ui-history-65"]').isVisible()
-    && await localPage.locator('[data-project]').count() === 1,
-  'Supported legacy Project relationships retain their identity boundary and older child, while using the same project component without provenance labels.');
+    && await localPage.locator('[data-project]').count() === 1
+    && JSON.stringify(await candidateCard.locator('a[data-record-key]').evaluateAll(links => links.map(link => link.dataset.recordKey))) === JSON.stringify(['staging:ui-history-1', 'staging:ui-history-65'])
+    && await candidateCard.locator('[data-spatial-expand]').count() === 0,
+  'The two-member legacy project directly previews its current and older child, exactly once and in order, using the shared component without a redundant expansion or provenance label.');
   await localPage.screenshot({ path: 'artifacts/ui-local-history.png', fullPage: true });
   await localPage.close();
   check('UI-no-script-errors', errors.length === 0, JSON.stringify(errors));

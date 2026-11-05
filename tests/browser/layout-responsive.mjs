@@ -255,6 +255,22 @@ async function interactions(info) {
   await folder.click(); await page.locator('#bookmark-folder-panel').waitFor({ state: 'visible' });
   check('LAYOUT-bookmark-folder', await page.getByRole('link', { name: '设计资料与论文', exact: true }).isVisible(), 'Native bookmark folder structure remains available.');
   await page.locator('#bookmark-folder-close').click();
+  await ready(page);
+  const bookmarkFit = await page.evaluate(() => {
+    const shelf = document.querySelector('.bookmark-shelf'), toggle = document.querySelector('#bookmark-toggle');
+    return { visible: Number(shelf.dataset.visibleCount), total: Number(shelf.dataset.totalCount), toggleHidden: toggle.hidden,
+      expanded: toggle.getAttribute('aria-expanded') };
+  });
+  check('LAYOUT-bookmarks-fit-controls-disclosure', bookmarkFit.expanded === 'false' && bookmarkFit.total === info.bookmarks.ids.length
+    && bookmarkFit.toggleHidden === (bookmarkFit.visible === bookmarkFit.total), bookmarkFit);
+  // At the new desktop density every original fixture bookmark may fit. Exercise
+  // disclosure at a genuinely constrained viewport, never by forcing the control.
+  await page.setViewportSize({ width: 900, height: 900 }); await ready(page);
+  await page.waitForFunction(() => {
+    const shelf = document.querySelector('.bookmark-shelf'), toggle = document.querySelector('#bookmark-toggle');
+    return innerWidth === 900 && shelf.dataset.ready === 'true' && Number(shelf.dataset.visibleCount) < Number(shelf.dataset.totalCount)
+      && !toggle.hidden && toggle.getClientRects().length > 0;
+  });
   await page.locator('#bookmark-toggle').click();
   await page.waitForFunction(() => document.querySelector('#bookmark-toggle').getAttribute('aria-expanded') === 'true');
   const bookmarkState = await layout(page);
@@ -262,6 +278,7 @@ async function interactions(info) {
   check('LAYOUT-bookmarks-order', JSON.stringify(await page.locator('#bookmark-root-list > [data-bookmark-id]').evaluateAll(nodes => nodes.map(n => n.dataset.bookmarkId))) === JSON.stringify(info.bookmarks.ids), 'Original native bookmark order is unchanged.');
   await capture('bookmarks-expanded', 'after');
   await page.locator('#bookmark-toggle').click();
+  await page.setViewportSize({ width: 1440, height: 900 }); await ready(page);
   await page.locator('#mode-toggle').click();
   await page.waitForSelector('html[data-home-mode="life"]');
   check('LAYOUT-life-compatible', await page.locator('#life-content').isVisible() && !await page.locator('#workspace-content').isVisible() && !await page.locator('#history-rail').isVisible(), 'Life mode keeps its separate search surface and hides work material.');

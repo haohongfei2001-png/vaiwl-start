@@ -16,6 +16,7 @@ const build = JSON.parse(await readFile(join(source, 'build.json'), 'utf8'));
 const production = JSON.parse(await readFile(join(source, 'manifest.json'), 'utf8'));
 const root = await mkdtemp(join(tmpdir(), 'vaiwl-automatic-history-'));
 const runtime = join(root, 'extension'), feederPath = join(root, 'feeder'), profile = join(root, 'profile');
+const baselineSha = '5ad87bab060d321754cc65d073ac8736ea35b47e';
 const origin = 'https://chatgpt.com', connection = { permissions: ['scripting', 'webNavigation'], origins: [origin + '/*'] };
 const url = n => origin + '/c/96000000-0000-4000-8000-' + String(n).padStart(12, '0');
 const checks = [], errors = [], requests = [];
@@ -132,7 +133,6 @@ async function verifyBaselineRegression() {
   // A caller explicitly supplying a runtime is the same test's isolated child,
   // not another regression orchestrator. Its ordinary assertions stay intact.
   if (process.env.VAIWL_HISTORY_DIST) return;
-  const baselineSha = '5ad87bab060d321754cc65d073ac8736ea35b47e';
   const baselineSource = join(root, 'baseline-source'), baselineOutput = join(root, 'baseline-evidence');
   let added = false, receipt = null, status = null;
   try {
@@ -176,14 +176,17 @@ async function verifyBaselineRegression() {
 try {
   await verifyBaselineRegression();
   assert.deepEqual(production.permissions, ['storage', 'favicon', 'search']);
-  assert.deepEqual(production.optional_permissions, ['history', 'scripting', 'webNavigation', 'bookmarks']);
+  // The fixed historical regression build predates the optional task scheduler.
+  // Every current candidate must match the full current permission contract.
+  const expectedOptionalPermissions = ['history', 'scripting', 'webNavigation', 'bookmarks', ...(build.sha === baselineSha ? [] : ['alarms'])];
+  assert.deepEqual(production.optional_permissions, expectedOptionalPermissions);
   assert.deepEqual(production.optional_host_permissions, [origin + '/*']);
   await cp(source, runtime, { recursive: true });
   for (const [name, digest] of Object.entries(build.files)) assert.equal(createHash('sha256').update(await readFile(join(runtime, name))).digest('hex'), digest, 'Exact production runtime bytes: ' + name);
   await launch(join(root, 'production-profile'), false);
   const actual = await worker.evaluate(() => chrome.permissions.getAll());
-  check('AUTO-HISTORY-production-install', !actual.permissions.includes('history') && !actual.permissions.includes('scripting') && !actual.permissions.includes('webNavigation') && actual.origins.length === 0 && !(await command('SNAPSHOT')).settings.captureEnabled,
-    'Unmodified production manifest and every runtime hash match build.json; actual first install has no history/connection permission and capture is disabled.');
+  check('AUTO-HISTORY-production-install', expectedOptionalPermissions.every(permission => !actual.permissions.includes(permission)) && actual.origins.length === 0 && !(await command('SNAPSHOT')).settings.captureEnabled,
+    'Unmodified production manifest and every runtime hash match build.json; actual first install has none of its optional permissions (including task scheduling on current builds), no host grants, and capture is disabled.');
   await close();
   await mkdir(feederPath, { recursive: true });
   await writeFile(join(feederPath, 'manifest.json'), JSON.stringify({ manifest_version: 3, name: 'Synthetic history feeder for VAIWL test', version: '1.0', permissions: ['history'], background: { service_worker: 'feeder.js' } }));

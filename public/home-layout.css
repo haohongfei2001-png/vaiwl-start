@@ -13,6 +13,7 @@
   --motion-quick: 120ms;
 }
 body { background: var(--bg); }
+html[data-home-mode="life"] { background: var(--bg); }
 .topbar, .workspace { width: min(var(--content-max), calc(100% - 2 * var(--page-gutter))); margin-inline: auto; }
 .topbar { display: flex; align-items: center; gap: 14px; height: 60px; padding: 0; position: relative; }
 .topbar .brand, .first-use .brand-mark { display: none; }
@@ -125,7 +126,7 @@ html[data-project-layout="equal"] .spatial-project-grid > .project > .project-bo
 .spatial-date-heading:hover { background: transparent; color: var(--text); }
 .spatial-date-heading[aria-expanded="false"] svg { transform: rotate(-90deg); }
 .spatial-date-content { min-width: 0; }
-.spatial-date-list { display: grid; grid-template-columns: repeat(var(--home-columns), minmax(0, 1fr)); gap: 3px var(--grid-gap); }
+.spatial-date-list { display: grid; grid-template-columns: repeat(var(--home-columns), minmax(0, 1fr)); align-items: start; gap: 3px var(--grid-gap); }
 .spatial-date-list .conversation-open { min-height: 40px; padding: 8px 6px; }
 .spatial-date-list .conversation-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; font-size: 14px; line-height: 22px; }
 .spatial-date-list.is-single > .conversation-row { grid-column: span 2; }
@@ -139,6 +140,7 @@ html[data-project-layout="equal"] .spatial-project-grid > .project > .project-bo
 .period-empty h2 { font-size: 16px; }
 .period-empty p { margin-top: 7px; }
 .period-empty .text-button { margin-top: 14px; padding-left: 0; }
+.first-actions .primary, .first-actions .secondary { border-radius: 8px; }
 .search-result mark { background: var(--selected); color: var(--text); }
 .search-result:focus-visible { background: var(--hover); }
 .life-clock { color: var(--text); }
