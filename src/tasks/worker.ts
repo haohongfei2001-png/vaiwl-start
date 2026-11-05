@@ -101,7 +101,16 @@ async function sourceCommand(m:any,sender:chrome.runtime.MessageSender) {
       if(!syncing){const timing=await updateSchedule(previous=>failedSchedule(previous,state.sync.code||'IDENTITY_UNAVAILABLE',Date.now()));await exposeRetry(timing);await reconcile();}
       notify(identityChanged);throw Error(state.sync.code||'IDENTITY_UNAVAILABLE');
     }
-    if(!syncing)await updateSchedule(previous=>['LOGIN_REQUIRED','PERMISSION_REQUIRED'].includes(previous.failureCode||'')?{...previous,dueAt:Date.now(),failures:0,paused:false,failureCode:null,failedAt:null,lease:null}:previous);
+    if(!syncing){
+      let resumed=false;
+      const timing=await updateSchedule(previous=>{
+        // A successful ordinary identity read can recover an identity challenge.
+        // Remaining list/result failures still require that exact source to recover.
+        if(!state.sync.code&&previous.failureCode){resumed=true;return {...previous,dueAt:Date.now(),failures:0,paused:false,failureCode:null,failedAt:null,lease:null};}
+        return previous;
+      });
+      if(resumed){await exposeRetry(timing);await reconcile();}
+    }
     const binding={documentId:sender.documentId!,principal:m.principalKey,token:crypto.randomUUID(),epoch:at,generation:state.generation,expiresAt:Date.parse(m.expiresAt)};
     bindings.set(tabId,binding);notify(identityChanged);return {token:binding.token};
   }

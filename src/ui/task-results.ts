@@ -23,7 +23,8 @@ const errors: Record<string, string> = {
   PERMISSION_REQUIRED: '需要重新允许访问 ChatGPT，已保存的成果仍保留。',
   IDENTITY_UNAVAILABLE: '请打开 ChatGPT，确认当前登录账户。',
   SOURCE_TIMEOUT: '本次连接未完成，稍后会再检查。',
-  SOURCE_CHANGED: '暂时无法读取 ChatGPT 的最新内容，已有成果仍保留。',
+  SOURCE_CHANGED: '暂时无法读取 ChatGPT 的最新内容。请打开 ChatGPT 检查，已有成果仍保留。',
+  SOURCE_TAKEN_OVER: '你正在使用来源页面，本次后台更新已停止。已有成果仍保留。',
   LOGIN_REQUIRED: '请登录 ChatGPT，登录后继续更新。',
   VERIFICATION_REQUIRED: '需要在 ChatGPT 完成验证，之后会继续更新。',
   SOURCE_FORBIDDEN: 'ChatGPT 暂时无法访问，请打开页面确认。',
@@ -55,7 +56,7 @@ export function initTaskResults() {
     if (modal.open) modal.close(); if (clearModal.open) clearModal.close();
   }
   const readLabel = (task: TaskView) => task.readOutcome === 'updated' ? '此次收录了新输出' : task.readOutcome === 'unchanged' ? '已重新读取，暂无新输出' : task.readOutcome === 'empty' ? '本次来源未返回完整正文，已有成果仍保留' : '已保存的来源正文';
-  const needsSource = () => !!data?.sync.code && ['LOGIN_REQUIRED', 'VERIFICATION_REQUIRED', 'SOURCE_FORBIDDEN', 'IDENTITY_UNAVAILABLE', 'PERMISSION_REQUIRED'].includes(data.sync.code);
+  const needsSource = () => !!data?.sync.code && ['LOGIN_REQUIRED', 'VERIFICATION_REQUIRED', 'SOURCE_FORBIDDEN', 'IDENTITY_UNAVAILABLE', 'PERMISSION_REQUIRED', 'SOURCE_CHANGED'].includes(data.sync.code);
   function syncLabel(snapshot: TaskSnapshot): string {
     const lastRead = snapshot.tasks.filter(task => task.selected && task.readable && task.resultSyncedAt).map(task => task.resultSyncedAt!).sort().at(-1) || null;
     const saved = lastRead ? '上次读取 ' + time(lastRead) : '尚未读取成果';
