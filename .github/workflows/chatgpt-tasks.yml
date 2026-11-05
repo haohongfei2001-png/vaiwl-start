@@ -21,7 +21,7 @@ jobs:
   installed-runtime:
     name: Task integration (${{ matrix.family }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -65,7 +65,23 @@ jobs:
       - name: Install Chinese fonts
         timeout-minutes: 3
         run: sudo apt-get install -y fonts-noto-cjk
+      - name: Build the unchanged PR 9 baseline
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/vaiwl-task-baseline" 549f1e2794784586326ce114d98abbd3d36e2458
+          mkdir "$RUNNER_TEMP/vaiwl-task-baseline/node_modules"
+          cp -a node_modules/. "$RUNNER_TEMP/vaiwl-task-baseline/node_modules/"
+          npm run build --prefix "$RUNNER_TEMP/vaiwl-task-baseline"
+      - name: Measure the installed baseline on this runner
+        env:
+          VAIWL_QUALITY_LABEL: baseline
+        run: VAIWL_QUALITY_RUNTIME="$RUNNER_TEMP/vaiwl-task-baseline/dist" node tests/browser/task-quality.mjs
+      - name: Measure candidate cache, input, resource lifetime and recovery
+        if: ${{ !cancelled() }}
+        env:
+          VAIWL_QUALITY_LABEL: candidate
+        run: node tests/browser/task-quality.mjs
       - name: Installed task flow and existing homepage contracts
+        if: ${{ !cancelled() }}
         run: |
           failed=0
           for test in tasks task-glance home-guardrails settings-consumer life-bookmarks; do

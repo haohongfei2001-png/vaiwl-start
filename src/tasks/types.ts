@@ -46,4 +46,8 @@ export interface TaskView {
 export interface TaskSnapshot {
   settings: TaskSettings; principal: string | null; tasks: TaskView[];
   sync: TaskState['sync']; completeList: boolean; permission: boolean;
+  generation?: number;
 }
+/** Small atomic read models: no historical bodies cross the homepage/polling path. */
+export type TaskCachedSnapshot = Omit<TaskSnapshot, 'permission'>;
+export type TaskControlState = Omit<TaskState, 'model' | 'sourceEvidence'>;
