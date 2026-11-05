@@ -1,4 +1,5 @@
 import { byId, element as el, button } from './dom.js';
+import { createTaskGlance, preferredOutput as output } from './task-glance.js';
 import type { TaskSnapshot, TaskView, ResultView } from '../tasks/types.js';
 const PROTOCOL='vaiwl-tasks/1';
 const permissions:chrome.permissions.Permissions={permissions:['scripting','alarms'],origins:['https://chatgpt.com/*']};
@@ -7,7 +8,6 @@ async function request(command:string,fields:Record<string,unknown>={}) {
   if(!result?.ok)throw Error(result?.code || 'SYNC_UNAVAILABLE');return result.data;
 }
 const time=(value:string|null)=>value ? new Intl.DateTimeFormat('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value)) : '尚未同步';
-const output=(task:TaskView)=>task.lastValuableResult || task.latestAvailableResult;
 function status(task:TaskView):string {
   if(task.recordedStatus==='failed')return '运行失败';
   if(task.recordedStatus==='no_update')return '本次无新报告';
@@ -35,46 +35,50 @@ const errors:Record<string,string>={
 };
 export function initTaskResults() {
   let mode:'workspace'|'life'|null=null,settingsOpen=false,epoch=0,busy=false;
-  let data:TaskSnapshot|null=null,expanded=false,detail:TaskView|null=null,detailsResult:ResultView|null=null;
+  let data:TaskSnapshot|null=null,detail:TaskView|null=null,detailsResult:ResultView|null=null;
+  let glance: ReturnType<typeof createTaskGlance> | undefined;
+  let refreshOrder = 0, detailOrder = 0;
   const root=byId('tasks-home'),settings=byId('task-settings');
   const modal=byId<HTMLDialogElement>('task-result-dialog');
   const clearModal=byId<HTMLDialogElement>('task-clear-dialog');
   const allowed=()=>mode==='workspace'||settingsOpen;
   const settingsStatus=byId('tasks-settings-status');
-  function clearPrivate(){data=null;detail=null;detailsResult=null;root.replaceChildren();root.hidden=true;byId('tasks-selection').replaceChildren();
+  function hideGlance() {
+    glance?.dispose();
+    glance = undefined;
+    root.hidden = true;
+  }
+  function clearPrivate(){detailOrder++;data=null;detail=null;detailsResult=null;hideGlance();byId('tasks-selection').replaceChildren();
     for(const id of ['task-result-body','task-result-meta','task-result-warning','tasks-sync-status','tasks-coverage','tasks-settings-status'])byId(id).textContent='';
     byId('task-result-title').textContent='任务结果';byId('task-result-links').replaceChildren();if(modal.open)modal.close();if(clearModal.open)clearModal.close();}
   const readLabel=(t:TaskView)=>t.readOutcome==='updated'?'此次收录了新输出':t.readOutcome==='unchanged'?'已重新读取，暂无新输出':t.readOutcome==='empty'?'本次来源未返回完成正文，已有成果仍保留':'已保存的来源正文';
   const needsSource=()=>!!data?.sync.code&&['LOGIN_REQUIRED','VERIFICATION_REQUIRED','SOURCE_FORBIDDEN','IDENTITY_UNAVAILABLE','SOURCE_TIMEOUT'].includes(data.sync.code);
   function syncLabel(s:TaskSnapshot):string {
-    if(!s.settings.enabled)return '同步已关闭 · 本地缓存';
-    if(!s.permission)return '访问权限已撤销 · 本地缓存';
-    if(s.sync.status==='syncing')return '正在同步…';
-    const selected=s.tasks.filter(t=>t.selected&&t.readable), reads=selected.filter(t=>t.resultSyncedAt);
+    const reads=s.tasks.filter(t=>t.selected&&t.readable&&t.resultSyncedAt);
     const lastRead=reads.map(t=>t.resultSyncedAt!).sort().at(-1)||null;
-    if(s.sync.status==='error')return '同步未完成 · 本地缓存 · 正文读取 '+time(lastRead);
+    const cachedTime=lastRead?' · 上次正文读取 '+time(lastRead):'';
+    if(!s.settings.enabled)return '同步已关闭 · 本地缓存'+cachedTime;
+    if(!s.permission)return '访问权限已撤销 · 本地缓存'+cachedTime;
+    if(s.sync.status==='syncing')return '正在同步…'+cachedTime;
+    if(s.sync.status==='error')return '同步未完成 · 本地缓存'+cachedTime;
     const outcome=reads.some(t=>t.readOutcome==='updated')?'已收录新输出':reads.some(t=>t.readOutcome==='empty')?'来源未返回完成正文':reads.length?'已重新读取，暂无新输出':'尚未读取正文';
     return '本地成果 · '+(s.sync.mode==='visit'?'最近访问读取':'最近后台读取')+' '+time(lastRead)+' · '+outcome;
   }
-  function renderHome(){
-    root.replaceChildren();root.hidden=mode!=='workspace'||!data?.settings.showWidget||!data?.principal||!data.tasks.length;
-    if(root.hidden||!data)return;
-    const chosen=data.tasks.filter(t=>t.selected);
-    const candidates=chosen.filter(t=>output(t)).sort((a,b)=>(output(b)!.createdAt||'').localeCompare(output(a)!.createdAt||''));
-    const featured=candidates.find(t=>!!t.lastValuableResult)||candidates[0];
-    const head=el('div',{class:'tasks-strip'});
-    head.append(el('div',{class:'tasks-label'},[el('h2',{},['定时任务']),el('span',{class:'tasks-sync'},[syncLabel(data)])]));
-    if(featured){const r=output(featured)!;const preview=button('',{class:'task-featured','aria-label':'查看任务结果：'+featured.title});
-      const kept=r.runId!==featured.latestAvailableResult?.runId||r.revision!==featured.latestAvailableResult?.revision;
-      preview.append(el('strong',{},[featured.title]),el('span',{},[data.settings.preview?r.preview:'查看完整执行结果']),el('small',{},[(kept?'保留的重要成果；最近输出：':'')+status(featured)+' · '+time(r.createdAt)]));
-      preview.addEventListener('click',()=>{void showDetail(featured.key);});head.append(preview);
-    }else head.append(el('span',{class:'tasks-empty'},[chosen.length?'等待收录所选任务的实际输出':'在设置中选择要展示的任务']));
-    const toggle=button(expanded?'收起':'展开',{class:'text-button','aria-expanded':String(expanded),'aria-label':expanded?'收起定时任务':'展开定时任务'});toggle.addEventListener('click',()=>{expanded=!expanded;renderHome();});head.append(toggle);root.append(head);
-    if(expanded){const list=el('div',{class:'tasks-list'});
-      for(const task of chosen){const r=task.latestAvailableResult,row=button('',{class:'task-row','aria-label':'查看任务结果：'+task.title});row.append(el('span',{class:'task-row-title'},[task.title]),el('span',{class:'task-excerpt'},[r&&data.settings.preview?r.preview:status(task)]),el('small',{},[status(task)+(r?' · '+time(r.createdAt):'')+(task.nextRunAt?' · 下次 '+time(task.nextRunAt):'')]));row.addEventListener('click',()=>{void showDetail(task.key,'latest');});list.append(row);}
-      const foot=el('div',{class:'task-list-footer'},[el('span',{},[data.sync.code?errors[data.sync.code]||'本次同步未完成，已有成果仍保留。':'显示已收录的最终输出；业务结果以正文为准。'])]);
-      const sync=button(data.settings.automatic?'立即同步':'打开 ChatGPT 同步',{class:'text-button',disabled:busy||data.sync.status==='syncing'||!data.settings.enabled});sync.addEventListener('click',()=>{void action('SYNC');});foot.append(sync);if(needsSource()){const recover=button('打开 ChatGPT 检查',{class:'text-button'});recover.addEventListener('click',()=>{void action('OPEN_SOURCE');});foot.append(recover);}list.append(foot);root.append(list);
+  function renderHome() {
+    if (mode !== 'workspace' || !data?.settings.showWidget || !data.principal ||
+        (!data.tasks.length && !(data.settings.enabled && data.completeList))) {
+      hideGlance();
+      return;
     }
+    root.hidden = false;
+    glance ??= createTaskGlance(root, {
+      detail: (key, version) => { void showDetail(key, version); },
+      sync: () => { void action('SYNC'); },
+      source: () => { void action('OPEN_SOURCE'); },
+      status, time,
+    });
+    const error = data.sync.code ? errors[data.sync.code] || '本次同步未完成，已有成果仍保留。' : '';
+    glance.update(data, syncLabel(data), error, needsSource(), busy);
   }
   function renderSettings(){
     settings.hidden=!settingsOpen;if(!settingsOpen||!data)return;
@@ -94,10 +98,40 @@ export function initTaskResults() {
       list.append(el('label',{class:'task-choice'},[input,el('span',{},[el('strong',{},[t.title]),el('small',{},[t.readable?(t.enabledState==='enabled'?'已启用':t.enabledState==='disabled'?'未启用':'启用状态未知')+' · '+status(t):'此类型暂未接入结果，可在 ChatGPT 查看'])])]));}
     byId('tasks-coverage').textContent=data.completeList?'已读完本次来源返回的三个任务分类。':'仅显示已读取范围；未读取的分页不会视为任务删除。';
   }
-  async function refresh(){if(!allowed())return;const at=epoch;try{const next=await request('SNAPSHOT') as TaskSnapshot;if(at!==epoch||!allowed())return;if(data?.principal!==next.principal&&detail){clearPrivate();}data=next;renderHome();renderSettings();}catch{if(at===epoch&&allowed()){settingsStatus.textContent='暂时无法读取本地任务成果，请重试。';}}}
-  async function action(command:string,fields:Record<string,unknown>={}){if(busy||!allowed())return;busy=true;renderSettings();const at=epoch;try{await request(command,fields);if(at!==epoch||!allowed())return;settingsStatus.textContent='';await refresh();}catch(e){if(at===epoch&&allowed())settingsStatus.textContent=errors[e instanceof Error?e.message:'']||'操作未完成，已有成果仍保留。';}finally{busy=false;if(at===epoch&&allowed())renderSettings();}}
+  async function refresh() {
+    if (!allowed()) return;
+    const at = epoch, order = ++refreshOrder;
+    try {
+      const next = await request('SNAPSHOT') as TaskSnapshot;
+      if (order !== refreshOrder || at !== epoch || !allowed()) return;
+      if (data && data.principal !== next.principal) clearPrivate();
+      data = next;
+      renderHome();
+      renderSettings();
+    } catch {
+      if (order === refreshOrder && at === epoch && allowed()) settingsStatus.textContent = '暂时无法读取本地任务成果，请重试。';
+    }
+  }
+  async function action(command: string, fields: Record<string, unknown> = {}) {
+    if (busy || !allowed()) return;
+    busy = true;
+    renderHome();
+    renderSettings();
+    const at = epoch;
+    try {
+      await request(command, fields);
+      if (at !== epoch || !allowed()) return;
+      settingsStatus.textContent = '';
+      await refresh();
+    } catch (error) {
+      if (at === epoch && allowed()) settingsStatus.textContent = errors[error instanceof Error ? error.message : ''] || '操作未完成，已有成果仍保留。';
+    } finally {
+      busy = false;
+      if (at === epoch && allowed()) { renderHome(); renderSettings(); }
+    }
+  }
   const configure=(patch:Record<string,unknown>)=>action('CONFIGURE',{patch});
-  async function showDetail(key:string,which='valuable'){const at=epoch;try{const t=await request('DETAIL',{key}) as TaskView;if(at!==epoch||mode!=='workspace')return;detail=t;detailsResult=which==='latest'?t.latestAvailableResult:output(t);const r=detailsResult;
+  async function showDetail(key:string,which='valuable'){const at=epoch, order=++detailOrder, principal=data?.principal;try{const t=await request('DETAIL',{key}) as TaskView;if(order!==detailOrder||at!==epoch||mode!=='workspace'||!principal||data?.principal!==principal)return;detail=t;detailsResult=which==='latest'?t.latestAvailableResult:output(t);const r=detailsResult;
     const different=!!t.lastValuableResult && (t.lastValuableResult.runId!==t.latestAvailableResult?.runId || t.lastValuableResult.revision!==t.latestAvailableResult?.revision);
     byId('task-result-version-label').hidden=!different;
     byId<HTMLSelectElement>('task-result-version').value=which==='latest'?'latest':'valuable';
@@ -110,7 +144,7 @@ export function initTaskResults() {
     if(!modal.open)modal.showModal();
   }catch{if(at===epoch)settingsStatus.textContent='暂时无法读取这条结果。';}}
   byId('task-result-close').addEventListener('click',()=>modal.close());
-  modal.addEventListener('close',()=>{detail=null;detailsResult=null;byId('task-result-title').textContent='任务结果';for(const id of ['task-result-body','task-result-meta','task-result-warning'])byId(id).textContent='';byId('task-result-links').replaceChildren();});
+  modal.addEventListener('close',()=>{if(modal.open)return;detailOrder++;detail=null;detailsResult=null;byId('task-result-title').textContent='任务结果';for(const id of ['task-result-body','task-result-meta','task-result-warning'])byId(id).textContent='';byId('task-result-links').replaceChildren();if(mode==='workspace')glance?.restoreFocus();});
   byId('task-result-version').addEventListener('change',()=>{if(detail)void showDetail(detail.key,byId<HTMLSelectElement>('task-result-version').value);});
   byId('task-classification').addEventListener('change',()=>{if(!detail||!detailsResult)return;const key=detail.key,which=byId<HTMLSelectElement>('task-result-version').value;
     void action('CLASSIFY',{key,runId:detailsResult.runId,revision:detailsResult.revision,outcome:byId<HTMLSelectElement>('task-classification').value}).then(()=>{if(detail?.key===key)void showDetail(key,which);});});
@@ -128,5 +162,5 @@ export function initTaskResults() {
   byId('tasks-clear-cancel').addEventListener('click',()=>clearModal.close());
   byId('tasks-clear-confirm').addEventListener('click',()=>{void action('CLEAR').then(()=>clearModal.close());});
   chrome.runtime.onMessage.addListener((m,s)=>{if(s.id===chrome.runtime.id&&m?.protocol===PROTOCOL&&m.event==='changed'&&allowed())void refresh();});
-  return {setContext(next:'workspace'|'life'|null,showSettings=false){epoch++;mode=next;settingsOpen=showSettings;settings.hidden=!settingsOpen;if(!allowed())clearPrivate();else {if(next!=='workspace'){root.replaceChildren();root.hidden=true;if(modal.open)modal.close();}void refresh();}}};
+  return {setContext(next:'workspace'|'life'|null,showSettings=false){epoch++;mode=next;settingsOpen=showSettings;settings.hidden=!settingsOpen;if(!allowed())clearPrivate();else {if(next!=='workspace'){hideGlance();if(modal.open)modal.close();}void refresh();}}};
 }

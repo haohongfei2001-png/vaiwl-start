@@ -68,7 +68,7 @@ jobs:
       - name: Installed task flow and existing homepage contracts
         run: |
           failed=0
-          for test in tasks home-guardrails settings-consumer life-bookmarks; do
+          for test in tasks task-glance home-guardrails settings-consumer life-bookmarks; do
             node "tests/browser/$test.mjs" || failed=1
           done
           exit "$failed"
