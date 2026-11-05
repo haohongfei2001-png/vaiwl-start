@@ -30,7 +30,6 @@ export function createTaskGlance(root: HTMLElement, actions: Actions) {
     el('span', { class: 'task-heading' }, [el('small', {}, ['定时任务']), name]), icon('down', 'task-caret'));
   const preview = button('', { class: 'task-featured' });
   const waiting = el('span', { class: 'task-waiting', hidden: true }, ['尚未收录执行结果']);
-  const count = el('span', { class: 'task-count' });
   const close = button('', { class: 'icon-button', 'aria-label': '关闭任务面板' }, 'close');
   const list = el('div', { class: 'tasks-list' });
   const syncLabel = el('span', { class: 'tasks-sync' });
@@ -39,7 +38,7 @@ export function createTaskGlance(root: HTMLElement, actions: Actions) {
   const recover = button('打开 ChatGPT 检查', { class: 'text-button' });
   const panel = el('section', { id: 'task-panel', class: 'task-panel', popover: 'auto', role: 'dialog',
     'aria-labelledby': 'task-panel-title' }, [
-    el('header', { class: 'task-panel-head' }, [el('h2', { id: 'task-panel-title' }, ['任务成果']), count, close]),
+    el('header', { class: 'task-panel-head' }, [el('h2', { id: 'task-panel-title' }, ['任务成果']), close]),
     list,
     el('footer', { class: 'task-panel-foot' }, [syncLabel, problem, el('div', { class: 'task-actions' }, [sync, recover])]),
   ]);
@@ -161,7 +160,6 @@ export function createTaskGlance(root: HTMLElement, actions: Actions) {
       preview.setAttribute('aria-label', '查看完整结果：' + (featured?.title || ''));
       root.dataset.preview = String(!preview.hidden || !waiting.hidden);
       root.dataset.sync = data.sync.status;
-      count.textContent = chosen.length ? chosen.length + ' 项' : '';
       updateList(chosen, data);
       syncLabel.textContent = syncText;
       problem.textContent = error;

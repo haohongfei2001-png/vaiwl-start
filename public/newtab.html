@@ -8,6 +8,7 @@
 <svg aria-hidden="true" width="0" height="0" class="icon-definitions"><defs>
 <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5"/></symbol>
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.7" cy="10.7" r="6.7"/><path d="m16 16 4.5 4.5"/></symbol>
+<symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></symbol>
 <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
 <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
 <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></symbol>
@@ -39,13 +40,13 @@
 </defs></svg>
 <header class="topbar">
  <button class="brand" id="home" aria-label="回到工作区首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>VAIWL <em>Start</em></span></button>
+ <button class="mode-toggle" id="mode-toggle" type="button" aria-label="切换到生活" aria-busy="false" disabled><svg aria-hidden="true"><use href="#i-sun"/></svg><span>生活</span></button>
  <div class="theme-controls" id="theme-controls" hidden></div>
  <div class="top-tools">
   <div class="top-spacer"><section id="tasks-home" class="tasks-home" aria-label="定时任务成果" hidden></section></div>
   <button class="search-trigger" id="search-trigger" aria-label="搜索所有本地会话，页面非编辑状态按斜杠键"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="search-label">搜索会话与项目</span><kbd>/</kbd></button>
  </div>
  <a id="theme-new-chat" class="new-chat theme-new-chat" href="https://chatgpt.com/" aria-label="在 ChatGPT 中开始新对话" hidden><svg aria-hidden="true"><use href="#i-plus"/></svg><span>新对话</span></a>
- <button class="mode-toggle" id="mode-toggle" type="button" aria-label="切换到生活" aria-busy="false" disabled><svg aria-hidden="true"><use href="#i-sun"/></svg><span>生活</span></button>
  <button class="icon-button" id="settings-trigger" aria-label="设置" title="设置"><svg aria-hidden="true"><use href="#i-settings"/></svg></button>
 </header>
 <main class="workspace" id="main">
@@ -100,22 +101,22 @@
         <button class="home-theme-option" type="button" data-home-theme-choice="classic" aria-label="经典主题（默认）" aria-pressed="true" aria-describedby="home-theme-classic-description">
          <span class="home-theme-preview theme-preview-classic" aria-hidden="true"><span class="theme-mini-header"><i></i><i></i></span><span class="theme-mini-projects"><i></i><i></i><i></i><i></i></span><span class="theme-mini-history"><i></i><i></i><i></i><i></i></span></span>
          <span class="home-theme-option-label"><strong>经典</strong><span class="home-theme-default">默认</span><span class="home-theme-check" aria-hidden="true">✓</span></span>
-         <small id="home-theme-classic-description">保留熟悉的首页布局</small>
+         <small id="home-theme-classic-description">清晰边界与层级线索</small>
         </button>
         <button class="home-theme-option" type="button" data-home-theme-choice="spatial" aria-label="空间主题" aria-pressed="false" aria-describedby="home-theme-spatial-description">
          <span class="home-theme-preview theme-preview-spatial" aria-hidden="true"><span class="theme-mini-header"><i></i><i></i></span><span class="theme-mini-projects"><i></i><i></i><i></i><i></i></span><span class="theme-mini-history"><i></i><i></i><i></i></span></span>
          <span class="home-theme-option-label"><strong>空间</strong><span class="home-theme-check" aria-hidden="true">✓</span></span>
-         <small id="home-theme-spatial-description">全宽项目与连续日期</small>
+         <small id="home-theme-spatial-description">柔和表面与自然留白</small>
         </button>
         <button class="home-theme-option" type="button" data-home-theme-choice="workbench" aria-label="分区主题" aria-pressed="false" aria-describedby="home-theme-workbench-description">
-         <span class="home-theme-preview theme-preview-workbench" aria-hidden="true"><span class="theme-mini-header"><i></i><i></i></span><span class="theme-mini-projects"><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="theme-mini-history"><i></i><i></i><i></i></span></span>
+         <span class="home-theme-preview theme-preview-workbench" aria-hidden="true"><span class="theme-mini-header"><i></i><i></i></span><span class="theme-mini-projects"><i></i><i></i><i></i><i></i></span><span class="theme-mini-history"><i></i><i></i><i></i></span></span>
          <span class="home-theme-option-label"><strong>分区</strong><span class="home-theme-check" aria-hidden="true">✓</span></span>
-         <small id="home-theme-workbench-description">项目主区与侧边时间线</small>
+         <small id="home-theme-workbench-description">冷灰分区与精确层级</small>
         </button>
         <button class="home-theme-option" type="button" data-home-theme-choice="folio" aria-label="书页主题" aria-pressed="false" aria-describedby="home-theme-folio-description">
-         <span class="home-theme-preview theme-preview-folio" aria-hidden="true"><span class="theme-mini-header"><i></i><i></i></span><span class="theme-mini-projects"><i></i><i></i><i></i></span><span class="theme-mini-history"><i></i><i></i><i></i></span></span>
+         <span class="home-theme-preview theme-preview-folio" aria-hidden="true"><span class="theme-mini-header"><i></i><i></i></span><span class="theme-mini-projects"><i></i><i></i><i></i><i></i></span><span class="theme-mini-history"><i></i><i></i><i></i></span></span>
          <span class="home-theme-option-label"><strong>书页</strong><span class="home-theme-check" aria-hidden="true">✓</span></span>
-         <small id="home-theme-folio-description">开放项目与分栏日期</small>
+         <small id="home-theme-folio-description">开放书页与轻盈书脊</small>
         </button>
        </div>
        <p id="home-theme-status" class="settings-feedback" role="status" aria-live="polite"></p>

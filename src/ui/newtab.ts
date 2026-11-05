@@ -27,7 +27,6 @@ const view = readView();
 const spatialView = readSpatialView();
 let activeHomeTheme: HomeTheme = 'classic';
 let lastSpatialColumns = spatialColumns(window.innerWidth, activeHomeTheme);
-const isModernTheme = () => activeHomeTheme !== 'classic';
 const initialScrollY = view.scrollY;
 const safe = new SafeRendering();
 let homeMode: HomeMode | null = null;
@@ -227,9 +226,9 @@ function earlierProjects(cards: DisplayCard[]): HTMLElement {
 }
 
 function workspaceHeading(): HTMLElement {
-  const title = el('h1', isModernTheme() ? { class: 'sr' } : {}, ['工作区']);
-  const titleGroup = isModernTheme() ? el('div', { class: 'spatial-heading-title' }, [title]) : null;
-  const heading = el('div', { class: 'board-heading' }, [titleGroup || title]);
+  const title = el('h1', { class: 'sr' }, ['AI 工作空间']);
+  const titleGroup = el('div', { class: 'spatial-heading-title' }, [title]);
+  const heading = el('div', { class: 'board-heading' }, [titleGroup]);
   if (snapshot && snapshot.scopes.length > 0) {
     const scopeSelect = el('select', { class: 'scope-selector', id: 'scope-selector', 'aria-label': '选择本地资料库' });
     for (const scope of snapshot.scopes) scopeSelect.append(el('option', { value: scope.key }, [scope.label || '已保存的资料库']));
@@ -245,20 +244,19 @@ function workspaceHeading(): HTMLElement {
   if (calendar) heading.append(el('nav', { class: 'spatial-period', 'aria-label': '时段导航' }, [
     button('', { class: 'icon-button', id: 'period-newer', 'aria-label': '更新时段', title: '更新时段', disabled: view.k === 0 }, 'chevron'),
     button('', { class: 'icon-button', id: 'period-older', 'aria-label': '更早时段', title: '更早时段' }, 'chevron'),
+    ...(view.k > 0 || view.filter !== 'all' ? [button('', { class: 'icon-button', id: 'workspace-home', 'aria-label': '回到最新并显示全部工作', title: '回到最新并显示全部工作' }, 'home')] : []),
   ]));
-  if (!isModernTheme()) heading.append(el('a', { class: 'new-chat', href: 'https://chatgpt.com/', 'aria-label': '在 ChatGPT 中开始新对话' }, ['新对话', icon('external')]));
   return heading;
 }
 
-/** One reversible mode action; each theme keeps its own visual treatment. */
+/** All appearances share the same command locations and work/life boundary. */
 function renderThemeChrome(heading?: HTMLElement): void {
-  const modern = isModernTheme();
   const controls = byId('theme-controls');
-  controls.replaceChildren(...(modern && homeMode === 'workspace' && heading ? [heading] : []));
-  controls.hidden = !modern || homeMode !== 'workspace' || !heading;
+  controls.replaceChildren(...(homeMode === 'workspace' && heading ? [heading] : []));
+  controls.hidden = homeMode !== 'workspace' || !heading;
   byId('mode-toggle').hidden = false;
-  byId('theme-new-chat').hidden = !modern || homeMode !== 'workspace';
-  byId('search-trigger').hidden = modern && homeMode === 'life';
+  byId('theme-new-chat').hidden = homeMode !== 'workspace';
+  byId('search-trigger').hidden = homeMode === 'life';
 }
 
 function firstUse(): HTMLElement {
@@ -299,8 +297,8 @@ function renderWorkspace(): void {
   const groups = recentDisplayGroups([...projection.dates, ...projection.pendingDates], projection.segmentOnly, projection.displayTimes, view.k);
   currentRecentGroups = groups;
   const heading = workspaceHeading();
-  renderThemeChrome(isModernTheme() ? heading : undefined);
-  content.replaceChildren(...(isModernTheme() ? [] : [heading]));
+  renderThemeChrome(heading);
+  content.replaceChildren();
   if (showProjects && cards.length) content.append(spatialProjectSection(cards, {
     view: spatialView, row: conversationRow, columns: spatialColumns(window.innerWidth, activeHomeTheme), focusedRecord: renderingFocusRecordKey,
   }));
@@ -757,7 +755,13 @@ document.addEventListener('click', event => {
     if (control.dataset[attribute]) { void request(command, { jobId: control.dataset[attribute] }).then(() => refresh(true)).then(() => { renderImport(); void pumpImport(); }).catch(fail); return; }
   }
   switch (control.id) {
-    case 'home': if (homeMode === 'workspace') { view.k = 0; view.filter = 'all'; renderWorkspace(); } window.scrollTo(0, 0); persistView(); break;
+    case 'home': case 'workspace-home':
+      if (homeMode === 'workspace') {
+        view.k = 0; view.filter = 'all'; renderWorkspace();
+        document.querySelector<HTMLButtonElement>('[data-filter="all"]')?.focus({ preventScroll: true });
+        announce('已回到最新时段，显示全部工作');
+      }
+      window.scrollTo(0, 0); persistView(); break;
     case 'search-trigger': case 'empty-search': openSearch(); break;
     case 'clear-search': searchProjectKey = null; searchFilter = 'all'; byId<HTMLInputElement>('search-input').value = ''; renderSearch(); byId('search-input').focus(); break;
     case 'search-more': {

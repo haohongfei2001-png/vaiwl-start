@@ -150,41 +150,31 @@ test('expanded project follows its complete grid row at each column count, inclu
   }
 }));
 
-test('theme column counts follow their responsive grids, including the workbench rail transition', () => {
+test('all themes share the same responsive columns at every boundary and required desktop width', () => {
   const cases = [
-    { width: 1720, spatial: 4, workbench: 3, folio: 3 },
-    { width: 1440, spatial: 4, workbench: 3, folio: 3 },
-    { width: 1280, spatial: 4, workbench: 3, folio: 3 },
-    { width: 1181, spatial: 4, workbench: 3, folio: 3 },
-    { width: 1180, spatial: 3, workbench: 2, folio: 3 },
-    { width: 1051, spatial: 3, workbench: 2, folio: 3 },
-    { width: 1050, spatial: 3, workbench: 3, folio: 2 },
-    { width: 960, spatial: 3, workbench: 3, folio: 2 },
-    { width: 851, spatial: 3, workbench: 3, folio: 2 },
-    { width: 850, spatial: 2, workbench: 2, folio: 2 },
-    { width: 768, spatial: 2, workbench: 2, folio: 2 },
-    { width: 601, spatial: 2, workbench: 2, folio: 2 },
-    { width: 600, spatial: 1, workbench: 1, folio: 1 },
-    { width: 390, spatial: 1, workbench: 1, folio: 1 },
+    [1920, 4], [1720, 4], [1648, 4], [1440, 4], [1280, 4], [1181, 4],
+    [1180, 3], [1051, 3], [1050, 3], [960, 3], [851, 3],
+    [850, 2], [768, 2], [601, 2], [600, 1], [390, 1],
   ];
-  for (const expected of cases) {
-    for (const theme of ['spatial', 'workbench', 'folio'] as const) {
-      assert.equal(spatialColumns(expected.width, theme), expected[theme], `${theme} at ${expected.width}px`);
+  for (const [width, expected] of cases) {
+    for (const theme of ['classic', 'spatial', 'workbench', 'folio'] as const) {
+      assert.equal(spatialColumns(width!, theme), expected, `${theme} at ${width}px`);
     }
   }
 });
 
-test('switching themes or crossing the side-rail breakpoint relocates the same expanded project after its owning row', () => withDom(() => {
+test('theme changes preserve the expanded project row and responsive changes relocate only its owning row', () => withDom(() => {
   const cards = Array.from({ length: 7 }, (_, index) => card(`project-${index}`, records(`member-${index}`, 8)));
   const state = view({ expandedProject: 'project-3', projectLimits: { 'project-3': 72 }, collapsedDates: ['keep-date'] });
   const saved = JSON.stringify(state), catalog = JSON.stringify(cards);
   const transitions = [
+    { theme: 'classic', width: 1440, after: 3 },
     { theme: 'spatial', width: 1440, after: 3 },
-    { theme: 'workbench', width: 1440, after: 5 },
-    { theme: 'folio', width: 1440, after: 5 },
-    { theme: 'workbench', width: 1051, after: 3 },
-    { theme: 'workbench', width: 1050, after: 5 },
-    { theme: 'folio', width: 1050, after: 3 },
+    { theme: 'workbench', width: 1440, after: 3 },
+    { theme: 'folio', width: 1440, after: 3 },
+    { theme: 'workbench', width: 1180, after: 5 },
+    { theme: 'folio', width: 851, after: 5 },
+    { theme: 'folio', width: 850, after: 3 },
     { theme: 'folio', width: 390, after: 3 },
     { theme: 'spatial', width: 1440, after: 3 },
   ] as const;
@@ -202,7 +192,7 @@ test('switching themes or crossing the side-rail breakpoint relocates the same e
     assert.equal(JSON.stringify(cards), catalog, 'Presentation changes must preserve projected relationships');
   }
   state.expandedProject = 'project-6';
-  for (const theme of ['workbench', 'folio'] as const) {
+  for (const theme of ['classic', 'spatial', 'workbench', 'folio'] as const) {
     const grid = spatialProjectGrid(cards, { view: state, row, columns: spatialColumns(1440, theme) });
     const panel = grid.querySelector('.spatial-project-expanded')!;
     assert.equal(panel.previousElementSibling?.getAttribute('data-project'), 'project-6');

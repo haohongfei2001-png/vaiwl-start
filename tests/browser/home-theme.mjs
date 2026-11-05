@@ -88,7 +88,7 @@ async function modernGeometry(target) {
       datesContinuous: bands.every((band, i) => !i || band.top >= bands[i - 1].bottom - 1), datesCount: bands.length,
       accessiblePanelRows: panel ? [...panel.querySelectorAll('.conversation-open')].filter(el => el.getClientRects().length).length : 0,
       projects: rect(document.querySelector('.spatial-projects')), recent: rect(document.querySelector('.recent-section')),
-      dateColumns: columnsOf(document.querySelector('.recent-section .date-grid')),
+      dateColumns: columnsOf(document.querySelector('.recent-section .spatial-date-list')),
       topbar: rect(document.querySelector('.topbar')), search: rect(document.querySelector('#search-trigger')),
       brandVisible: !!document.querySelector('.topbar .brand')?.getClientRects().length,
     };
@@ -153,7 +153,7 @@ try {
   check('THEME-expanded-all-members-with-original-links', expectedMembers.length > 4 && expandedLinks.length === expectedMembers.length && new Set(expandedLinks.map(row => row.key)).size === expectedMembers.length && expectedMembers.every(record => expandedLinks.some(link => link.key === record.key && link.visible && link.href === `https://chatgpt.com/c/${record.conversationId}`)),
     { project: expandedKey, expected: expectedMembers.length, accessible: expandedLinks.length });
 
-  for (const width of [1720, 1440, 1280, 960, 768, 390]) {
+  for (const width of [1920, 1720, 1648, 1440, 1280, 960, 768, 390]) {
     await page.setViewportSize({ width, height: width < 600 ? 844 : 1000 });
     await until(() => page.evaluate(key => document.querySelector('.spatial-project-expanded')?.dataset.expandedProject === key, expandedKey), `expanded project at ${width}`);
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -181,20 +181,18 @@ try {
     const themedProjects = await projectSummary(page), themedLinks = await visibleLinks(page), sharedLinks = themedLinks.filter(record => classicMap.has(record.key));
     check(`THEME-${selectedTheme}-identity-and-cross-tab`, JSON.stringify(themedProjects) === JSON.stringify(classicProjects) && sharedLinks.length > 12 && sharedLinks.every(record => record.href === classicMap.get(record.key).href && record.title === classicMap.get(record.key).title) && await sibling.locator('.spatial-date-band').count() > 0,
       { projectKeys: themedProjects.map(p => p.key), unchangedSharedLinks: sharedLinks.length, siblingTheme: selectedTheme });
-    for (const width of [1720, 1440, 1280, 960, 768, 390]) {
+    for (const width of [1920, 1720, 1648, 1440, 1280, 960, 768, 390]) {
       await page.setViewportSize({ width, height: width < 600 ? 844 : 1000 });
       await until(() => page.evaluate(key => document.querySelector('.spatial-project-expanded')?.dataset.expandedProject === key, expandedKey), `${selectedTheme} expansion at ${width}`);
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const geometry = await modernGeometry(page);
-      const columns = selectedTheme === 'folio' ? width <= 600 ? 1 : width <= 1050 ? 2 : 3
-        : width <= 600 ? 1 : width <= 850 ? 2 : width <= 1050 ? 3 : width <= 1180 ? 2 : 3;
+      const columns = width <= 600 ? 1 : width <= 850 ? 2 : width <= 1180 ? 3 : 4;
       measurements.push({ theme: selectedTheme, width, ...geometry });
       check(`THEME-${selectedTheme}-responsive-${width}`, geometry.columns === columns && correctExpansion(geometry, expectedMembers.length - 4), geometry);
       if (width === 1440) {
-        const presentation = selectedTheme === 'workbench'
-          ? geometry.recent.left >= geometry.projects.right + 8 && Math.abs(geometry.recent.top - geometry.projects.top) <= 4
-          : geometry.dateColumns === 3;
-        check(`THEME-${selectedTheme}-distinct-layout-and-quiet-header`, presentation && !geometry.brandVisible && geometry.topbar.height <= 60 && geometry.search.width <= 220 && geometry.search.width >= 180,
+        const presentation = geometry.recent.top >= geometry.projects.bottom && Math.abs(geometry.recent.left - geometry.projects.left) <= 1
+          && Math.abs(geometry.recent.width - geometry.projects.width) <= 1 && geometry.dateColumns === 4 && geometry.datesContinuous;
+        check(`THEME-${selectedTheme}-shared-reading-order-and-quiet-header`, presentation && !geometry.brandVisible && geometry.topbar.height <= 60 && geometry.search.width <= 220 && geometry.search.width >= 180,
           { projects: geometry.projects, recent: geometry.recent, dateColumns: geometry.dateColumns, topbar: geometry.topbar, search: geometry.search, brandVisible: geometry.brandVisible });
       }
       if ([1440, 390].includes(width)) await capture(`${selectedTheme}-${width}`);
@@ -205,7 +203,7 @@ try {
   }
   await choose(page, 'classic'); await theme(sibling, 'classic'); await closeSettings(page);
   check('THEME-classic-return-and-cross-tab', await page.locator('.spatial-project-expanded').count() === 1 && await page.locator('.spatial-date-band').count() > 0 && await sibling.locator('.spatial-date-band').count() > 0 && await sibling.locator('.spatial-expand').count() > 0 && JSON.stringify(await projectSummary(page)) === JSON.stringify(classicProjects), 'Both open tabs retain the shared renderer and original project identities with classic presentation.');
-  for (const width of [1720, 1440, 1280, 960, 768, 390]) {
+  for (const width of [1920, 1720, 1648, 1440, 1280, 960, 768, 390]) {
     await page.setViewportSize({ width, height: width < 600 ? 844 : 1000 });
     await until(() => page.evaluate(key => document.querySelector('.spatial-project-expanded')?.dataset.expandedProject === key, expandedKey), `classic expansion at ${width}`);
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));

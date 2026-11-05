@@ -47,10 +47,9 @@ export function readSpatialView(): SpatialView {
 export function saveSpatialView(view: SpatialView): void {
   try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({ ...view, projectsCollapsed: false })); } catch { /* View state is optional; no catalog mutation. */ }
 }
-/** Keep full-row expansion aligned with the visible theme grid, including B's side rail. */
-export function spatialColumns(width: number, theme: HomeTheme = 'spatial'): number {
-  if (theme === 'folio') return width <= 600 ? 1 : width <= 1050 ? 2 : 3;
-  if (theme === 'workbench' && width > 1050) return width <= 1180 ? 2 : 3;
+/** Theme changes alter material, never reading order or expansion placement.
+ * Keep these breakpoints in sync with the shared home-layout.css grid. */
+export function spatialColumns(width: number, _theme: HomeTheme = 'spatial'): number {
   return width <= 600 ? 1 : width <= 850 ? 2 : width <= 1180 ? 3 : 4;
 }
 export function spatialPanelId(key: string): string { return `spatial-expanded-${encodeURIComponent(key)}`; }
@@ -153,7 +152,12 @@ export function spatialRecentSection(groups: RecentDisplayGroup[], options: Rece
     const collapsed = view.collapsedDates.includes(key), limit = view.dateLimits[key] || SPATIAL_DATE_ROWS;
     const heading = kind === 'pinned' ? '置顶' : group.date ? options.label(group.date) : '本时间段';
     const id = `spatial-date-${encodeURIComponent(key)}`;
-    const content = el('div', { class: 'spatial-date-content', id }, [el('div', { class: 'spatial-date-list' }, group.records.slice(0, limit).map(row))]);
+    const visibleRecords = group.records.slice(0, limit);
+    // One real conversation gets a comfortable reading measure, not an empty
+    // full-width date card. This is presentation only; order and limits stay intact.
+    const content = el('div', { class: 'spatial-date-content', id }, [el('div', {
+      class: `spatial-date-list${visibleRecords.length === 1 ? ' is-single' : ''}`,
+    }, visibleRecords.map(row))]);
     if (group.records.length > limit) content.append(button('显示更多', {
       class: 'spatial-date-more', 'data-spatial-date-more': key, 'data-focus-key': `spatial-date-more:${key}`,
     }, 'down'));

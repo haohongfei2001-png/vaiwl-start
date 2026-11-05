@@ -123,7 +123,7 @@ try {
   const toggle = page.locator('.task-toggle'), panel = page.locator('#task-panel');
   for (const variant of ['classic','spatial','workbench','folio']) {
     await theme(variant);
-    for (const width of baseline ? [1470,1280,390] : [1920,1470,1280,1024,760,640,390,320]) {
+    for (const width of baseline ? [1470,1280,390] : [1920,1720,1648,1470,1440,1280,1024,760,640,390,320]) {
       await page.setViewportSize({ width, height: width < 500 ? 844 : 837 }); await stable();
       await page.locator('#tasks-home:not([hidden])').waitFor();
       const before = await geometry();

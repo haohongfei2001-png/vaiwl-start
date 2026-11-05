@@ -168,7 +168,7 @@ try {
  check('N-unified-30-day-pages',await page.locator('[data-record-key="staging:native-old"]').isVisible()&&await page.locator('[data-record-key="staging:native-both"]').count()===0,'Older history follows the same 30-day navigation.');
  const dataAfter=await raw(page);assert.deepEqual(dataAfter.openDays,dataBefore.openDays);assert.deepEqual(dataAfter.conversations,dataBefore.conversations);
  check('N-display-does-not-write-activity',true,'Projection, navigation and reload leave records and OpenDays unchanged.');
- await page.locator('#home').click();await page.screenshot({path:`artifacts/${expectedFamily==='edge'?'edge-':''}native-workspace.png`,fullPage:true});
+ await page.locator('[data-filter="none"]').click();await page.locator('#workspace-home').click();await page.waitForFunction(()=>document.querySelector('#period-newer').disabled&&document.querySelector('[data-filter="all"]').getAttribute('aria-selected')==='true');check('N-home-restores-latest-and-all',await page.locator('[data-record-key="staging:native-both"]').isVisible()&&await page.evaluate(()=>document.activeElement?.getAttribute('data-filter')==='all'),'One home action restores the latest period, all content and keyboard focus.');await page.screenshot({path:`artifacts/${expectedFamily==='edge'?'edge-':''}native-workspace.png`,fullPage:true});
  await page.locator('#settings-trigger').click();await page.screenshot({path:`artifacts/${expectedFamily==='edge'?'edge-':''}native-settings.png`,fullPage:true});
  await context.close();context=null;
  // Upgrade same path from pregranted harness to actual optional manifest. Grant history

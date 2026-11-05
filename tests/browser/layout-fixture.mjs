@@ -5,6 +5,8 @@ export const layoutFixtures = {
   typical: { projectRows: [9, 5, 4, 6], dayRows: [9, 5, 4, 6, 3, 2, 5, 3] },
   sparse: { projectRows: [2, 1, 3], dayRows: [2, 1, 2, 1] },
   dense: { projectRows: [22, 6, 9, 3, 5, 8, 2, 12, 5, 6, 3, 7], dayRows: [22, 7, 6, 5, 8, 3, 9, 5, 7, 4, 3, 8, 5, 6] },
+  'single-recent': { projectRows: [4, 1, 3, 2], dayRows: [1], historical: false },
+  empty: { projectRows: [], dayRows: [], historical: false },
   'recent-only': { projectRows: [], dayRows: [9, 5, 4, 6, 3, 2, 5, 3] },
 };
 
@@ -52,11 +54,11 @@ export async function seedLayoutCatalog(target, state, anchorIso) {
       if (index === 0) { add('更早的计算记录', 65, project); add('暂未访问的项目成员', null, project); }
     }
     for (const [day, count] of config.dayRows.entries()) for (let n = 0; n < count; n++) add(topics[(day + n + 2) % topics.length] + (n >= 10 ? ` · ${n + 1}` : ''), day);
-    const historical = add('上一个 30 天区间中的讨论', 40);
+    const historical = config.historical === false ? null : add('上一个 30 天区间中的讨论', 40);
     tx.objectStore('settings').put({ ...settings, selectedScope: 'unassigned', libraryTimeZone: 'UTC', captureEnabled: false });
     tx.objectStore('revisions').put({ key: 'main', value: 50, nextRank: rank + 1 });
-    tx.objectStore('openDays').put({ recordKey: historical.key, timeZone: 'UTC', localDate: at(40).slice(0, 10), firstOpenedAt: at(40), lastOpenedAt: at(40), activityUnit: 1, firstIntentId: 'synthetic-layout', lastIntentId: 'synthetic-layout' });
-    tx.objectStore('tombstones').put({ key: 'staging:layout-removed', removedAt: anchorIso, reason: 'user-removed', record: { ...historical, key: 'staging:layout-removed', nativeTitle: '已移除的合成夹具' } });
+    if (historical) tx.objectStore('openDays').put({ recordKey: historical.key, timeZone: 'UTC', localDate: at(40).slice(0, 10), firstOpenedAt: at(40), lastOpenedAt: at(40), activityUnit: 1, firstIntentId: 'synthetic-layout', lastIntentId: 'synthetic-layout' });
+    if (historical) tx.objectStore('tombstones').put({ key: 'staging:layout-removed', removedAt: anchorIso, reason: 'user-removed', record: { ...historical, key: 'staging:layout-removed', nativeTitle: '已移除的合成夹具' } });
     await complete; db.close(); sessionStorage.clear(); return { keys, projects, records: rank };
   }, { config, anchorIso });
   return receipt;

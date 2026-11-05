@@ -140,7 +140,7 @@ try {
   await launch(productionProfile);
   let page = await nativePage();
   check('L-first-install-workspace', await page.getAttribute('html', 'data-home-mode') === 'workspace' && await page.locator('#workspace-content').isVisible(), 'Unmodified production extension, actual browser new-tab entry, first installation defaults to workspace.');
-  check('L-correct-toggle-position', await page.evaluate(() => { const search = document.querySelector('#search-trigger'), toggle = document.querySelector('#mode-toggle'), settings = document.querySelector('#settings-trigger'); return !!(search.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(toggle.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING); }), 'Labelled mode capsule lies between search and settings.');
+  check('L-correct-toggle-position', await page.evaluate(() => { const search = document.querySelector('#search-trigger'), toggle = document.querySelector('#mode-toggle'), settings = document.querySelector('#settings-trigger'); return !!(toggle.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(search.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING); }), 'The compact mode control starts the command bar, followed by search and settings in keyboard order.');
   await seed(page); await page.reload(); await ready(page);
   await page.locator('[data-record-key="staging:life-private"]').waitFor();
   const catalogBefore = await raw(page);

@@ -28,6 +28,7 @@ const viewports = [
   { name: 'desktop-1920', width: 1920, height: 1080, columns: 4 },
   // This is an available CONTENT viewport, not a fabricated browser sidebar.
   { name: 'sidebar-budget-1720', width: 1720, height: 1056, columns: 4 },
+  { name: 'desktop-1648', width: 1648, height: 1000, columns: 4 },
   { name: 'desktop-1440', width: 1440, height: 900, columns: 4 },
   { name: 'desktop-1280', width: 1280, height: 800, columns: 4 },
   { name: 'desktop-1024', width: 1024, height: 768, columns: 3 },
@@ -93,8 +94,8 @@ async function layout(target) {
       cssViewport: { width: innerWidth, height: innerHeight, clientWidth: document.documentElement.clientWidth, clientHeight: document.documentElement.clientHeight },
       devicePixelRatio, pointer: { coarse: matchMedia('(pointer:coarse)').matches, fine: matchMedia('(pointer:fine)').matches, hover: matchMedia('(hover:hover)').matches, maxTouchPoints: navigator.maxTouchPoints }, visualViewport: window.visualViewport ? { width: visualViewport.width, height: visualViewport.height, scale: visualViewport.scale } : null,
       documentWidth: document.documentElement.scrollWidth, main: rect(main), topbar: rect(topbar), topbarContent: { left: topbar.getBoundingClientRect().left + parseFloat(topStyle.paddingLeft), right: topbar.getBoundingClientRect().right - parseFloat(topStyle.paddingRight) },
-      brand: rect(document.querySelector('#home')), search: rect(document.querySelector('#search-trigger')), settings: rect(document.querySelector('#settings-trigger')), heading: rect(document.querySelector('.board-heading')),
-      projectGrid: grid('#workspace-content > section[aria-label="项目"] > .project-grid'), dateGrid: grid('.date-grid'), cards, dates, rail: shown(rail) ? rect(rail) : null,
+      brand: rect(document.querySelector('#home')), mode: rect(document.querySelector('#mode-toggle')), search: rect(document.querySelector('#search-trigger')), settings: rect(document.querySelector('#settings-trigger')), heading: rect(document.querySelector('.board-heading')), content: rect(document.querySelector('#workspace-content')),
+      projectGrid: grid('#workspace-content > section[aria-label="项目"] > .project-grid'), dateGrid: grid(document.querySelector('.spatial-date-list') ? '.spatial-date-list' : '.date-grid'), cards, dates, rail: shown(rail) ? rect(rail) : null,
       bookmarks: shown(document.querySelector('#bookmarks-home')) ? { root: rect(document.querySelector('#bookmarks-home')), shelf: rect(document.querySelector('.bookmark-shelf')), visible: visibleBookmarks.map(el => ({ id: el.dataset.bookmarkId, ...rect(el) })), expanded: document.querySelector('#bookmark-toggle')?.getAttribute('aria-expanded') } : null,
       titleWidths, hitErrors,
       visibleRowsInFirstScreen: all('.conversation-open').filter(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }).length,
@@ -116,8 +117,8 @@ function assertGeometry(label, state, expectedColumns) {
   const columns = state.projectGrid?.tracks.length || state.dateGrid?.tracks.length;
   check(`LAYOUT-${label}-columns`, columns === expectedColumns, { columns, expectedColumns, main: state.main.width, viewport: state.cssViewport });
   check(`LAYOUT-${label}-horizontal-overflow`, state.documentWidth <= state.cssViewport.width + 1, { document: state.documentWidth, viewport: state.cssViewport.width });
-  check(`LAYOUT-${label}-shared-grid`, !state.projectGrid || !state.dateGrid || state.projectGrid.tracks.length === state.dateGrid.tracks.length && Math.abs(state.projectGrid.width - state.dateGrid.width) < 1 && state.projectGrid.tracks.every((v, i) => Math.abs(v - state.dateGrid.tracks[i]) < 1), 'Projects and dates share the same available horizontal grid.');
-  check(`LAYOUT-${label}-toolbar-alignment`, Math.abs(state.brand.left - state.main.left) <= 2 && Math.abs(state.settings.right - state.main.right) <= 2, { brand: state.brand.left, settings: state.settings.right, main: [state.main.left, state.main.right] });
+  check(`LAYOUT-${label}-shared-grid`, !state.projectGrid || !state.dateGrid || state.projectGrid.tracks.length === state.dateGrid.tracks.length && Math.abs(state.projectGrid.width - state.dateGrid.width) < 1 && state.projectGrid.tracks.every((v, i) => Math.abs(v - state.dateGrid.tracks[i]) < 1), 'Project cards and the conversations inside each full-width date group share the horizontal grid.');
+  check(`LAYOUT-${label}-toolbar-alignment`, Math.abs(state.mode.left - state.main.left) <= 2 && Math.abs(state.settings.right - state.main.right) <= 2, { mode: state.mode.left, settings: state.settings.right, main: [state.main.left, state.main.right] });
   check(`LAYOUT-${label}-title-access`, state.titleWidths.every(t => t.fontSize >= 13 && t.width >= 120 && t.title === t.text && t.accessible?.includes(t.text)), { minWidth: Math.min(...state.titleWidths.map(t => t.width)), minFont: Math.min(...state.titleWidths.map(t => t.fontSize)) });
   check(`LAYOUT-${label}-controls-unobscured`, state.hitErrors.length === 0, state.hitErrors);
   if (state.rail) check(`LAYOUT-${label}-rail-reserved`, state.rail.left >= state.main.right + 7 || state.rail.top >= Math.max(state.main.bottom, state.heading?.bottom || 0), { main: state.main, rail: state.rail });
@@ -257,7 +258,7 @@ async function interactions(info) {
   await page.locator('#bookmark-toggle').click();
   await page.waitForFunction(() => document.querySelector('#bookmark-toggle').getAttribute('aria-expanded') === 'true');
   const bookmarkState = await layout(page);
-  check('LAYOUT-bookmarks-expand-flow', bookmarkState.heading.top >= bookmarkState.bookmarks.shelf.bottom - 1, 'Expanded bookmarks remain in normal flow and do not cover the workspace.');
+  check('LAYOUT-bookmarks-expand-flow', bookmarkState.content.top >= bookmarkState.bookmarks.shelf.bottom - 1, 'Expanded bookmarks remain in normal flow and do not cover the workspace.');
   check('LAYOUT-bookmarks-order', JSON.stringify(await page.locator('#bookmark-root-list > [data-bookmark-id]').evaluateAll(nodes => nodes.map(n => n.dataset.bookmarkId))) === JSON.stringify(info.bookmarks.ids), 'Original native bookmark order is unchanged.');
   await capture('bookmarks-expanded', 'after');
   await page.locator('#bookmark-toggle').click();
@@ -324,7 +325,7 @@ try {
       const state = await capture(name, version);
       if (name === 'dense') await capture('dense-full', version, page, true);
       if (version === 'after' && name === 'sparse') {
-        check('LAYOUT-sparse-preserves-empty-track', state.projectGrid.tracks.length === 4 && state.cards.length === 3 && state.cards.every(c => c.width >= 260 && c.width <= 300), { grid: state.projectGrid, cards: state.cards });
+        check('LAYOUT-sparse-preserves-empty-track', state.projectGrid.tracks.length === 4 && state.cards.length === 3 && state.cards.every(c => c.width >= 260 && Math.abs(c.width - state.projectGrid.tracks[0]) <= 1), { grid: state.projectGrid, cards: state.cards });
         check('LAYOUT-natural-card-heights', new Set(state.cards.map(c => c.height)).size > 1, state.cards.map(c => c.height));
       }
       if (version === 'after' && name === 'dense') {

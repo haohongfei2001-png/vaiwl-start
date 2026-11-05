@@ -135,6 +135,23 @@ try {
     await page.locator('#recent-toggle-more').click();
     check(`R5-${selectedTheme}-more-real-groups`,await page.locator('.spatial-date-band').count()>initialDates.length,'Disclosure expands remaining groups in this period.');
     await page.locator('#recent-toggle-more').click();
+    check(`R2-${selectedTheme}-home-absent-at-latest-all`,await page.locator('#workspace-home').count()===0,'No redundant reset control at the latest unfiltered workspace.');
+    await page.locator('#period-older').click();
+    await page.locator('[data-filter="project"]').click();
+    await until(()=>page.evaluate(()=>!document.querySelector('#period-newer').disabled&&document.querySelector('[data-filter="project"]')?.getAttribute('aria-selected')==='true'),'historical Project filter');
+    const home=page.locator('#workspace-home');
+    check(`R2-${selectedTheme}-home-accessible-in-history`,await home.isVisible()&&await home.getAttribute('aria-label')==='回到最新并显示全部工作','The compact home control explains both period and filter reset.');
+    await home.click();
+    await until(()=>page.evaluate(()=>document.querySelector('#period-newer').disabled&&document.querySelector('[data-filter="all"]')?.getAttribute('aria-selected')==='true'),'latest all workspace restored');
+    const returned=await page.evaluate(()=>{
+      const nav=document.querySelector('.spatial-period');
+      return {latest:document.querySelector('#period-newer').disabled,all:document.querySelector('[data-filter="all"]')?.getAttribute('aria-selected')==='true',
+        focus:document.activeElement?.getAttribute('data-filter'),home:!!document.querySelector('#workspace-home'),
+        projects:document.querySelectorAll('.spatial-project-grid > .project').length,recent:!!document.querySelector('.recent-section'),
+        navigation:[nav.textContent,...[nav,...nav.querySelectorAll('*')].flatMap(n=>[n.getAttribute('title')||'',n.getAttribute('aria-label')||''])].join(' ')};
+    });
+    check(`R2-${selectedTheme}-home-restores-latest-all-and-focus`,returned.latest&&returned.all&&returned.focus==='all'&&!returned.home&&returned.projects>0&&returned.recent,returned);
+    check(`R2-${selectedTheme}-home-keeps-range-settings-only`,!/(?:近|更早|最近)\s*(?:7|30|90)\s*天|\d{4}-\d{2}-\d{2}\s*[—–至]/.test(returned.navigation),returned.navigation);
     await settings(page); await page.locator('[data-project-layout-choice="equal"]').click(); await stored('native.projectLayout','equal');
     const settingsChrome=await page.evaluate(()=>{
       const dialog=document.querySelector('#settings-dialog'), header=dialog.querySelector('.settings-header'), close=header.querySelector('button');
@@ -147,7 +164,7 @@ try {
     const equal=await geometry(page); measurements.push({theme:selectedTheme,mode:'equal',...equal});
     check(`R6-${selectedTheme}-equal-exterior`,equal.cards.every(c=>Math.abs(c.h-equal.cards[0].h)<1&&Math.abs(c.w-equal.cards[0].w)<1),equal);
     await settings(page);await page.locator('[data-project-layout-choice="adaptive"]').click();await stored('native.projectLayout','adaptive');await closeSettings(page);
-    for(const width of [1720,1440,1280,960,768,390]) {
+    for(const width of [1920,1720,1648,1440,1280,960,768,390]) {
       await page.setViewportSize({width,height:1000});
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       await until(async()=>{const g=await geometry(page);const w=(g.gridWidth-g.gap*(g.columns-1))/g.columns;return g.gridMode==='adaptive'&&g.cards.length>0&&g.cards.every(c=>Math.abs(c.w-w)<1)},'layout after viewport change');

@@ -1,5 +1,14 @@
-name: Optional home theme
+name: Home workspace design
 on:
+  push:
+    branches: [codex/free-v1-implementation]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'package*.json'
+      - '.github/workflows/home-theme.yml'
   pull_request:
     branches: [main]
     paths:
@@ -40,7 +49,7 @@ jobs:
   browsers:
     name: Installed ${{ matrix.browser }} theme and regressions
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -70,6 +79,28 @@ jobs:
       - run: sudo apt-get install -y fonts-noto-cjk
       - run: npm run build
         id: build
+      - name: Build the preserved design baseline
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          baseline_dir="$RUNNER_TEMP/vaiwl-workspace-before"
+          git worktree add --detach "$baseline_dir" 549f1e2794784586326ce114d98abbd3d36e2458
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$baseline_dir/node_modules"
+          cd "$baseline_dir"
+          node scripts/build.mjs
+      - name: Five-width design matrix and sparse/dense browser screenshots
+        run: node tests/browser/workspace-design.mjs
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          VAIWL_WORKSPACE_BASELINE_DIST: ${{ runner.temp }}/vaiwl-workspace-before/dist
+      - name: Publish reviewable design screenshots early
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workspace-design-${{ matrix.family }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/workspace-design/
+            artifacts/*workspace-design-validation.json
+          if-no-files-found: error
       - name: Installed extension theme switching and responsive layouts
         run: node tests/browser/home-theme.mjs
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -80,7 +111,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           failed=0
-          for test in settings-consumer layout-responsive home-workspace life-bookmarks; do
+          for test in task-glance settings-consumer layout-responsive home-workspace life-bookmarks; do
             node "tests/browser/$test.mjs" || failed=1
           done
           exit "$failed"

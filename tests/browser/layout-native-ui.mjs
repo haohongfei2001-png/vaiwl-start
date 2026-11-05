@@ -69,7 +69,7 @@ async function observation() {
       documentWidth: document.documentElement.scrollWidth,
       main: rect('.workspace'), topbar: rect('.topbar'), rail: rect('#history-rail'),
       projectColumns: getComputedStyle(document.querySelector('.project-grid')).gridTemplateColumns.split(' ').map(parseFloat),
-      dateColumns: getComputedStyle(document.querySelector('.date-grid')).gridTemplateColumns.split(' ').map(parseFloat),
+      dateColumns: getComputedStyle(document.querySelector('.spatial-date-list')).gridTemplateColumns.split(' ').map(parseFloat),
     };
   });
 }
@@ -127,7 +127,7 @@ async function capture(id, claim) {
   check(`${id}-pixels`, 'PASS', { attempts: attempts.length, proof: attempts.at(-1).proof, file });
   const fits = measured.documentWidth <= measured.cssViewport.width + 1
     && measured.main.right <= measured.cssViewport.width + 1
-    && measured.rail.left >= measured.main.right + 3
+    && (!measured.rail || measured.rail.left >= measured.main.right + 3)
     && Math.abs(measured.topbar.left - measured.main.left) < 1;
   check(`${id}-geometry`, fits ? 'PASS' : 'FAIL', measured);
   return measured;
