@@ -1,5 +1,6 @@
 import { SOURCE_ERRORS } from './failures.js';
 import type { NativeTask, NativeResult, SourcePacket } from './types.js';
+export const TASK_ADAPTER_VERSION = 'chatgpt-native-task/2';
 const record = (x: unknown): x is Record<string, any> => !!x && typeof x === 'object' && !Array.isArray(x);
 export const id = (x: unknown): x is string => typeof x === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(x);
 export const uuid = (x: unknown): x is string => typeof x === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(x);
@@ -22,21 +23,26 @@ export function taskResults(data: unknown, taskId: string, conversationId: strin
   if (!record(data) || data.conversation_id !== conversationId || !record(data.mapping) || !id(data.current_node)) throw Error('SOURCE_CHANGED');
   const seen = new Set<string>(), results = new Map<string, NativeResult>();
   let nodeId: string | null = data.current_node;
-  while (nodeId && !seen.has(nodeId) && seen.size < 20000) {
+  while (nodeId) {
+    // A broken active branch is an adapter failure, not a successful empty read.
+    if (seen.has(nodeId) || seen.size >= 20000) throw Error('SOURCE_CHANGED');
     seen.add(nodeId);
-    const node: any = data.mapping[nodeId]; if (!record(node)) break;
+    const node: any = data.mapping[nodeId];
+    if (!record(node) || !(node.parent === null || id(node.parent))) throw Error('SOURCE_CHANGED');
     const m = node.message, meta = m?.metadata;
     if (record(m) && record(meta) && meta.automation_id === taskId && m.author?.role === 'assistant'
       && m.channel === 'final' && m.recipient === 'all' && m.end_turn === true && meta.is_complete === true
-      && m.status === 'finished_successfully' && meta.is_visually_hidden_from_conversation !== true
-      && m.content?.content_type === 'text' && Array.isArray(m.content.parts)
-      && m.content.parts.every((p: unknown) => typeof p === 'string') && id(m.id)
-      && typeof m.create_time === 'number' && Number.isFinite(m.create_time)) {
+      && m.status === 'finished_successfully' && meta.is_visually_hidden_from_conversation !== true) {
+      if (m.content?.content_type !== 'text' || !Array.isArray(m.content.parts)
+        || !m.content.parts.every((p: unknown) => typeof p === 'string') || !id(m.id)
+        || typeof m.create_time !== 'number' || !Number.isFinite(m.create_time)
+        || !Number.isFinite(new Date(m.create_time * 1000).getTime())) throw Error('SOURCE_CHANGED');
       const body = m.content.parts.join('\n\n');
+      if (body.length > 1_000_000) throw Error('SOURCE_CHANGED');
       const createdAt = new Date(m.create_time * 1000).toISOString();
       const turnId = id(meta.working_turn_id) ? meta.working_turn_id : null;
       const key = turnId || m.id;
-      if (body.trim() && body.length <= 1_000_000 && !results.has(key)) results.set(key, {
+      if (body.trim() && !results.has(key)) results.set(key, {
         taskId, conversationId, messageId: m.id, turnId, createdAt, body, complete: true,
       });
     }

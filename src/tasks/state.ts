@@ -1,8 +1,8 @@
 import { ingest, project } from '../../research/chatgpt-tasks/result-model.mjs';
 import { recordFailure, recoverSource } from './failures.js';
-import type { CatalogTask, NativeTask, SourcePacket, TaskState, TaskView } from './types.js';
+import type { CatalogTask, NativeTask, ResultView, SourcePacket, TaskControlState, TaskState, TaskView } from './types.js';
 export function taskKey(principal: string, task: NativeTask): string { return JSON.stringify([principal,task.team_id,task.id]); }
-export function selectedKeys(state: TaskState): string[] {
+export function selectedKeys(state: TaskControlState): string[] {
   if (!state.principal) return [];
   const available = Object.values(state.catalog).filter(c=>c.scope.accountId.startsWith(state.principal! + ':'));
   const saved = state.settings.selections[state.principal];
@@ -16,13 +16,18 @@ export function applyPacket(state: TaskState, principal: string, packet: SourceP
     const coverage = state.coverage[principal] ||= {filters:{},at:null};
     if (!coverage.filters[packet.filter] || packet.observedAt > coverage.filters[packet.filter].observedAt) coverage.filters[packet.filter]={cursor:packet.cursor,observedAt:packet.observedAt,firstPage:packet.firstPage};
     coverage.at = packet.observedAt > (coverage.at || '') ? packet.observedAt : coverage.at;
+    const batches = new Map<string, { scope: CatalogTask['scope']; tasks: NativeTask[] }>();
     for (const task of packet.tasks) {
       const key=taskKey(principal,task), old=state.catalog[key];
       if (old && old.observedAt >= packet.observedAt) continue;
       const scope={provider:'chatgpt',profileId:'browser-profile',accountId:principal+':'+(task.team_id || 'personal')};
       state.catalog[key]={key,scope,task,observedAt:packet.observedAt,resultSyncedAt:old?.resultSyncedAt || null,readOutcome:old?.readOutcome};
-      state.model=ingest(state.model,{scope,observedAt:packet.observedAt,tasks:[task]});
+      const group = JSON.stringify(scope);
+      if (!batches.has(group)) batches.set(group, { scope, tasks: [] });
+      batches.get(group)!.tasks.push(task);
     }
+    // The inherited immutable model clones once per scope, not once per task.
+    for (const batch of batches.values()) state.model=ingest(state.model,{...batch,observedAt:packet.observedAt});
   } else {
     const matches=Object.values(state.catalog).filter(c=>c.scope.accountId.startsWith(principal+':') && c.task.id===packet.taskId && c.task.conversation_id===packet.conversationId);
     if(matches.length!==1)throw Error('TASK_NOT_DISCOVERED');
@@ -30,16 +35,17 @@ export function applyPacket(state: TaskState, principal: string, packet: SourceP
     if (entry.resultSyncedAt && packet.observedAt < entry.resultSyncedAt) return state;
     const version = () => { const t=project(state.model,entry.scope,{now:packet.observedAt}).tasks.find((t:any)=>t.taskId===entry.task.id); return JSON.stringify([t?.latestAvailableResult?.runId,t?.latestAvailableResult?.revision]); };
     const before=version();
-    for (const result of packet.results) {
+    const observations = packet.results.map(result => {
       // Native turn IDs are real stable output associations, NOT scheduler run IDs.
       // No attempt start, completion time or scheduler status is invented.
       const runId=result.turnId ? 'turn:'+result.turnId : 'message:'+result.messageId;
-      state.model=ingest(state.model,{scope:entry.scope,observedAt:packet.observedAt,tasks:[{...entry.task,run_details:{
+      state.sourceEvidence[JSON.stringify([entry.key,runId])] = {messageId:result.messageId,turnId:result.turnId,conversationId:result.conversationId,complete:result.complete};
+      return {...entry.task,run_details:{
         latest_result:{run_id:runId,created_at:result.createdAt,content_text:result.body,content_truncated:!result.complete,
           chat_ref:{type:'chatgpt',id:result.conversationId}},
-      }}]});
-      state.sourceEvidence[JSON.stringify([entry.key,runId])] = {messageId:result.messageId,turnId:result.turnId,conversationId:result.conversationId,complete:result.complete};
-    }
+      }};
+    });
+    if (observations.length) state.model=ingest(state.model,{scope:entry.scope,observedAt:packet.observedAt,tasks:observations});
     entry.readOutcome=!packet.results.length?'empty':before===version()?'unchanged':'updated';
     entry.resultSyncedAt=packet.observedAt > (entry.resultSyncedAt || '') ? packet.observedAt : entry.resultSyncedAt;
   }
@@ -61,11 +67,34 @@ export function projectTasks(state: TaskState, includeBodies=false): TaskView[] 
     const scopeKey=JSON.stringify(entry.scope);
     if(!views.has(scopeKey)) views.set(scopeKey,project(state.model,entry.scope,{now:new Date().toISOString(),includeBodies}));
     const task=views.get(scopeKey).tasks.find((t:any)=>t.taskId===entry.task.id);
+    if (!includeBodies && task) for (const field of ['currentResult','latestAvailableResult','lastValuableResult']) {
+      // Detail owns source expansion. A homepage snapshot stays bounded even when
+      // a long report contains thousands of literal links.
+      if (task[field]) task[field] = {...task[field], sourceUrls: task[field].sourceUrls.slice(0,20)};
+    }
     return {...task,key:entry.key,selected:selected.has(entry.key),readable:!!entry.task.conversation_id,resultSyncedAt:entry.resultSyncedAt,readOutcome:entry.readOutcome,
       sourceUrl: entry.task.conversation_id ? `https://chatgpt.com/c/${entry.task.conversation_id}?automationId=${entry.task.id}&messageId=finalAgentTurnStart` : 'https://chatgpt.com/scheduled'} as TaskView;
   }).sort((a,b)=>(b.latestAvailableResult?.createdAt || b.lastRunAt || '').localeCompare(a.latestAvailableResult?.createdAt || a.lastRunAt || '') || a.taskId.localeCompare(b.taskId));
 }
-export function listComplete(state: TaskState, since?: string): boolean {
+export function listComplete(state: TaskControlState, since?: string): boolean {
   const filters=state.principal && state.coverage[state.principal]?.filters;
   return !!filters && ['scheduled','paused','finished'].every(key=>filters[key]?.firstPage===true && filters[key]?.cursor===null && (!since || filters[key].observedAt>=since));
+}
+/** Read the exact revision the user clicked, even if a newer output arrived while
+ * the panel was open. The authoritative PR7 projection still supplies semantics. */
+export function projectTaskResult(state: TaskState, key: string, runId: string, revision: number): ResultView | null {
+  const entry = state.catalog[key];
+  if (!state.principal || !entry?.scope.accountId.startsWith(state.principal + ':')) return null;
+  const pair = Object.entries(state.model.scopes).find(([, bucket]) =>
+    bucket.scope.provider === entry.scope.provider && bucket.scope.profileId === entry.scope.profileId && bucket.scope.accountId === entry.scope.accountId);
+  if (!pair) return null;
+  const [scopeKey, bucket] = pair;
+  const task = Object.values<any>(bucket.tasks).find(task => task.id === entry.task.id);
+  const run = task && Object.values<any>(task.runs).find(run => run.id === runId);
+  const result = run?.results.find((result: any) => result.revision === revision);
+  if (!result) return null;
+  const isolated = { schemaVersion: 1 as const, scopes: { [scopeKey]: { ...bucket, tasks: { [task.key]: {
+    ...task, latestRunKey: run.key, runs: { [run.key]: { ...run, results: [result], latestResultRevision: revision } },
+  } } } } };
+  return project(isolated, entry.scope, { includeBodies: true }).tasks[0]?.latestAvailableResult || null;
 }
