@@ -1,10 +1,12 @@
 # vaiwl-start
 
-A new tab workspace for ChatGPT conversations and projects.
+A new tab workspace for ChatGPT conversations, projects and opt-in scheduled-task results.
+
+The task-results implementation inherits the unmodified PR #7 model and the shared homepage themes from PR #6. See [ChatGPT 定时任务：安装、同步与验证范围](docs/CHATGPT_TASKS.zh-CN.md).
 
 ## Free V1 development candidate
 
-Implemented on the sole `codex/free-v1-implementation` branch, in [Draft PR #1](https://github.com/haohongfei2001-png/vaiwl-start/pull/1). The candidate has a persistent local directory, bounded browser-history import, scoped data/transaction core, the frozen new-tab UI, website management, and loadable MV3 packaging.
+The original workspace implementation originated in [PR #1](https://github.com/haohongfei2001-png/vaiwl-start/pull/1); it is now part of `main`. This task-results candidate is on the independent `feat/chatgpt-task-home-20261104` branch. The candidate has a persistent local directory, bounded browser-history import, scoped data/transaction core, the frozen new-tab UI, website management, and loadable MV3 packaging.
 
 **LOCAL_WORKSPACE_READY:** imported UNKNOWN history remains organized into 30-day windows. Native Project pages, explicit Project conversation URLs and independently checked sidebar metadata now populate stable **locally observed native Projects**, including empty Projects, incremental members, renames and full-directory search. Local identity uses Profile + observed session principal, or an isolated document boundary when no principal is available. Formal membership remains UNKNOWN; current Workspace certification and full membership synchronization are separate capabilities. Start opening days, existing history, life mode and native bookmarks are preserved. See the [user-approved native Project amendment](docs/free-v1/13-NATIVE-PROJECT-LOCAL-AMENDMENT.md). Installed-extension fixtures do not certify the current signed-in ChatGPT source or imply FREE_V1_ACCEPTED.
 
@@ -31,6 +33,6 @@ Build: `npm ci && npm run verify`. Load `dist` as an unpacked extension. `npm ru
 
 ![VAIWL Start Free V1 desktop design](design/free-v1/desktop.png)
 
-The extension will keep a local, persistent directory of visited ChatGPT conversations, native projects, and user-managed website shortcuts. Free V1 does not read message bodies or depend on an AI API.
+The extension will keep a local, persistent directory of visited ChatGPT conversations, native projects, and user-managed website shortcuts. The ordinary conversation collector remains metadata-only. The separately enabled task adapter stores only explicitly task-tagged final AI output locally. Neither uses a paid AI API.
 
 The standalone homepage avoids the original VAIWL host-mount dependency. Reliable live account/context and explicit NONE membership sources remain required engineering gates, not capabilities proven by this design prototype. See the source matrix and acceptance criteria before making product readiness claims.

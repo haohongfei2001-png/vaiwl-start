@@ -400,7 +400,7 @@ try {
     window.__settingsBeforeLateBatchProbe = chrome.runtime.sendMessage.bind(chrome.runtime);
     window.__settingsCancelProbeJob = null; window.__settingsLateStepReply = null; window.__settingsPostStepSnapshot = null;
     chrome.runtime.sendMessage = async (...args) => {
-      const message = args[0], startsAfterLateStep = message?.command === 'SNAPSHOT' && !!window.__settingsLateStepReply;
+      const message = args[0], startsAfterLateStep = message?.protocol === 'vaiwl-start-internal/1' && message?.command === 'SNAPSHOT' && !!window.__settingsLateStepReply;
       const reply = await window.__settingsBeforeLateBatchProbe(...args);
       if (message?.command === 'IMPORT_STEP' && message.payload.jobId === window.__settingsCancelProbeJob) window.__settingsLateStepReply = { jobId: message.payload.jobId, ok: reply?.ok, code: reply?.code };
       if (startsAfterLateStep) window.__settingsPostStepSnapshot = { ok: reply?.ok, jobId: window.__settingsCancelProbeJob, state: reply?.data?.importJobs?.find(job => job.id === window.__settingsCancelProbeJob)?.state };
@@ -411,6 +411,7 @@ try {
   const cancelledInFlightId = await page.locator('[data-import-cancel]').getAttribute('data-import-cancel');
   await page.evaluate(id => { window.__settingsCancelProbeJob = id; }, cancelledInFlightId);
   await waitForAsync(worker, () => globalThis.__settingsHeldSearches.length > 0);
+  check('SC-immediate-next-import-starts', (await command('SNAPSHOT')).importJobs.some(job=>job.id===cancelledInFlightId&&job.state==='running'), 'Starting a different import immediately after completion reaches the native history read even while the previous driver finishes its last render delay.');
   await page.locator('[data-import-cancel]').click();
   await waitForAsync(page, async () => { const r = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} }); return r.ok && r.data.importJobs.some(j => j.state === 'cancelled'); });
   await worker.evaluate(() => { chrome.history.search = globalThis.__settingsHistorySearch; for (const release of globalThis.__settingsHeldSearches.splice(0)) release(); });
@@ -434,7 +435,7 @@ try {
     window.__settingsBeforeCancelledRead = chrome.runtime.sendMessage.bind(chrome.runtime);
     window.__settingsBeforeCancelledRequest = chrome.permissions.request.bind(chrome.permissions);
     window.__settingsCancelledAuthorizationRequests = 0; window.__settingsCommands = [];
-    chrome.runtime.sendMessage = async (...args) => { const reply = await window.__settingsBeforeCancelledRead(...args); if (args[0]?.command === 'SNAPSHOT' && reply?.ok) reply.data.capabilities.history = false; return reply; };
+    chrome.runtime.sendMessage = async (...args) => { const reply = await window.__settingsBeforeCancelledRead(...args); if (args[0]?.protocol === 'vaiwl-start-internal/1' && args[0]?.command === 'SNAPSHOT' && reply?.ok) reply.data.capabilities.history = false; return reply; };
     chrome.permissions.request = async value => { if (value.permissions?.includes('history')) { window.__settingsCancelledAuthorizationRequests++; return false; } return window.__settingsBeforeCancelledRequest(value); };
   });
   await section('workspace'); await page.locator('#settings-import').click(); await page.locator('[data-import-authorize-resume]').waitFor();
@@ -503,7 +504,7 @@ try {
   await page.evaluate(() => {
     const original = chrome.runtime.sendMessage.bind(chrome.runtime); window.__settingsClearReadFaults = 0; let armed = false;
     chrome.runtime.sendMessage = async (...args) => {
-      if (args[0]?.command === 'SNAPSHOT' && armed) { armed = false; window.__settingsClearReadFaults++; return { ok: false, code: 'SYNTHETIC_READ_FAILED' }; }
+      if (args[0]?.protocol === 'vaiwl-start-internal/1' && args[0]?.command === 'SNAPSHOT' && armed) { armed = false; window.__settingsClearReadFaults++; return { ok: false, code: 'SYNTHETIC_READ_FAILED' }; }
       const reply = await original(...args); if (args[0]?.command === 'CLEAR_LOCAL' && reply?.ok) armed = true; return reply;
     };
   });

@@ -1,0 +1,33 @@
+name: ChatGPT task result research
+
+on:
+  push:
+    branches: [research/chatgpt-task-results-20261104]
+    paths:
+      - 'research/chatgpt-tasks/**'
+      - '.github/workflows/chatgpt-task-research.yml'
+  pull_request:
+    paths:
+      - 'research/chatgpt-tasks/**'
+      - '.github/workflows/chatgpt-task-research.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: task-result-research-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-model-tests:
+    name: Synthetic result semantics and isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run standalone research tests
+        run: node --test research/chatgpt-tasks/result-model.test.mjs

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 const manifest = JSON.parse(await readFile('dist/manifest.json', 'utf8'));
 assert.equal(manifest.manifest_version, 3);
 assert.deepEqual(manifest.permissions, ['storage', 'favicon', 'search']);
-assert.deepEqual(manifest.optional_permissions.sort(), ['bookmarks', 'history', 'scripting', 'webNavigation'].sort());
+assert.deepEqual(manifest.optional_permissions.sort(), ['alarms', 'bookmarks', 'history', 'scripting', 'webNavigation'].sort());
 assert.deepEqual(manifest.optional_host_permissions, ['https://chatgpt.com/*']);
 assert.equal(manifest.incognito, 'not_allowed');
 assert.equal(manifest.externally_connectable, undefined);
@@ -24,6 +24,13 @@ for (const name of bundles) {
   const inputs = Object.keys(sources[name].inputs);
   assert.ok(inputs.every(path => !/(?:node_modules|tests|fixtures|design\/|src\/pro)/.test(path)), 'production dependency graph includes unexpected source');
 }
+for (const name of ['tasks-main.js', 'tasks-content.js']) {
+  const code = await readFile('dist/' + name, 'utf8');
+  assert.ok(!/accessToken|Authorization|document\.cookie|chrome\.cookies|storage\.sync|new Function|eval\s*\(/.test(code), 'task adapter must not extract credentials: ' + name);
+}
+const taskMain = await readFile('dist/tasks-main.js', 'utf8');
+assert.ok(taskMain.includes('automation_id') && taskMain.includes('is_complete') && taskMain.includes('final'));
+assert.ok(!/fetch\s*\(/.test(taskMain), 'task main bridge only observes native requests');
 const content = await readFile('dist/content.js', 'utf8');
 assert.ok(content.includes('/api/auth/session') && content.includes('/backend-api/accounts/check/v4-2023-04-27'));
 assert.ok(!content.includes('indexedDB') && !content.includes('chrome.history'));
@@ -32,6 +39,6 @@ for (const [path, hash] of Object.entries(fingerprint.files)) assert.equal(creat
 assert.equal(fingerprint.sourceGate, 'LOCAL_WORKSPACE_READY');
 assert.equal(fingerprint.nativeAttribution, 'UNVERIFIED');
 assert.ok((await readdir('dist')).every(name => !/fixture|demo|\.map$/.test(name)));
-const result = { status: 'PASS', buildSha: fingerprint.sha, dirty: fingerprint.dirty, checks: ['minimal-permissions', 'strict-CSP-no-inline-script', 'no-content-endpoint-or-body-read', 'no-runtime-dependencies', 'content-no-db-or-history', 'no-production-fixtures', 'package-hashes', 'local-capability-and-unverified-native-attribution-separated'] };
+const result = { status: 'PASS', buildSha: fingerprint.sha, dirty: fingerprint.dirty, checks: ['minimal-permissions', 'strict-CSP-no-inline-script', 'legacy-metadata-remains-body-free', 'task-only-final-output-adapter-no-credential-extraction', 'no-runtime-dependencies', 'content-no-db-or-history', 'no-production-fixtures', 'package-hashes', 'local-capability-and-unverified-native-attribution-separated'] };
 await writeFile('artifacts/privacy-audit.json', JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result));

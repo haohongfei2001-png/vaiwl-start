@@ -1,3 +1,4 @@
+import { initTaskResults } from './task-results.js';
 import { initNativeExperience } from './native-experience.js';
 import { initSettingsView, type SettingsPage } from './settings-view.js';
 import { HOME_MODE_KEY, homeMode as normalizeHomeMode, type HomeMode } from '../domain/home-mode.js';
@@ -21,6 +22,7 @@ interface UISnapshot extends CatalogSnapshot {
 }
 type Filter = 'all' | 'project' | 'none';
 interface DisplayProject { key: string; nativeTitle: string | null; canonicalUrl: string; stableRank?: number }
+const taskResults = initTaskResults();
 const view = readView();
 const spatialView = readSpatialView();
 let activeHomeTheme: HomeTheme = 'classic';
@@ -647,7 +649,15 @@ async function pumpImport(): Promise<void> {
     if (workspaceAccessAllowed() && requestedModeEpoch === modeEpoch && (activeJobId || latestJob()?.id) === stepJobId
       && (refreshFailed || current?.state === 'running')) fail(error);
   }
-  finally { importPumping = false; }
+  finally {
+    importPumping = false;
+    // A user can start a new import while the previous driver's final paint
+    // delay is still pending. Hand that different job over instead of losing
+    // its start request; a failed batch of the same job is never auto-retried.
+    const next = latestJob();
+    if (requestedModeEpoch === modeEpoch && next?.state === 'running' && next.id !== stepJobId
+      && workspaceAccessAllowed() && !stopped && !document.hidden) void pumpImport();
+  }
 }
 
 function changePeriod(delta: number): void {
@@ -858,6 +868,7 @@ window.addEventListener('resize', () => { if (homeMode === 'workspace' && snapsh
 const nativeExperience = initNativeExperience({ shortcuts: () => snapshot?.shortcuts ?? [], legacyAvailable: () => workspaceAccessAllowed() && settingsView.isOpen && settingsView.page === 'legacy' && !!snapshot, preserve: preservePosition });
 
 function releaseSettingsWorkspace(): void {
+  taskResults.setContext(homeMode, false);
   settingsWorkspaceAccess = false; unsubscribeSettings?.(); unsubscribeSettings = null;
   if (homeMode === 'life') {
     ++refreshSequence;
@@ -868,6 +879,7 @@ function releaseSettingsWorkspace(): void {
   }
 }
 async function visitSettings(page: SettingsPage): Promise<void> {
+  taskResults.setContext(homeMode, page === 'workspace');
   if (page === 'newtab') { void homeTheme.refresh(); void homePreferences.refresh(); }
   const sequence = ++settingsVisit;
   const needsWorkspace = ['workspace', 'data', 'legacy', 'diagnostics'].includes(page);
@@ -957,6 +969,7 @@ function applyHomeMode(next: HomeMode): void {
   byId('life-content').hidden = true;
   clearWorkspaceSurface(); clearTimeout(clockTimer);
   homeMode = next; modeLoading = next === 'workspace';
+  taskResults.setContext(next);
   document.documentElement.dataset.homeMode = next;
   document.documentElement.dataset.startReady = next === 'life' ? 'true' : 'false';
   byId('mode-loading').hidden = true;

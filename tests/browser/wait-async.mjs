@@ -6,8 +6,9 @@ export async function waitForAsync(page, predicate, arg, options = {}) {
   const timeout = options.timeout ?? 30000;
   if (!Number.isFinite(timeout) || timeout <= 0) throw Error('Invalid async wait timeout');
   let stopped = false, timer;
+  const timeoutError = Error(`Asynchronous browser condition not satisfied within ${timeout} ms`);
   const expired = new Promise((_, reject) => {
-    timer = setTimeout(() => { stopped = true; reject(Error(`Asynchronous browser condition not satisfied within ${timeout} ms`)); }, timeout);
+    timer = setTimeout(() => { stopped = true; reject(timeoutError); }, timeout);
   });
   try {
     return await Promise.race([expired, (async () => {

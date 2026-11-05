@@ -14,7 +14,8 @@
     "history",
     "scripting",
     "webNavigation",
-    "bookmarks"
+    "bookmarks",
+    "alarms"
   ],
   "optional_host_permissions": [
     "https://chatgpt.com/*"
