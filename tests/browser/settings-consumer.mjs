@@ -509,7 +509,7 @@ try {
   });
   await section('data'); await page.locator('#clear-local').click(); await page.locator('#confirm-clear').click();
   await page.locator('#clear-dialog').waitFor({ state: 'hidden' });
-  await page.waitForFunction(() => window.__settingsClearReadFaults === 1 && document.querySelector('#settings-status').textContent.includes('操作已完成'));
+  await page.waitForFunction(() => window.__settingsClearReadFaults === 1 && /操作已完成|本地数据已清除/.test(document.querySelector('#settings-status').textContent));
   check('SC-clear-success-survives-followup-read-failure', !/已有数据仍保留|操作没有完成/.test(await page.locator('#settings-status').textContent()), 'The real Clear succeeds; exactly its first subsequent SNAPSHOT is rejected. The confirmation closes and the UI acknowledges completion instead of falsely claiming that deleted data remains.');
   await waitForAsync(page, async () => { const r = await chrome.runtime.sendMessage({ protocol: 'vaiwl-start-internal/1', operationId: crypto.randomUUID(), expectedRevision: 0, command: 'SNAPSHOT', payload: {} }); return r.ok && !r.data.conversations.length && !r.data.shortcuts.length && !r.data.tombstones.length && !r.data.importJobs.length; });
   const cleared = await raw(), nativeAfterClear = await page.evaluate(() => chrome.storage.local.get(['native.title', 'native.icon', 'native.bookmarks', 'native.homeMode']));

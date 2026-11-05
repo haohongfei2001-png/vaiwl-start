@@ -4,7 +4,9 @@ import type { ConversationRecord, NativeTimeOrderEvidence, ProjectRecord, Verifi
 import type { CatalogSnapshot } from '../../src/storage/repository.js';
 import { projectCatalog, searchCatalog, searchProjects } from '../../src/domain/projection.js';
 import { deriveDisplayTimes } from '../../src/domain/time-evidence.js';
-import { createFreeViewSession } from '../../src/domain/time.js';
+import { createFreeViewSession, PERIOD_DAYS } from '../../src/domain/time.js';
+import { selectRecentPresentation } from '../../src/domain/recent-presentation.js';
+import { recentDisplayGroups } from '../../src/ui/recent-groups.js';
 
 const NOW = '2026-11-03T12:00:00.000Z';
 const view = { ...createFreeViewSession({ now: NOW, timeZone: 'UTC' }), selectedScope: 'a', k: 0, now: NOW };
@@ -168,6 +170,37 @@ test('same-name Projects remain separate and a tombstoned child cannot be resurr
   assert.equal(result.projects.length, 1); assert.equal(result.undatedProjects.length, 1);
   assert.equal(searchProjects(data, 'Research', 'a').length, 2); assert.equal(searchCatalog(data, 'second', 'a').length, 0);
 });
+
+for (const H of PERIOD_DAYS) {
+  test(`${H}-day interval inference requires both bounds within the same period and preserves source facts`, () => {
+    const newer = anchor(row('newer', null), H + 1), unknown = row('unknown', null), older = anchor(row('older', null), H + 3);
+    const data = snapshot([newer, unknown, older], [], [order(['newer', 'unknown', 'older'])]);
+    const before = JSON.stringify(data);
+    const result = projectCatalog(data, { ...view, H, k: 1 });
+    assert.deepEqual(keys(result.segmentOnly), ['unknown']);
+    assert.equal(result.displayTimes.get('unknown')!.at, null);
+    assert.equal(result.displayTimes.get('unknown')!.date, null);
+    assert.equal(JSON.stringify(data), before);
+    const boundaryNewer = anchor(row('boundary-newer', null), H - 1), boundaryOlder = anchor(row('boundary-older', null), H);
+    const crossing = deriveDisplayTimes([boundaryNewer, unknown, boundaryOlder], { ...view, H }, [order(['boundary-newer', 'unknown', 'boundary-older'])], 'profile');
+    assert.equal(crossing.get('unknown')!.segment, null);
+    assert.equal(crossing.get('unknown')!.date, null);
+  });
+
+  test(`${H}-day Recent pins cannot borrow prior-period, other-scope, or Project members`, () => {
+    const current = row('current', 1), old = row('old', H), member = row('member', 0, true), otherScope = row('other-scope', 0);
+    otherScope.owner = { kind: 'scoped', scopeKey: 'other' };
+    const data = snapshot([current, old, member, otherScope], [project()]);
+    const before = JSON.stringify(data), projection = projectCatalog(data, { ...view, H });
+    const groups = recentDisplayGroups([...projection.dates, ...projection.pendingDates], projection.segmentOnly, projection.displayTimes, 0);
+    const result = selectRecentPresentation(groups, ['current', 'old', 'member', 'other-scope'], '2026-11-03');
+    assert.deepEqual(result.primary.map(group => [group.kind, keys(group.records)]), [['pinned', ['current']]]);
+    assert.deepEqual(result.remaining, []);
+    assert.deepEqual(result.neutral, []);
+    assert.deepEqual(keys(projection.projects[0]!.recent), ['member']);
+    assert.equal(JSON.stringify(data), before);
+  });
+}
 test('raw discovery, refresh and project observation timestamps never become activity', () => {
   const record = row('discovered-today', null, true); record.firstSeenAt = record.lastSeenAt = record.titleObservedAt = NOW;
   const data = snapshot([record], [project()]), result = projectCatalog(data, view);

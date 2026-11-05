@@ -1,6 +1,54 @@
 /* Settings are scoped and inherit the homepage's shared visual tokens. */
+/* Homepage choices remain visible and usable in every theme. */
+.settings-center #home-theme-status[data-state="error"]{color:#9a4b35}
+.settings-center .home-theme-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.settings-center .home-theme-option{display:block;min-width:0;text-align:left;background:#fff;border:1px solid #dfe4dc;border-radius:10px;padding:10px;transition:border-color .15s,background .15s}
+.settings-center .home-theme-option:hover{border-color:#aebdac;background:#fbfcfa}
+.settings-center .home-theme-option[aria-pressed=true]{border-color:#3b6653;box-shadow:0 0 0 1px #3b6653;background:#f8fbf7}
+.settings-center .home-theme-option:focus-visible{outline:2px solid var(--focus,#3b6653);outline-offset:4px}
+.settings-center .home-theme-option[aria-disabled="true"]{cursor:wait;opacity:.7}
+.settings-center .home-theme-option-label{display:flex;gap:7px;align-items:center;padding:10px 1px 3px}
+.settings-center .home-theme-option-label strong{font-size:13px;font-weight:600}
+.settings-center .home-theme-default{font-size:10px;color:#68716b;background:#edf0ea;padding:1px 5px;border-radius:4px}
+.settings-center .home-theme-check{margin-left:auto;display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:#3b6653;color:white;font-size:10px;visibility:hidden}
+.settings-center .home-theme-option[aria-pressed=true] .home-theme-check{visibility:visible}
+.settings-center .home-theme-option small{display:block;font-size:11px;line-height:1.6;color:#68716b;padding-inline:1px}
+.settings-center .home-theme-preview{display:flex;height:91px;padding:9px 10px;background:#fafafa;border:1px solid #e6e9e3;border-radius:6px;gap:7px;flex-direction:column;overflow:hidden}
+.settings-center .theme-mini-header{display:flex;justify-content:space-between;align-items:center;padding-bottom:6px;border-bottom:1px solid #e7eae5}
+.settings-center .theme-mini-header i:first-child{width:23px;height:4px;border-radius:2px;background:#566158}
+.settings-center .theme-mini-header i:last-child{width:45px;height:7px;border:1px solid #dde2d8;border-radius:3px;background:white}
+.settings-center .theme-mini-projects{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+.settings-center .theme-mini-projects i{height:31px;background:repeating-linear-gradient(to bottom,#e1e5de 0 1px,transparent 1px 6px) 5px 11px/calc(100% - 10px) 16px no-repeat #fff;border:1px solid #dfe4da;border-radius:3px;position:relative}
+.settings-center .theme-mini-projects i:before{content:"";position:absolute;top:4px;left:5px;width:11px;height:3px;background:#9ba994;border-radius:1px}
+.settings-center .theme-mini-history{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;min-height:13px}
+.settings-center .theme-mini-history i{height:13px;border-left:1px solid #cfd6c9;background:repeating-linear-gradient(to bottom,#e1e5dc 0 1px,transparent 1px 4px) 3px 0/calc(100% - 6px) 13px no-repeat}
+.settings-center .theme-preview-spatial{background:#f5f8f2}
+.settings-center .theme-preview-spatial .theme-mini-header{position:relative}
+.settings-center .theme-preview-spatial .theme-mini-header i:last-child{width:27px}
+.settings-center .theme-preview-spatial .theme-mini-history{grid-template-columns:1fr;gap:3px}
+.settings-center .theme-preview-spatial .theme-mini-history i{height:3px;border:0;border-bottom:1px solid #d7e0d2;background:none}
+.settings-center .theme-preview-workbench{display:grid;grid-template-columns:minmax(0,1fr) 27%;grid-template-rows:auto minmax(0,1fr);column-gap:9px;row-gap:6px;background:#f4f5f9;border-color:#e3e5ed}
+.settings-center .theme-preview-workbench .theme-mini-header{grid-column:1/-1;border-color:#e2e4ee}
+.settings-center .theme-preview-workbench .theme-mini-header i:first-child{background:#7c7a94}
+.settings-center .theme-preview-workbench .theme-mini-header i:last-child{width:27px;border-color:#dfe1ea}
+.settings-center .theme-preview-workbench .theme-mini-projects{grid-column:1;grid-row:2;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:4px}
+.settings-center .theme-preview-workbench .theme-mini-projects i{height:100%;min-height:18px;border-color:#e0e2ec;background:repeating-linear-gradient(to bottom,#e2e4ec 0 1px,transparent 1px 5px) 4px 10px/calc(100% - 8px) 10px no-repeat #fff}
+.settings-center .theme-preview-workbench .theme-mini-projects i:before{background:#aaa6bf;left:4px;width:8px;height:2px}
+.settings-center .theme-preview-workbench .theme-mini-history{grid-column:2;grid-row:2;display:flex;flex-direction:column;gap:5px;border-left:1px solid #dce0eb;padding-left:7px}
+.settings-center .theme-preview-workbench .theme-mini-history i{height:12px;flex:1;border:0;background:repeating-linear-gradient(to bottom,#d7d9e5 0 1px,transparent 1px 5px) 0 0/100% 12px no-repeat;position:relative}
+.settings-center .theme-preview-workbench .theme-mini-history i:before{content:"";position:absolute;width:3px;height:3px;left:-9px;top:0;border-radius:50%;background:#aaa4c5}
+.settings-center .theme-preview-folio{background:#fafaf6;border-color:#e4e5dc}
+.settings-center .theme-preview-folio .theme-mini-header i:last-child{width:27px}
+.settings-center .theme-preview-folio .theme-mini-projects{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.settings-center .theme-preview-folio .theme-mini-projects i{border:0;border-left:1px solid #d8ddd0;border-radius:0;background:repeating-linear-gradient(to bottom,#dfe3d7 0 1px,transparent 1px 6px) 6px 11px/calc(100% - 8px) 16px no-repeat}
+.settings-center .theme-preview-folio .theme-mini-projects i:before{width:2px;height:8px;left:-1px;top:0;background:#94a187;border-radius:0}
+.settings-center .theme-preview-folio .theme-mini-history{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.settings-center .theme-preview-folio .theme-mini-history i{border-left:0;border-top:1px solid #d8ddd0;background-position:0 4px;background-size:100% 10px}
+@media(max-width:440px){.settings-center .home-theme-options{gap:9px}.settings-center .home-theme-option{padding:8px}.settings-center .home-theme-preview{height:77px;padding:8px 7px}.settings-center .theme-mini-projects{gap:3px}.settings-center .home-theme-option small{font-size:10px}.settings-center .home-theme-default{display:none}}
+@media(prefers-reduced-motion:reduce){.settings-center .home-theme-option{transition:none}}
 .settings-center,.settings-detail-dialog{--settings-text:var(--text,#292a28);--settings-muted:var(--muted,#73756f);--settings-line:var(--line,#e9eae6);--settings-hover:var(--hover,#f3f4f1);color:var(--settings-text)}
-.settings-center{width:min(860px,calc(100vw - 48px));height:min(660px,calc(100dvh - 64px));max-width:none;max-height:none;border:1px solid var(--settings-line);border-radius:18px;overflow:hidden;box-shadow:0 24px 80px #22221e26;background:#fff}
+/* Keep focus/scrollIntoView from scrolling the dialog and hiding its header. */
+.settings-center{width:min(860px,calc(100vw - 48px));height:min(660px,calc(100dvh - 64px));max-width:none;max-height:none;border:1px solid var(--settings-line);border-radius:18px;overflow:clip;box-shadow:0 24px 80px #22221e26;background:#fff}
 .settings-center .settings-shell{height:100%;min-height:0;display:grid;grid-template-columns:184px minmax(0,1fr);grid-template-rows:70px minmax(0,1fr)}
 .settings-center .settings-header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid var(--settings-line)}
 .settings-center .settings-header h2{font-size:17px;line-height:1.4;font-weight:600;letter-spacing:.02em}

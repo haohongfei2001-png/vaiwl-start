@@ -76,6 +76,38 @@ test('a focused record leaving the current projection returns to its selected fi
   } finally { Object.assign(globals, previous); dom.window.close(); }
 });
 
+test('a modern-theme record or details control leaving the projection returns to the selected header filter', () => {
+  const dom = new JSDOM('<!doctype html><header><div id="theme-controls"><button data-filter="project" aria-selected="true">项目</button></div></header><main id="workspace-content"></main>', { pretendToBeVisual: true });
+  const globals = globalThis as any, previous = { document: globals.document, window: globals.window, CSS: globals.CSS };
+  globals.document = dom.window.document; globals.window = dom.window; globals.CSS = { escape: (value: string) => value };
+  let scroll = 240;
+  Object.defineProperty(dom.window, 'scrollY', { get: () => scroll });
+  dom.window.scrollTo = ((_x: number, y: number) => { scroll = y; }) as any;
+  dom.window.scrollBy = ((_x: number, y: number) => { scroll += y; }) as any;
+  try {
+    const content = document.getElementById('workspace-content')!;
+    const controls = document.getElementById('theme-controls')!;
+    assert.equal(content.contains(controls), false, 'Modern filters live in the topbar, outside the projected content');
+    for (const theme of ['spatial', 'workbench', 'folio']) {
+      document.documentElement.dataset.homeTheme = theme;
+      for (const kind of ['record', 'details']) {
+        const focused = document.createElement('button');
+        focused.dataset.focusKey = `${kind}:gone`;
+        focused.dataset.recordKey = 'gone';
+        focused.getBoundingClientRect = () => ({ top: 100, bottom: 135 } as DOMRect);
+        content.append(focused); focused.focus();
+        preservePosition(() => {
+          content.replaceChildren();
+          // Both regions are reconstructed when applying a fresh projection.
+          controls.innerHTML = '<button data-filter="project" aria-selected="true">项目</button>';
+        });
+        assert.equal(document.activeElement, controls.querySelector('[data-filter]'), `${theme} ${kind} fallback`);
+        assert.equal(scroll, 240);
+      }
+    }
+  } finally { Object.assign(globals, previous); dom.window.close(); }
+});
+
 
 test('an awaited mutation response cannot use immediate rendering during the next user gesture', async () => {
   const dom = new JSDOM('<!doctype html><div id="workspace-content"></div>', { pretendToBeVisual: true });
