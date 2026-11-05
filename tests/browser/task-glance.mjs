@@ -146,7 +146,7 @@ try {
         if(other) record(variant+'-'+width+'-avoids-'+s, Math.min(other.x+other.w,g.x+g.w)-Math.max(other.x,g.x)<1 || Math.min(other.y+other.h,g.y+g.h)-Math.max(other.y,g.y)<1);
       }
       await toggle.click(); await panel.waitFor(); const box=await rect(panel);
-      record(variant+'-'+width+'-panel-bounds', box.x>=0 && box.x+box.width<=width && box.y>=g.y+g.h && box.width===Math.min(424,width-24));
+      record(variant+'-'+width+'-panel-bounds', box.x>=0 && box.x+box.width<=width && box.y>=g.y+g.h && box.width===Math.min(baseline ? 424 : 520,width-24));
       const after=await geometry();
       record(variant+'-'+width+'-zero-grid-shift', common.every(s=>Math.abs(before[s].y-after[s].y)<0.5) && before['.spatial-project-grid'].x===after['.spatial-project-grid'].x);
       measurement.openPanel=box;
@@ -169,12 +169,8 @@ try {
     const offset=await panel.locator('.tasks-list').evaluate(e=>e.scrollTop);
     record('list-independently-scrollable', offset>0 && await page.evaluate(()=>scrollY===0));
     const previous=await last.elementHandle();
-    await page.evaluate(()=>{ window.nextTaskRender = new Promise(resolve => {
-      const observer = new MutationObserver(()=>{observer.disconnect();resolve();});
-      observer.observe(document.querySelector('.tasks-sync'),{childList:true});
-    }); });
     await page.evaluate(()=>chrome.runtime.sendMessage({protocol:'vaiwl-tasks/1',command:'CONFIGURE',patch:{preview:true}}));
-    await page.evaluate(()=>window.nextTaskRender);
+    await stable();
     record('background-update-preserves-focused-record-and-scroll', await previous.evaluate(e=>e===document.activeElement) &&
       Math.abs(await panel.locator('.tasks-list').evaluate(e=>e.scrollTop)-offset)<2);
     await previous.dispose();
@@ -200,11 +196,11 @@ try {
     await seedTasks(fixture(1)); await page.locator('.task-featured').waitFor();
     record('single-result-preview', await page.locator('.task-featured').innerText()===excerpt);
     await seedTasks(fixture(1,{failed:true})); await toggle.click();
-    record('error-keeps-actual-summary-and-last-read', (await page.locator('.task-featured').innerText())===excerpt && (await panel.locator('.tasks-sync').innerText()).includes('上次正文读取') && (await panel.locator('.task-problem').innerText()).includes('网络'));
+    record('error-keeps-actual-summary-and-last-read', (await page.locator('.task-featured').innerText())===excerpt && (await panel.locator('.tasks-sync').innerText()).includes('上次读取') && (await panel.locator('.task-problem').innerText()).includes('网络'));
     await seedTasks(fixture(1,{bodies:false})); await toggle.click();
     record('one-task-no-output', await panel.locator('.task-item').count()===1 && !(await panel.locator('.task-row').count()) && (await panel.innerText()).includes('尚未收录结果'));
     await seedTasks(fixture(0)); await toggle.click();
-    record('authorized-empty-account', await panel.locator('.task-item').count()===0 && (await panel.innerText()).includes('没有已收录'));
+    record('authorized-empty-account', await panel.locator('.task-item').count()===0 && (await panel.innerText()).includes('还没有定时任务'));
     const noPreview=fixture(1);noPreview.settings.preview=false;await seedTasks(noPreview);await toggle.click();
     record('preview-preference-hides-excerpts', !(await panel.innerText()).includes(excerpt) && !(await page.locator('.task-featured').textContent()));
     await page.locator('[aria-label="关闭任务面板"]').click();await panel.waitFor({state:'hidden'});

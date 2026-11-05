@@ -99,7 +99,7 @@ try {
   await page.goto(new URL('newtab.html', worker.url()).href); await page.waitForSelector('html[data-start-ready="true"]');
   await seedLayoutCatalog(page, 'typical', new Date().toISOString()); await page.reload();
   await page.waitForSelector('.spatial-project-grid .project');
-  cdp = await context.newCDPSession(page); await cdp.send('Performance.enable');
+  cdp = await context.newCDPSession(page); await cdp.send('Performance.enable', { timeDomain: 'threadTicks' });
   await request('CONFIGURE', { patch: { enabled: true, automatic: true } });
   const initial = await sync('first-source-read');
   check('real-installed-source-read', initial.sync.status === 'ok' && initial.tasks[0].latestAvailableResult.preview === initialBody, initial.sync);
@@ -177,7 +177,7 @@ try {
   if (server) await new Promise(resolve => { server.closeAllConnections(); server.close(resolve); });
   await mkdir(output, { recursive: true });
   await writeFile(join(output, 'receipt.json'), JSON.stringify({ status: failure ? 'FAIL' : 'PASS', family, buildSha: build.sha, dirty: build.dirty,
-    checks, errors, failure, cycles, inputSamples, requests, activation,
+    cpuTimeDomain: 'threadTicks', checks, errors, failure, cycles, inputSamples, requests, activation,
     limitations: ['Synthetic native HTTP fixture in a fresh installed Linux browser; not live ChatGPT or the user\'s Profile.',
       'Durations include real browser work but fixture network timing, including one deliberately held response.',
       'Foreground CPU/JS heap measures input impact, not whole-browser or Service Worker CPU.',

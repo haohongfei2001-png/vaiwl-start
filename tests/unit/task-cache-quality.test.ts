@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { indexedDB } from 'fake-indexeddb';
 import { initialState, TaskDatabase, TASK_DATABASE } from '../../src/tasks/database.js';
-import { applyPacket, projectTasks, taskKey } from '../../src/tasks/state.js';
+import { applyPacket, projectTaskResult, projectTasks, taskKey } from '../../src/tasks/state.js';
 import { taskResults } from '../../src/tasks/source.js';
 import { ingest } from '../../research/chatgpt-tasks/result-model.mjs';
 import type { NativeTask, SourcePacket, TaskState } from '../../src/tasks/types.js';
@@ -97,6 +97,21 @@ test('a batch of output history retains every turn and does not duplicate reread
   assert.equal(Object.keys(saved.runs).length, 21);
   assert.ok(Object.values(saved.runs).every((run: any) => run.results.length === 1));
   assert.equal(projectTasks(state, true)[0].latestAvailableResult?.bodyText, 'Report 19');
+});
+
+test('an open excerpt reads its exact old revision after a new output; account boundaries still apply', () => {
+  const state = fixture(), key = taskKey(principal, task);
+  applyPacket(state, principal, { ...results, observedAt: '2026-11-05T03:00:00.000Z', results: [{ ...results.results[0],
+    body: 'New revised text', createdAt: later,
+  }] });
+  const before = JSON.stringify(state.model);
+  assert.equal(projectTasks(state, true)[0].latestAvailableResult?.bodyText, 'New revised text');
+  assert.equal(projectTaskResult(state, key, 'turn:final-turn', 1)?.bodyText, body);
+  assert.equal(projectTaskResult(state, key, 'turn:final-turn', 2)?.bodyText, 'New revised text');
+  assert.equal(projectTaskResult(state, key, 'turn:final-turn', 3), null);
+  assert.equal(JSON.stringify(state.model), before);
+  state.principal = otherPrincipal;
+  assert.equal(projectTaskResult(state, key, 'turn:final-turn', 1), null);
 });
 
 test('broken native source structure cannot masquerade as a successful empty read', () => {

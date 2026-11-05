@@ -1,5 +1,6 @@
 import { SOURCE_ERRORS } from './failures.js';
 import type { NativeTask, NativeResult, SourcePacket } from './types.js';
+export const TASK_ADAPTER_VERSION = 'chatgpt-native-task/2';
 const record = (x: unknown): x is Record<string, any> => !!x && typeof x === 'object' && !Array.isArray(x);
 export const id = (x: unknown): x is string => typeof x === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(x);
 export const uuid = (x: unknown): x is string => typeof x === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(x);

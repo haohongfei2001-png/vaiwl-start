@@ -84,7 +84,7 @@ try{
  await page.locator('#mode-toggle').click();await page.waitForSelector('.task-featured');
  transientFailures=new Set(['scheduled','paused','finished']);snapshot=await sync();check('native-page-can-recover-transient-response',snapshot.sync.status==='ok'&&transientFailures.size===0,'Wait for the native page’s own successful reads; no extension-auth retry or challenge solving.');
 
- snapshot=await sync();check('fresh-unchanged-is-not-business-no-information',snapshot.tasks.find(t=>t.taskId===tid).readOutcome==='unchanged'&&snapshot.sync.status==='ok'&&(await page.locator('.tasks-sync').textContent()).includes('暂无新输出'),'Fresh source read recorded without changing business classification.');
+ snapshot=await sync();check('fresh-unchanged-is-not-business-no-information',snapshot.tasks.find(t=>t.taskId===tid).readOutcome==='unchanged'&&snapshot.sync.status==='ok'&&(await page.locator('.tasks-sync').textContent()).includes('最近读取'),'Fresh source read recorded without changing business classification.');
  emptyResult=true;snapshot=await sync();check('empty-source-preserves-prior-output',snapshot.tasks.find(t=>t.taskId===tid).readOutcome==='empty'&&snapshot.tasks.find(t=>t.taskId===tid).latestAvailableResult.preview===body,'An empty completed-output list does not remove cached results.');emptyResult=false;
  // Failure classifications use native response/header signals in visit mode.
  const native=await context.newPage();await native.goto(`https://chatgpt.com/c/${cid}?automationId=${tid}`);
@@ -96,7 +96,7 @@ try{
   snapshot=await request('SNAPSHOT');check('failure-'+fixture,snapshot.sync.code===expected&&snapshot.tasks.find(t=>t.taskId===tid).lastValuableResult?.preview.startsWith('Synthetic full'),'Unrelated list success cannot erase the failed result read; cache retained.');
   if(fixture==='challenge'){
    await page.locator('#settings-trigger').click();await page.locator('#settings-nav-workspace').click();await page.locator('#tasks-recover').waitFor({state:'visible'});
-   check('verification-recovery-control',await page.locator('#tasks-sync-status').textContent().then(t=>t.includes('Cloudflare')),'Normal verification entry is available with an explicit reason.');
+   check('verification-recovery-control',await page.locator('#tasks-sync-status').textContent().then(t=>t.includes('完成验证')),'Normal verification entry is available with an explicit reason.');
    await page.locator('#tasks-recover').click();const recovery=await until(()=>context.pages().find(p=>p.url()==='https://chatgpt.com/scheduled'),'recovery page');
    check('recovery-page-belongs-to-user',!(await worker.evaluate(()=>chrome.storage.session.get('tasks.ownedTabs')))['tasks.ownedTabs']?.length,'User-requested normal page is not automatically closed.');await recovery.close();await page.locator('[data-close="settings-dialog"]').click();
   }
@@ -132,7 +132,7 @@ try{
  await until(async()=>await worker.evaluate(n=>globalThis.taskDebug.filter(x=>x.command==='HELLO').length>n,helloBefore),'document principal pinned');
  account='synthetic-account-b';await manualB.evaluate(()=>fetch('/backend-api/automations?filter=scheduled&limit=25')); 
  await until(async()=>(await request('SNAPSHOT')).tasks.length===0,'account isolation');
- check('account-switch-hides-previous-cache',(await request('SNAPSHOT')).tasks.length===0&&await page.locator('#tasks-home').isHidden(),'Old cache stays partitioned without cross-account display.');await manualB.close();
+ check('account-switch-hides-previous-cache',(await request('SNAPSHOT')).tasks.length===0&&!(await page.locator('#tasks-home').textContent()).includes('Synthetic')&&!(await page.locator('#task-result-body').textContent()),'Old cache stays partitioned without cross-account display.');await manualB.close();
  await request('CLEAR');check('task-clear-is-independent',Object.keys((await rawTasks()).catalog).length===0&&!(await request('SNAPSHOT')).settings.enabled,'Only task database reset; source tasks never mutated.');
  check('read-only-native-requests',methods.length>0&&methods.every(m=>m==='GET'),'Only passive native GET fixtures and metadata-only session GET used; no task mutation route exists.');
  check('no-runtime-errors',errors.length===0,errors);

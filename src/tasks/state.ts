@@ -1,6 +1,6 @@
 import { ingest, project } from '../../research/chatgpt-tasks/result-model.mjs';
 import { recordFailure, recoverSource } from './failures.js';
-import type { CatalogTask, NativeTask, SourcePacket, TaskControlState, TaskState, TaskView } from './types.js';
+import type { CatalogTask, NativeTask, ResultView, SourcePacket, TaskControlState, TaskState, TaskView } from './types.js';
 export function taskKey(principal: string, task: NativeTask): string { return JSON.stringify([principal,task.team_id,task.id]); }
 export function selectedKeys(state: TaskControlState): string[] {
   if (!state.principal) return [];
@@ -79,4 +79,22 @@ export function projectTasks(state: TaskState, includeBodies=false): TaskView[] 
 export function listComplete(state: TaskControlState, since?: string): boolean {
   const filters=state.principal && state.coverage[state.principal]?.filters;
   return !!filters && ['scheduled','paused','finished'].every(key=>filters[key]?.firstPage===true && filters[key]?.cursor===null && (!since || filters[key].observedAt>=since));
+}
+/** Read the exact revision the user clicked, even if a newer output arrived while
+ * the panel was open. The authoritative PR7 projection still supplies semantics. */
+export function projectTaskResult(state: TaskState, key: string, runId: string, revision: number): ResultView | null {
+  const entry = state.catalog[key];
+  if (!state.principal || !entry?.scope.accountId.startsWith(state.principal + ':')) return null;
+  const pair = Object.entries(state.model.scopes).find(([, bucket]) =>
+    bucket.scope.provider === entry.scope.provider && bucket.scope.profileId === entry.scope.profileId && bucket.scope.accountId === entry.scope.accountId);
+  if (!pair) return null;
+  const [scopeKey, bucket] = pair;
+  const task = Object.values<any>(bucket.tasks).find(task => task.id === entry.task.id);
+  const run = task && Object.values<any>(task.runs).find(run => run.id === runId);
+  const result = run?.results.find((result: any) => result.revision === revision);
+  if (!result) return null;
+  const isolated = { schemaVersion: 1 as const, scopes: { [scopeKey]: { ...bucket, tasks: { [task.key]: {
+    ...task, latestRunKey: run.key, runs: { [run.key]: { ...run, results: [result], latestResultRevision: revision } },
+  } } } } };
+  return project(isolated, entry.scope, { includeBodies: true }).tasks[0]?.latestAvailableResult || null;
 }

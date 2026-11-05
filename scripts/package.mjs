@@ -11,10 +11,30 @@ for (const name of ['task-integration-validation', 'edge-task-integration-valida
   if (report.buildSha !== build.sha || report.dirty !== build.dirty) continue;
   if (report.status === 'FAIL' || [...(report.checks || []), ...(report.records || [])].some(check => check?.status === 'FAIL')) throw new Error('Refusing a package with failed same-build evidence: ' + name);
 }
+const taskQualityReceipts = ['chrome','edge'].flatMap(family => [
+  `task-quality/${family}/candidate/receipt.json`, `task-sync-quality/${family}/receipt.json`,
+]);
+for (const path of taskQualityReceipts) {
+  let report; try { report = JSON.parse(await readFile('artifacts/' + path, 'utf8')); } catch { continue; }
+  if (report.buildSha !== build.sha || report.dirty !== build.dirty) continue;
+  if (report.status === 'FAIL' || report.checks?.some(check => check.status === 'FAIL')) throw Error('Refusing a package with failed same-build task evidence: ' + path);
+}
 await mkdir('artifacts', { recursive: true });
 const name = `vaiwl-start-free-v1-${build.sha.slice(0, 12)}.zip`;
 const script = `import pathlib,zipfile,sys\nroot=pathlib.Path('.')\nwith zipfile.ZipFile(root/'artifacts'/sys.argv[1],'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:\n for p in sorted((root/'dist').rglob('*')):\n  if p.is_file(): z.write(p,'vaiwl-start/'+str(p.relative_to(root/'dist')))\n for name in ['CHATGPT_TASKS.zh-CN.md','INSTALL.zh-CN.md','CHROME_LOCAL_RC.zh-CN.md','P1_AUTOMATIC_HISTORY.md','TEST_RECORDS.md','M0_SOURCE_GATE.md','free-v1/10-LOCAL-FIRST-AMENDMENT.md','free-v1/11-NATIVE-EXPERIENCE-AMENDMENT.md','free-v1/12-LIFE-BOOKMARKS-AMENDMENT.md','free-v1/13-NATIVE-PROJECT-LOCAL-AMENDMENT.md','free-v1/14-HOME-TIME-PROJECTION-AMENDMENT.md','evidence/home-workspace-20261103/PLATFORM.md']:\n  z.write(root/'docs'/name,name)\n for name in ['task-integration-validation.json','edge-task-integration-validation.json','home-theme-validation.json','edge-home-theme-validation.json','unit-validation.json','privacy-audit.json','browser-validation.json','import-recovery-validation.json','privacy-boundaries-validation.json','source-recovery-validation.json','project-observation-validation.json','native-project-grouping-validation.json','home-workspace-validation.json','edge-home-workspace-validation.json','project-startup-validation.json','automatic-history-validation.json','automatic-history-baseline-validation.json','storage-faults-validation.json','ui-validation.json','native-experience-validation.json','native-upgrade-validation.json','edge-native-validation.json','life-bookmarks-validation.json','edge-life-bookmarks-validation.json','review-validation.json','performance-validation.json','acceptance-matrix.json']:\n  p=root/'artifacts'/name\n  if p.exists():\n   import json\n   r=json.loads(p.read_text())\n   if r.get('buildSha')==sys.argv[2] and not r.get('dirty',False): z.write(p,'verification/'+name)\n`;
 execFileSync(process.env.CODEX_PRIMARY_RUNTIME_PYTHON || 'python3', ['-c', script, name, build.sha]);
+// Package the exact candidate receipts; the PR9 control measurements are comparison
+// evidence and deliberately never represented as acceptance of this build.
+execFileSync(process.env.CODEX_PRIMARY_RUNTIME_PYTHON || 'python3', ['-c', `
+import pathlib,zipfile,sys,json
+root=pathlib.Path('.')
+with zipfile.ZipFile(root/'artifacts'/sys.argv[1],'a',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+ for name in json.loads(sys.argv[3]):
+  p=root/'artifacts'/name
+  if p.exists():
+   r=json.loads(p.read_text())
+   if r.get('buildSha')==sys.argv[2] and not r.get('dirty',False): z.write(p,'verification/'+name)
+`, name, build.sha, JSON.stringify(taskQualityReceipts)]);
 const bytes = await readFile('artifacts/' + name);
 const receipt = { name, buildSha: build.sha, dirty: build.dirty, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), sourceGate: build.sourceGate };
 await writeFile('artifacts/package.json', JSON.stringify(receipt, null, 2));

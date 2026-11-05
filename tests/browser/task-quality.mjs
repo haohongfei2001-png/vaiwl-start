@@ -126,7 +126,7 @@ async function launch() {
   page.on('pageerror', error => errors.push(String(error)));
   await installProbe(page);
   cdp = await context.newCDPSession(page);
-  await cdp.send('Performance.enable');
+  await cdp.send('Performance.enable', { timeDomain: 'threadTicks' });
   await page.goto(new URL('newtab.html', worker.url()).href);
   await page.waitForSelector('html[data-start-ready="true"]');
 }
@@ -149,11 +149,18 @@ async function seed(state) {
 
 async function stable() { await page.evaluate(async () => { await document.fonts.ready; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); }); }
 async function capture(name) {
+  await page.evaluate(() => {
+    if (!document.querySelector('dialog[open]') && !document.querySelector('#task-panel')?.matches(':popover-open')) document.activeElement?.blur();
+  });
   await stable(); await page.screenshot({ path: join(output, name + '.png'), animations: 'disabled' }); screenshots.push(name + '.png');
 }
 async function theme(value) {
   await page.evaluate(v => chrome.storage.local.set({ 'native.homeTheme': v }), value);
   await page.waitForFunction(v => document.documentElement.dataset.homeTheme === v, value); await stable();
+  // Theme switching preserves a workspace scroll anchor. The default-state
+  // comparison explicitly begins at the top, so a trusted click need not scroll
+  // a previously offscreen trigger into view before opening its panel.
+  await page.evaluate(() => scrollTo(0, 0)); await stable();
 }
 const geometry = () => page.evaluate(() => Object.fromEntries(['#tasks-home', '#bookmarks-home', '.spatial-project-grid', '.recent-section', '#search-trigger', '#mode-toggle', '#settings-trigger'].map(selector => {
   const rect = document.querySelector(selector)?.getBoundingClientRect();
@@ -162,7 +169,7 @@ const geometry = () => page.evaluate(() => Object.fromEntries(['#tasks-home', '#
 const browserMetrics = async () => {
   const result = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(metric => [metric.name, metric.value]));
   const dom = await cdp.send('Memory.getDOMCounters');
-  return { timestamp: result.Timestamp, taskDurationMs: result.TaskDuration * 1000, scriptDurationMs: result.ScriptDuration * 1000,
+  return { timestamp: result.Timestamp, navigationStart: result.NavigationStart, taskDurationMs: result.TaskDuration * 1000, scriptDurationMs: result.ScriptDuration * 1000,
     layoutDurationMs: result.LayoutDuration * 1000, recalcStyleMs: result.RecalcStyleDuration * 1000,
     heapUsedBytes: result.JSHeapUsedSize, heapTotalBytes: result.JSHeapTotalSize, documents: dom.documents, nodes: dom.nodes, listeners: dom.jsEventListeners };
 };
@@ -176,9 +183,10 @@ async function loadSamples(name, count, { expectTask = true } = {}) {
     await page.waitForFunction(expectTask => window.__taskQuality?.workspacePaint !== null && (!expectTask || window.__taskQuality?.taskPaint !== null), expectTask);
     const timing = await page.evaluate(() => ({ ...window.__taskQuality, cls: window.__taskQuality.shifts.reduce((sum, item) => sum + item.value, 0) }));
     const browser = await browserMetrics();
-    const cpuDelta = key => browser[key] >= cpuBefore[key] ? browser[key] - cpuBefore[key] : browser[key];
-    rows.push({ ...timing, browser, cpuBefore, scriptCpuMs: cpuDelta('scriptDurationMs'), rendererCpuMs: cpuDelta('taskDurationMs'),
-      layoutCpuMs: cpuDelta('layoutDurationMs'), styleCpuMs: cpuDelta('recalcStyleMs') });
+    // Blink starts a new metric epoch for each committed document. Do not
+    // subtract one document's CPU from another merely because its total is lower.
+    rows.push({ ...timing, browser, cpuBefore, scriptCpuMs: browser.scriptDurationMs, rendererCpuMs: browser.taskDurationMs,
+      layoutCpuMs: browser.layoutDurationMs, styleCpuMs: browser.recalcStyleMs });
   }
   samples[name] = { raw: rows, mainReadyMs: stats(rows.map(row => row.mainReady)), workspacePaintMs: stats(rows.map(row => row.workspacePaint)),
     taskPaintMs: stats(rows.map(row => row.taskPaint)), scriptCpuMs: stats(rows.map(row => row.scriptCpuMs)),
@@ -249,6 +257,7 @@ try {
     await page.keyboard.press('Escape');
     for (const width of [1920, 1280, 1024, 760, 640, 390, 320]) {
       await page.setViewportSize({ width, height: 900 }); await stable();
+      await page.evaluate(() => scrollTo(0, 0)); await stable();
       await page.locator('.task-toggle').click(); await page.locator('#task-panel').waitFor();
       const fitting = await page.evaluate(() => { const r = document.querySelector('#task-panel').getBoundingClientRect(); return {
         viewport: innerWidth, page: document.documentElement.scrollWidth, x: r.x, right: r.right, bottom: r.bottom, height: innerHeight }; });
@@ -307,6 +316,8 @@ try {
   record('worker-restart-keeps-cache', await page.locator('.task-featured').innerText() === cachedBody, true);
   await context.close(); context = null;
   await launch(); await page.locator('.task-featured').waitFor();
+  await page.waitForFunction(() => window.__taskQuality?.workspacePaint !== null && window.__taskQuality?.taskPaint !== null);
+  metrics.browserRestartCachedLoad = { ...await page.evaluate(() => ({ ...window.__taskQuality })), browser: await browserMetrics(), observations: 1 };
   record('browser-restart-keeps-cache', await page.locator('.task-featured').innerText() === cachedBody, true);
   await request('CONFIGURE', { patch: { automatic: true } });
   const concurrentStart = network.length;
@@ -322,9 +333,9 @@ try {
   if (page && !page.isClosed()) await page.screenshot({ path: join(output, 'failure.png') }).catch(() => {});
 } finally {
   await mkdir(output, { recursive: true });
-  await writeFile(join(output, 'receipt.json'), JSON.stringify({ status: failure ? 'FAIL' : 'PASS', label, family,
+  await writeFile(join(output, 'receipt.json'), JSON.stringify({ status: failure ? 'FAIL' : checks.some(check => check.status === 'FAIL') ? 'OBSERVED_FAILURES' : 'PASS', label, family,
     buildSha: build.sha, dirty: build.dirty, recordedAt: new Date().toISOString(), environment: { platform: platform(), release: release(), cpu: cpus()[0]?.model,
-      logicalCpus: cpus().length, memoryBytes: totalmem(), headless: true, optionalPermissionsPregranted: true, fixture: 'synthetic, disposable Profile' },
+      logicalCpus: cpus().length, memoryBytes: totalmem(), headless: true, cpuTimeDomain: 'threadTicks', optionalPermissionsPregranted: true, fixture: 'synthetic, disposable Profile' },
     metrics, samples, checks, screenshots, errors, network, failure,
     limitations: ['Real Linux browser and installed runtime; not the user\'s Mac/Profile or a live ChatGPT service.',
       'Screenshots contain synthetic task and workspace data. Optional permissions are pregranted in the isolated manifest.',

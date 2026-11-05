@@ -42,6 +42,8 @@ export interface TaskView {
   recordedStatus: string; displayState: string; latestRunId: string | null;
   latestAvailableResult: ResultView | null; lastValuableResult: ResultView | null;
   currentResult: ResultView | null; resultSyncedAt: string | null; readOutcome?: ReadOutcome; sourceUrl: string;
+  /** Exact immutable revision selected from an already displayed excerpt. */
+  requestedResult?: ResultView;
 }
 export interface TaskSnapshot {
   settings: TaskSettings; principal: string | null; tasks: TaskView[];
