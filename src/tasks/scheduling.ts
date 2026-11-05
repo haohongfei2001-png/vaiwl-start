@@ -44,7 +44,8 @@ export function failedSchedule(previous: TaskSchedule, code: string, now: number
   // Authentication is resumed by the user's ordinary signed-in source page.
   if (code === 'LOGIN_REQUIRED' || code === 'PERMISSION_REQUIRED' || code === 'DISABLED') minutes = 24 * 60;
   const paused=['LOGIN_REQUIRED','PERMISSION_REQUIRED','DISABLED'].includes(code)
-    || (failures >= 3 && ['VERIFICATION_REQUIRED','SOURCE_CHANGED','SOURCE_FORBIDDEN'].includes(code));
+    || (failures >= 3 && ['VERIFICATION_REQUIRED','SOURCE_CHANGED','SOURCE_FORBIDDEN'].includes(code))
+    || (code === 'RATE_LIMITED' && failures >= 6);
   return { ...previous, dueAt: now + minutes * MINUTE, failures, paused, failureCode: code, failedAt: now, lease: null };
 }
 export function syncIsDue(schedule: TaskSchedule, now: number, manual = false): boolean {

@@ -21,7 +21,21 @@ async function until(probe,label,ms=18000){const end=Date.now()+ms;while(Date.no
 const request=(command,fields={})=>page.evaluate(async({command,fields})=>{const r=await chrome.runtime.sendMessage({protocol:'vaiwl-tasks/1',command,...fields});if(!r?.ok)throw Error(r?.code);return r.data},{command,fields});
 const sourceTabs=()=>worker.evaluate(()=>chrome.tabs.query({url:'https://chatgpt.com/*'}));
 async function rawTasks(){return page.evaluate(async()=>{const db=await new Promise((res,rej)=>{const r=indexedDB.open('vaiwl-start-chatgpt-tasks');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});const s=await new Promise(res=>{const r=db.transaction('state').objectStore('state').get('current');r.onsuccess=()=>res(r.result)});db.close();return s})}
-async function sync(){const since=new Date().toISOString();await request('SYNC');return until(async()=>{const s=await request('SNAPSHOT');return s.sync.attemptedAt>=since&&['ok','error'].includes(s.sync.status)?s:false},'sync result',35000)}
+const cycleReleased=()=>page.evaluate(async()=>{
+ const [local,session]=await Promise.all([chrome.storage.local.get('tasks.schedule.v1'),chrome.storage.session.get('tasks.ownedTabs')]);
+ return !local['tasks.schedule.v1']?.lease&&!session['tasks.ownedTabs']?.length;
+});
+async function startFreshCycle(){
+ await until(cycleReleased,'previous cycle resources released');
+ // A readable result can arrive before cleanup/reconciliation has finished.
+ // The API explicitly coalesces during that interval; only a new start owns this
+ // scenario's since timestamp. Coalesced probes are IPC, not new source reads.
+ return until(async()=>{const since=new Date().toISOString(),reply=await request('SYNC');
+  if(reply.started===false)throw Error('Unexpected sync cooldown: '+reply.code);
+  return reply.started&&!reply.coalesced?since:false;
+ },'fresh sync round accepted');
+}
+async function sync(){const since=await startFreshCycle();const snapshot=await until(async()=>{const s=await request('SNAPSHOT');return s.sync.attemptedAt>=since&&['ok','error'].includes(s.sync.status)?s:false},'sync result',35000);await until(cycleReleased,'completed cycle resources released');return snapshot;}
 const task=()=>({id:tid,title:'Synthetic monitored task',team_id:null,conversation_id:cid,is_enabled:true,schedule:'RRULE:FREQ=DAILY',default_timezone:'UTC',next_run_times:[],last_run_time:'2026-11-01T09:00:00Z',prompt:'PRIVATE PROMPT EXCLUDED'});
 const conversation=()=>({conversation_id:cid,current_node:emptyResult?'reasoning':'final-message',mapping:{
  'user-message':{parent:null,message:{id:'user-message',author:{role:'user'},content:{parts:['PRIVATE USER TEXT EXCLUDED']}}},
@@ -108,19 +122,19 @@ try{
  check('proven-logout-hides-but-retains',Object.keys((await rawTasks()).catalog).length>0&&(await request('SNAPSHOT')).tasks.length===0,'Proven logout hides account data while retaining its partition.');
  sessionFailure=null;await native.reload();await until(async()=>(await request('SNAPSHOT')).sync.status==='ok','same account returns');await native.close();
  // An explicitly adopted temporary tab belongs to the user after activation.
- let adoptRelease;delayResult=new Promise(r=>adoptRelease=r);const adoptedSince=new Date().toISOString();await request('SYNC');
+ let adoptRelease;delayResult=new Promise(r=>adoptRelease=r);const adoptedSince=await startFreshCycle();
  const adopted=await until(async()=>(await sourceTabs()).find(t=>t.url?.includes('/c/')),'pending page for user adoption');await worker.evaluate(id=>chrome.tabs.update(id,{active:true}),adopted.id);adoptRelease();delayResult=null;
  await until(async()=>{const s=await request('SNAPSHOT');return s.sync.attemptedAt>=adoptedSince&&s.sync.status==='ok'},'adopted page sync');
  check('user-adopted-tab-is-preserved',(await worker.evaluate(id=>chrome.tabs.get(id),adopted.id)).active,'Extension leaves the activated page open.');await worker.evaluate(id=>chrome.tabs.remove(id),adopted.id);
  // Delay a native response across disable. An old document must not resurrect work.
  let release;delayResult=new Promise(r=>release=r);const beforeCount=requests.filter(p=>p==='/backend-api/conversation/'+cid).length;
- await request('SYNC');await until(()=>requests.filter(p=>p==='/backend-api/conversation/'+cid).length>beforeCount,'pending native result');
+ await startFreshCycle();await until(()=>requests.filter(p=>p==='/backend-api/conversation/'+cid).length>beforeCount,'pending native result');
  await request('CONFIGURE',{patch:{enabled:false}});body='Late output must not overwrite cache';release();delayResult=null;
  await until(async()=>(await sourceTabs()).length===0,'disabled job cleans pages');await pause(100);
  snapshot=await request('SNAPSHOT');check('disable-fences-late-write',snapshot.tasks.find(t=>t.taskId===tid).latestAvailableResult.preview==='Synthetic latest output: no new information.'&&!snapshot.settings.enabled,'Cancelled work cannot overwrite cache or reenable sync.');
  await page.reload();await page.waitForSelector('.task-featured');check('cache-survives-reload',await page.locator('.task-featured').textContent().then(t=>t.includes('Synthetic full'))&&(await sourceTabs()).length===0,'Disabled cached output is retained and labelled.');
  // Visit-only collection, with no alarm and no owned/closed user page.
- await request('CONFIGURE',{patch:{enabled:true,automatic:false}});await request('SYNC');
+ await request('CONFIGURE',{patch:{enabled:true,automatic:false}});await startFreshCycle();
  const manual=await until(()=>context.pages().find(p=>p.url()==='https://chatgpt.com/scheduled'),'manual source');await manual.locator('a').click();
  await until(async()=>(await request('SNAPSHOT')).tasks.find(t=>t.taskId===tid).latestAvailableResult.preview===body,'visit output');
  snapshot=await request('SNAPSHOT');check('C-visit-only',snapshot.sync.mode==='visit'&&!(await worker.evaluate(()=>chrome.alarms.get('vaiwl-task-sync')))&&!manual.isClosed(),'Visit captures actual fixture response; does not close user page.');await manual.close();

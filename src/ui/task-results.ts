@@ -36,6 +36,11 @@ const errors: Record<string, string> = {
   SYNC_INTERRUPTED: '上次更新中断，稍后会再检查。',
   DISABLED: '同步已关闭。',
 };
+const rateLimitPaused = (snapshot: TaskSnapshot | null) => snapshot?.sync.status === 'error' && snapshot.sync.code === 'RATE_LIMITED' && !snapshot.sync.retryAt;
+function syncProblem(snapshot: TaskSnapshot): string {
+  if (rateLimitPaused(snapshot)) return '多次更新受到限制，已暂停自动检查。可打开 ChatGPT 确认。';
+  return snapshot.sync.code ? errors[snapshot.sync.code] || '本次更新未完成，已有成果仍保留。' : '';
+}
 export function initTaskResults() {
   let mode: 'workspace' | 'life' | null = null, settingsOpen = false, epoch = 0, busy = false;
   let data: TaskSnapshot | null = null, detail: TaskView | null = null, detailsResult: ResultView | null = null;
@@ -56,7 +61,7 @@ export function initTaskResults() {
     if (modal.open) modal.close(); if (clearModal.open) clearModal.close();
   }
   const readLabel = (task: TaskView) => task.readOutcome === 'updated' ? '此次收录了新输出' : task.readOutcome === 'unchanged' ? '已重新读取，暂无新输出' : task.readOutcome === 'empty' ? '本次来源未返回完整正文，已有成果仍保留' : '已保存的来源正文';
-  const needsSource = () => !!data?.sync.code && ['LOGIN_REQUIRED', 'VERIFICATION_REQUIRED', 'SOURCE_FORBIDDEN', 'IDENTITY_UNAVAILABLE', 'PERMISSION_REQUIRED', 'SOURCE_CHANGED'].includes(data.sync.code);
+  const needsSource = () => rateLimitPaused(data) || !!data?.sync.code && ['LOGIN_REQUIRED', 'VERIFICATION_REQUIRED', 'SOURCE_FORBIDDEN', 'IDENTITY_UNAVAILABLE', 'PERMISSION_REQUIRED', 'SOURCE_CHANGED'].includes(data.sync.code);
   function syncLabel(snapshot: TaskSnapshot): string {
     const lastRead = snapshot.tasks.filter(task => task.selected && task.readable && task.resultSyncedAt).map(task => task.resultSyncedAt!).sort().at(-1) || null;
     const saved = lastRead ? '上次读取 ' + time(lastRead) : '尚未读取成果';
@@ -76,7 +81,7 @@ export function initTaskResults() {
       source: () => { if (data && !data.permission) void connect(); else void action('OPEN_SOURCE'); },
       status, time,
     });
-    const error = localError || (data.sync.code ? errors[data.sync.code] || '本次更新未完成，已有成果仍保留。' : '');
+    const error = rateLimitPaused(data) ? syncProblem(data) : localError || syncProblem(data);
     glance.update(data, syncLabel(data), error, needsSource(), busy);
   }
   function renderSettings() {
@@ -86,7 +91,8 @@ export function initTaskResults() {
     byId<HTMLInputElement>('tasks-widget').checked = data.settings.showWidget;
     byId<HTMLInputElement>('tasks-preview').checked = data.settings.preview;
     byId<HTMLSelectElement>('tasks-mode').value = data.settings.automatic ? 'temporary' : 'visit';
-    byId('tasks-sync-status').textContent = syncLabel(data) + (data.sync.code ? '。' + (errors[data.sync.code] || '已有成果仍保留。') : '');
+    const problem = syncProblem(data);
+    byId('tasks-sync-status').textContent = syncLabel(data) + (problem ? '。' + problem : '');
     const sync = byId<HTMLButtonElement>('tasks-sync-now');
     sync.disabled = busy || data.sync.status === 'syncing' || !data.settings.enabled || !!(data.sync.retryAt && Date.parse(data.sync.retryAt) > Date.now());
     sync.textContent = data.settings.automatic ? '检查更新' : '打开 ChatGPT';

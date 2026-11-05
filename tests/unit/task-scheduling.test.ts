@@ -103,8 +103,17 @@ test('three consecutive challenge or adapter failures pause all scheduled retrie
     assert.equal(readSchedule(reopened,'native/next',schedule.dueAt).paused,false,code);
   }
 });
-test('repeated rate limits remain recoverable after bounded cooldown, while login is paused without a retry promise',()=>{
-  let schedule=fresh();for(let i=0;i<5;i++)schedule=failedSchedule(schedule,'RATE_LIMITED',schedule.dueAt);
-  assert.equal(schedule.paused,false);assert.equal(syncIsDue(schedule,schedule.dueAt),true);
+test('rate limits back off for five attempts, then pause until native recovery; login pauses immediately',()=>{
+  let schedule=fresh();
+  for(const minutes of [30,60,120,240,360]){
+    const attemptedAt=schedule.dueAt;schedule=failedSchedule(schedule,'RATE_LIMITED',attemptedAt);
+    assert.equal(schedule.dueAt-attemptedAt,minutes*minute);assert.equal(schedule.paused,false);
+  }
+  assert.equal(schedule.dueAt-now,13.5*60*minute);assert.equal(syncIsDue(schedule,schedule.dueAt),true);
+  schedule=failedSchedule(schedule,'RATE_LIMITED',schedule.dueAt);
+  const reopened=readSchedule(JSON.parse(JSON.stringify(schedule)),adapter,schedule.dueAt);
+  assert.equal(reopened.paused,true);assert.equal(syncIsDue(reopened,schedule.dueAt+24*60*minute,true),false);
+  assert.equal(successfulSchedule(reopened,state(),schedule.dueAt).paused,false);
+  assert.equal(readSchedule(reopened,'native/next',schedule.dueAt).paused,false);
   assert.equal(failedSchedule(fresh(),'LOGIN_REQUIRED',now).paused,true);
 });

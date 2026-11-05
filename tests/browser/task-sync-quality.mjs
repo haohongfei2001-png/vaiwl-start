@@ -31,6 +31,10 @@ const request = (command, fields = {}, target = page) => target.evaluate(async (
   if (!reply?.ok) throw Error(reply?.code || 'EMPTY_RESPONSE'); return reply.data;
 }, { command, fields });
 const sourceTabs = () => page.evaluate(() => chrome.tabs.query({ url: 'https://chatgpt.com/*' }));
+const cycleReleased = () => page.evaluate(async () => {
+  const [local, session] = await Promise.all([chrome.storage.local.get('tasks.schedule.v1'), chrome.storage.session.get('tasks.ownedTabs')]);
+  return !local['tasks.schedule.v1']?.lease && !session['tasks.ownedTabs']?.length;
+});
 const sourceCount = path => requests.filter(request => request.path === path).length;
 const sourceTask = () => ({ id: tid, title: '研究动态追踪', team_id: null, conversation_id: cid, is_enabled: true,
   schedule: 'RRULE:FREQ=DAILY', default_timezone: 'UTC', next_run_times: [], last_run_time: new Date(createdBase - 3600000 + run * 1000).toISOString() });
@@ -43,11 +47,19 @@ const finishSync = since => until(async () => { const snapshot = await request('
   return snapshot.sync.attemptedAt >= since && ['ok', 'error'].includes(snapshot.sync.status) ? snapshot : false;
 }, 'sync completion', 55000);
 async function sync(label, parallel = 1) {
-  const start = performance.now(), offset = requests.length, since = new Date().toISOString();
-  await Promise.all(Array.from({ length: parallel }, () => request('SYNC')));
+  await until(cycleReleased, 'previous cycle resources released');
+  const start = performance.now(), offset = requests.length;
+  let calls = 0;
+  const since = await until(async () => {
+    const since = new Date().toISOString();
+    const replies = await Promise.all(Array.from({ length: parallel }, () => request('SYNC'))); calls += parallel;
+    if (replies.some(reply => reply.started === false)) throw Error('Unexpected sync cooldown: ' + JSON.stringify(replies));
+    return replies.some(reply => reply.started && !reply.coalesced) ? since : false;
+  }, 'fresh sync round accepted');
   const snapshot = await finishSync(since);
   await until(async () => !(await sourceTabs()).length, 'temporary pages released');
-  cycles.push({ label, durationMs: performance.now() - start, calls: parallel, sourceRequests: requests.slice(offset), status: snapshot.sync.status, code: snapshot.sync.code });
+  await until(cycleReleased, 'completed cycle resources released');
+  cycles.push({ label, durationMs: performance.now() - start, calls, sourceRequests: requests.slice(offset), status: snapshot.sync.status, code: snapshot.sync.code });
   return snapshot;
 }
 const foregroundMetrics = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(metric => [metric.name, metric.value]));
