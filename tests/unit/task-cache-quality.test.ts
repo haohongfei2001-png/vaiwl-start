@@ -7,7 +7,7 @@ import { taskResults } from '../../src/tasks/source.js';
 import { ingest } from '../../research/chatgpt-tasks/result-model.mjs';
 import type { NativeTask, SourcePacket, TaskState } from '../../src/tasks/types.js';
 
-Object.defineProperty(globalThis, 'indexedDB', { value: indexedDB, configurable: true });
+Object.defineProperty(globalThis, 'indexedDB', { value: indexedDB, configurable: true, writable: true });
 const principal = 'principal:' + 'c'.repeat(64), otherPrincipal = 'principal:' + 'd'.repeat(64);
 const at = '2026-11-05T01:00:00.000Z', later = '2026-11-05T02:00:00.000Z';
 const cid = '00000000-0000-4000-8000-000000000001';

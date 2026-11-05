@@ -45,7 +45,7 @@ export class TaskDatabase {
     await this.update(state => state);
     return (await this.readProjection<TaskControlState>(CONTROL))!;
   }
-  async update(change: (state: TaskState) => TaskState): Promise<TaskState> {
+  async update(change: (state: TaskState) => TaskState, options: { rebuildProjection?: boolean } = {}): Promise<TaskState> {
     const db=await this.open();return new Promise((resolve,reject)=>{
       const tx=db.transaction('state','readwrite'), store=tx.objectStore('state');let result:TaskState;
       const r=store.get('current');r.onsuccess=()=>{
@@ -57,7 +57,7 @@ export class TaskDatabase {
           result=change(state);
           const oldView = cached.result as TaskCachedSnapshot | undefined;
           // Identity/status heartbeats do not repeatedly parse every saved AI body.
-          const tasks = oldView && previousModel === result.model && signature === presentationSignature(result)
+          const tasks = !options.rebuildProjection && oldView && previousModel === result.model && signature === presentationSignature(result)
             ? oldView.tasks : projectTasks(result);
           const snapshot: TaskCachedSnapshot = { generation: result.generation, settings: result.settings,
             principal: result.principal, tasks, sync: result.sync,

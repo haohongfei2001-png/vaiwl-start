@@ -57,17 +57,18 @@ const request = (command, fields = {}) => page.evaluate(async ({ command, fields
 function taskFixture(count, { results = true, failed = false, stale = false, automatic = false } = {}) {
   const principal = 'synthetic-quality', scope = { provider: 'chatgpt', profileId: 'browser-profile', accountId: principal + ':personal' };
   const catalog = {}, keys = [], syncedAt = at(stale ? -8 * 86400000 : -60000);
+  const staleOffset = stale ? -8 * 86400000 : 0;
   let model = createStore();
   for (let i = 0; i < count; i++) {
     const id = 'synthetic-quality-' + i, key = JSON.stringify([principal, null, id]);
     const task = { id, title: names[i % names.length] + (i < names.length ? '' : ' · 专题'), is_enabled: i % 7 !== 6,
-      default_timezone: 'UTC', schedule: 'RRULE:FREQ=DAILY', last_run_time: at(-3600000 - i * 120000), next_run_time: null,
+      default_timezone: 'UTC', schedule: 'RRULE:FREQ=DAILY', last_run_time: at(staleOffset - 3600000 - i * 120000), next_run_time: null,
       team_id: null, conversation_id: '00000000-0000-4000-8000-' + String(i + 1).padStart(12, '0') };
     keys.push(key);
     catalog[key] = { key, scope, task, observedAt: syncedAt, resultSyncedAt: results ? syncedAt : null, readOutcome: results ? 'unchanged' : undefined };
     if (!results) model = ingest(model, { scope, observedAt: syncedAt, tasks: [task] });
     else for (let revision = 0; revision < 6; revision++) {
-      const createdAt = at(-3600000 - i * 120000 - (5 - revision) * 86400000);
+      const createdAt = at(staleOffset - 3600000 - i * 120000 - (5 - revision) * 86400000);
       const body = i === 0 && revision === 5 ? '本次复查没有新的内容。' : paragraph + '\n\n' +
         ['## 本次发现', paragraph, '## 值得跟进', paragraph, '来源：https://example.com/research'].join('\n\n').repeat(5);
       const runId = 'quality-run-' + revision;

@@ -62,6 +62,8 @@ async function seedTasks(state) {
       r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     });
     const tx = db.transaction('state', 'readwrite');
+    tx.objectStore('state').delete('snapshot-v1');
+    tx.objectStore('state').delete('control-v1');
     tx.objectStore('state').put(state, 'current');
     await new Promise((res, rej) => { tx.oncomplete = res; tx.onabort = () => rej(tx.error); });
     db.close();

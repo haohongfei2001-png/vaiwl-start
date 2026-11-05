@@ -46,6 +46,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
+        id: verify_runtime
       - run: node --test research/chatgpt-tasks/result-model.test.mjs
       - name: Bound Ubuntu dependency downloads
         run: |
@@ -60,6 +61,7 @@ jobs:
           Acquire::https::Timeout "30";
           APT
       - name: Install browser dependencies
+        id: browser_runtime
         timeout-minutes: 5
         run: npx playwright install --with-deps ${{ matrix.install }}
       - name: Install Chinese fonts
@@ -76,15 +78,15 @@ jobs:
           VAIWL_QUALITY_LABEL: baseline
         run: VAIWL_QUALITY_RUNTIME="$RUNNER_TEMP/vaiwl-task-baseline/dist" node tests/browser/task-quality.mjs
       - name: Measure candidate cache, input, resource lifetime and recovery
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.verify_runtime.outcome == 'success' && steps.browser_runtime.outcome == 'success' }}
         env:
           VAIWL_QUALITY_LABEL: candidate
         run: node tests/browser/task-quality.mjs
       - name: Installed task flow and existing homepage contracts
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.verify_runtime.outcome == 'success' && steps.browser_runtime.outcome == 'success' }}
         run: |
           failed=0
-          for test in tasks task-glance home-guardrails settings-consumer life-bookmarks; do
+          for test in tasks task-glance task-sync-quality home-guardrails settings-consumer life-bookmarks; do
             node "tests/browser/$test.mjs" || failed=1
           done
           exit "$failed"
