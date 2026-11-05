@@ -112,8 +112,15 @@ try {
   await seedLayoutCatalog(page, 'typical', new Date().toISOString()); await page.reload();
   await page.waitForSelector('.spatial-project-grid .project');
   cdp = await context.newCDPSession(page); await cdp.send('Performance.enable', { timeDomain: 'threadTicks' });
+  const firstStart = performance.now(), firstOffset = requests.length, enabledSince = new Date().toISOString();
   await request('CONFIGURE', { patch: { enabled: true, automatic: true } });
-  const initial = await sync('first-source-read');
+  // The real home also sends HOME_OPEN after enablement. Its due check joins the
+  // same first read; forcing a fresh manual round would count an extra requested read.
+  await request('HOME_OPEN');
+  const initial = await finishSync(enabledSince);
+  await until(async () => !(await sourceTabs()).length && await cycleReleased(), 'first cycle resources released');
+  cycles.push({ label: 'first-source-read', trigger: 'HOME_OPEN', durationMs: performance.now() - firstStart, calls: 1,
+    sourceRequests: requests.slice(firstOffset), status: initial.sync.status, code: initial.sync.code });
   check('real-installed-source-read', initial.sync.status === 'ok' && initial.tasks[0].latestAvailableResult.preview === initialBody, initial.sync);
   await page.locator('.task-featured').waitFor();
   await page.evaluate(() => { window.__syncActivated = []; chrome.tabs.onActivated.addListener(info => window.__syncActivated.push(info.tabId)); });

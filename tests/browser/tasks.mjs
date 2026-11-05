@@ -35,7 +35,8 @@ async function startFreshCycle(){
   return reply.started&&!reply.coalesced?since:false;
  },'fresh sync round accepted');
 }
-async function sync(){const since=await startFreshCycle();const snapshot=await until(async()=>{const s=await request('SNAPSHOT');return s.sync.attemptedAt>=since&&['ok','error'].includes(s.sync.status)?s:false},'sync result',35000);await until(cycleReleased,'completed cycle resources released');return snapshot;}
+async function finishCycle(since){const snapshot=await until(async()=>{const s=await request('SNAPSHOT');return s.sync.attemptedAt>=since&&['ok','error'].includes(s.sync.status)?s:false},'sync result',35000);await until(cycleReleased,'completed cycle resources released');return snapshot;}
+async function sync(){return finishCycle(await startFreshCycle());}
 const task=()=>({id:tid,title:'Synthetic monitored task',team_id:null,conversation_id:cid,is_enabled:true,schedule:'RRULE:FREQ=DAILY',default_timezone:'UTC',next_run_times:[],last_run_time:'2026-11-01T09:00:00Z',prompt:'PRIVATE PROMPT EXCLUDED'});
 const conversation=()=>({conversation_id:cid,current_node:emptyResult?'reasoning':'final-message',mapping:{
  'user-message':{parent:null,message:{id:'user-message',author:{role:'user'},content:{parts:['PRIVATE USER TEXT EXCLUDED']}}},
@@ -75,8 +76,11 @@ try{
  worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');await worker.evaluate(()=>{globalThis.taskDebug=[];chrome.runtime.onMessage.addListener((m,s)=>{if(m?.protocol==='vaiwl-tasks/1'&&['HELLO','OBSERVE'].includes(m.command))globalThis.taskDebug.push({command:m.command,kind:m.packet?.kind,filter:m.packet?.filter,code:m.packet?.code,at:m.packet?.observedAt,page:m.packet?.pageHref,doc:s.documentId});});});version=context.browser()?.version()||await worker.evaluate(()=>navigator.userAgent);
  page=await context.newPage();await page.goto('chrome://newtab/');await page.waitForSelector('html[data-start-ready="true"]');
  const beforeRequests=requests.length;await pause(100);check('disabled-by-default',!(await request('SNAPSHOT')).settings.enabled&&requests.length===beforeRequests,'No task network reads on installation.');
- await request('CONFIGURE',{patch:{enabled:true,automatic:true}});
- let snapshot=await sync();check('B-native-source-to-home',snapshot.sync.status==='ok'&&snapshot.tasks.find(t=>t.taskId===tid).latestAvailableResult?.preview.includes('Synthetic full task report'),snapshot.sync);
+ const enabledSince=new Date().toISOString();await request('CONFIGURE',{patch:{enabled:true,automatic:true}});
+ // Enabling the actual home may already have requested its automatic first read.
+ // HOME_OPEN joins that due round; an explicit fresh SYNC would request another.
+ await request('HOME_OPEN');
+ let snapshot=await finishCycle(enabledSince);check('B-native-source-to-home',snapshot.sync.status==='ok'&&snapshot.tasks.find(t=>t.taskId===tid).latestAvailableResult?.preview.includes('Synthetic full task report'),snapshot.sync);
  await until(async()=>(await sourceTabs()).length===0,'owned pages closed');
  check('B-inactive-sequential-pages',sourceActivity.length===2&&sourceActivity.every(x=>x.tabs.length===1&&x.tabs.every(t=>!t.active)),sourceActivity);
  check('native-list-scope',snapshot.completeList&&snapshot.tasks.length===2&&snapshot.tasks.filter(t=>t.readable).length===1,'All three filters; unsupported source not claimed as readable.');
