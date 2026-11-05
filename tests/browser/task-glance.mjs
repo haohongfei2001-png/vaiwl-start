@@ -212,8 +212,14 @@ try {
         label:'合成测试资料库',verifiedAt:new Date().toISOString(),identityAdapterVersion:'test',contextWitnessId:'layout-fixture',state:'ready' });
       await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});db.close();
     });
-    await seedTasks(fixture(1));await page.setViewportSize({width:1024,height:837});await page.locator('#scope-selector').waitFor();await stable();
+    await seedTasks(fixture(1));await page.setViewportSize({width:1024,height:837});await page.locator('#scope-selector').waitFor();
+    // Workspace/library readiness is independent of the cached task snapshot.
+    const taskReadyStarted=performance.now();let taskReadyWaitMs;
+    try { await toggle.waitFor({timeout:5000}); }
+    finally { taskReadyWaitMs=performance.now()-taskReadyStarted;console.log(JSON.stringify({scenario:'library-selector-task-ready',taskReadyWaitMs,timeoutMs:5000})); }
+    await stable();
     const scoped=await geometry();
+    measurements.push({variant:'spatial',width:1024,context:'library-selector',before:scoped,taskReadyWaitMs});
     record('1024-library-selector-keeps-two-row-navigation',scoped['#theme-controls'].y>=scoped['#tasks-home'].y+scoped['#tasks-home'].h &&
       scoped['#tasks-home'].x+scoped['#tasks-home'].w<=scoped['#search-trigger'].x);
     // Chromium reserves zoom on the chrome://newtab alias. Use the same installed

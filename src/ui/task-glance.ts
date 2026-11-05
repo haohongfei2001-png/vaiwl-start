@@ -146,7 +146,7 @@ export function createTaskGlance(root: HTMLElement, actions: Actions) {
     const shown = preferredOutput(task);
     const distinct = !!(preserved && (preserved.runId !== latest?.runId || preserved.revision !== latest?.revision));
     const item = el('article', { class: 'task-item' }, [el('div', { class: 'task-item-head' }, [
-      el('h3', {}, [task.title]), shown?.createdAt ? el('time', { datetime: shown.createdAt }, [actions.time(shown.createdAt)]) : null,
+      el('h3', {}, [task.title]), !distinct && shown?.createdAt ? el('time', { datetime: shown.createdAt }, [actions.time(shown.createdAt)]) : null,
     ])]);
     if (distinct && preserved) item.append(resultRow(task, preserved, 'valuable', previews, '已标记的重要成果'));
     if (latest) item.append(resultRow(task, latest, 'latest', previews, distinct ? '最近一次输出' : ''));

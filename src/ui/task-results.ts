@@ -168,7 +168,7 @@ export function initTaskResults() {
         localError = errors[error instanceof Error ? error.message : ''] || '操作未完成，已有成果仍保留。';
         settingsStatus.textContent = localError;
       }
-    } finally { busy = false; if (at === epoch && allowed()) { renderHome(); renderSettings(); } }
+    } finally { busy = false; if (allowed()) { renderHome(); renderSettings(); } }
   }
   const configure = (patch: Record<string, unknown>) => action('CONFIGURE', { patch });
   async function showDetail(key: string, which = 'valuable', requested?: { runId: string; revision: number }) {
