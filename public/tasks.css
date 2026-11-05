@@ -19,8 +19,8 @@
 /* Keep the established header track: tasks yield space before search or navigation. */
 .top-tools { display: contents; }
 .top-tools:has(.tasks-home:not([hidden])) { grid-column: 2; grid-row: 1; display: flex; flex: 1; min-width: 0; align-items: center; gap: inherit; }
-.top-tools:has(.tasks-home:not([hidden])) .top-spacer { display: flex; min-width: 36px; justify-content: flex-end; align-items: center; container: task-slot / inline-size; }
-.top-tools:has(.tasks-home:not([hidden])) .search { flex-shrink: 0; }
+html .topbar .top-tools:has(.tasks-home:not([hidden])) .top-spacer { display: flex; min-width: 36px; justify-content: flex-end; align-items: center; container: task-slot / inline-size; }
+.top-tools:has(.tasks-home:not([hidden])) .search-trigger { flex-shrink: 0; }
 .tasks-home { width: min(100%, 376px); min-width: 0; position: relative; font-size: 12px; }
 .tasks-home[hidden], html[data-home-mode='life'] .tasks-home { display: none !important; }
 .task-toggle { width: 100%; height: 44px; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto 12px; align-items: center; gap: 8px; padding: 0 10px; color: var(--text); background: var(--head); border: 1px solid var(--line); border-radius: 9px; text-align: left; }
@@ -49,7 +49,7 @@
   .tasks-home { width: 36px; flex-shrink: 0; }
   .task-toggle { width: 36px; grid-template-columns: 1fr; justify-items: center; padding: 0; border-color: transparent; background: transparent; }
   .task-heading, .task-caret, .task-featured, .task-waiting, .task-featured-time { display: none; }
-  .top-tools:has(.tasks-home:not([hidden])) .search { max-width: calc(100% - 48px); }
+  html .topbar .top-tools:has(.tasks-home:not([hidden])) .search-trigger { max-width: calc(100% - 48px); }
   .task-result-content { padding: 18px; }
 }
 
